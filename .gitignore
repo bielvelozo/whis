@@ -1,0 +1,18 @@
+# Ambiente Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Configuração local — contém a chave da Deepgram e caminhos da máquina
+config.toml
+config.local.toml
+.env
+
+# Gravações brutas (vivem fora do repo, mas nunca versionar por acidente)
+gravacoes/
+*.wav
+
+# Vault de teste eventualmente criado na raiz
+vault/
