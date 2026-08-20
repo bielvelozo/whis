@@ -94,10 +94,22 @@ dispositivo_sistema = ""     # vazio = get_default_wasapi_loopback()
 Chaves em português, como o resto do projeto. Quem precisar de uma chave nova
 acrescenta sem renomear as existentes.
 
-## Fato de ambiente apurado pelo orquestrador
+## Portabilidade: a máquina de destino não é a de desenvolvimento
 
-A máquina de desenvolvimento tem **Voicemeeter + VB-Cable** instalados e o
-dispositivo de saída padrão é virtual (`Voicemeeter In 5`), não o fone físico.
-Logo `get_default_wasapi_loopback()` **não é garantia** de capturar o áudio do Meet:
-depende do roteamento do Voicemeeter. Daí `[audio].dispositivo_sistema` ser
-configurável e o roteiro de smoke precisar conferir que o arquivo **não está mudo**.
+O usuário rodará o coletor **em outra máquina** (o mapa registra: desenvolvimento
+neste notebook, destino no PC desktop). Nada pode ser amarrado ao hardware daqui.
+
+- **Nenhum índice ou nome de dispositivo fixo no código.** A seleção vem da
+  configuração; vazio significa "padrão do sistema"
+  (`get_default_wasapi_loopback()` / dispositivo de entrada padrão).
+- Um subcomando **lista os dispositivos** de forma legível — é a ferramenta com que
+  o usuário preenche a configuração numa máquina que o agente nunca viu.
+- O aviso de **canal de sistema mudo** é obrigatório e precisa dizer como consertar:
+  num ambiente de roteamento desconhecido, sair mudo é o modo de falha esperado.
+- Roteiros e exemplos de configuração usam placeholder, nunca valores desta máquina.
+
+Como referência de desenvolvimento apenas — **não é o ambiente de destino e não
+entra no código**: esta máquina tem Voicemeeter + VB-Cable e a saída padrão do
+Windows é um dispositivo virtual (`Voicemeeter In 5`), não o fone físico. Serviu
+para confirmar que `get_default_wasapi_loopback()` não garante capturar o áudio do
+Meet — o que é exatamente a razão de o dispositivo ser configurável.
