@@ -30,12 +30,17 @@ class Configuracao:
 
     `vault` e `gravacoes` são obrigatórios; o resto tem padrão. Nenhum valor
     é derivado de hardware desta máquina — quem preenche é o usuário.
+
+    `claude_modelo` vazio significa "o modelo padrão da conta do usuário": o
+    coletor roda contra a assinatura dele, e o CLI já escolhe um modelo que
+    aquela conta pode usar. Preencher é para quem quer fixar um id.
     """
 
     vault: Path
     gravacoes: Path
     retencao_dias: int = 7
     deepgram_api_key: str = ""
+    claude_modelo: str = ""
     dispositivo_microfone: str = ""
     dispositivo_sistema: str = ""
     origem: Path | None = None
@@ -83,12 +88,14 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
         )
 
     deepgram = dados.get("deepgram") or {}
+    claude = dados.get("claude") or {}
     audio = dados.get("audio") or {}
     return Configuracao(
         vault=Path(dados["vault"]),
         gravacoes=Path(dados["gravacoes"]),
         retencao_dias=int(dados.get("retencao_dias", 7)),
         deepgram_api_key=str(deepgram.get("api_key", "")),
+        claude_modelo=str(claude.get("modelo", "")),
         dispositivo_microfone=str(audio.get("dispositivo_microfone", "")),
         dispositivo_sistema=str(audio.get("dispositivo_sistema", "")),
         origem=arquivo,

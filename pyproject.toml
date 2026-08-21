@@ -26,7 +26,7 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q -m \"not rede\""
 markers = [
     "rede: teste que fala com um serviço externo real (Deepgram/Claude); nao roda por padrao",
 ]

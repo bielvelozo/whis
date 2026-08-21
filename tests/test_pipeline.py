@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from fixtures.gravacao import criar_pasta_de_gravacao
 from fixtures.leitura import corpo, ler_frontmatter
-from second_brain.fakes import RESUMO_PADRAO, TRANSCRICAO_PADRAO, ResumoFake
-from second_brain.gravacao import STATUS_TRANSCRITO, ler_estado
-from second_brain.portas import Resumo
+from second_brain.fakes import RESUMO_PADRAO, TRANSCRICAO_PADRAO, ResumoFake, STTFake
+from second_brain.gravacao import STATUS_FALHOU, STATUS_TRANSCRITO, ler_estado
+from second_brain.portas import ErroDeResumo, ErroDeSTT, Resumo
 
 BASENAME = "2026-08-20-1430-daily-do-time"
 
@@ -171,3 +173,121 @@ def test_participantes_do_resumo_prevalecem_sobre_os_falantes(
     resultado = processar_gravacao(pasta_de_gravacao, resumo=resumo)
 
     assert ler_frontmatter(resultado.nota)["participantes"] == ["Gabriel", "Ana"]
+
+
+def test_falha_no_resumo_nao_escreve_nota_parcial(
+    processar_gravacao, pasta_de_gravacao: Path, caminho_do_vault: Path
+):
+    resumo = ResumoFake(erro=ErroDeResumo("Claude fora do ar"))
+
+    with pytest.raises(ErroDeResumo):
+        processar_gravacao(pasta_de_gravacao, resumo=resumo)
+
+    assert list((caminho_do_vault / "reunioes").glob("*.md")) == []
+    assert list((caminho_do_vault / "transcricoes").glob("*.md")) == []
+
+
+def test_falha_no_resumo_sinaliza_o_erro_no_estado(
+    processar_gravacao, pasta_de_gravacao: Path
+):
+    resumo = ResumoFake(erro=ErroDeResumo("Claude fora do ar"))
+
+    with pytest.raises(ErroDeResumo):
+        processar_gravacao(pasta_de_gravacao, resumo=resumo)
+
+    estado = ler_estado(pasta_de_gravacao)
+    assert estado.status == STATUS_FALHOU
+    assert "Claude fora do ar" in (estado.erro or "")
+    assert estado.nota is None
+
+
+def test_falha_no_resumo_preserva_a_gravacao(processar_gravacao, pasta_de_gravacao: Path):
+    resumo = ResumoFake(erro=ErroDeResumo("Claude fora do ar"))
+
+    with pytest.raises(ErroDeResumo):
+        processar_gravacao(pasta_de_gravacao, resumo=resumo)
+
+    assert (pasta_de_gravacao / "microfone.wav").is_file()
+    assert (pasta_de_gravacao / "sistema.wav").is_file()
+    assert (pasta_de_gravacao / "gravacao.json").is_file()
+
+
+def test_gravacao_com_resumo_falho_vira_nota_no_reprocesso(
+    processar_gravacao, pasta_de_gravacao: Path, caminho_do_vault: Path
+):
+    with pytest.raises(ErroDeResumo):
+        processar_gravacao(pasta_de_gravacao, resumo=ResumoFake(erro=ErroDeResumo("caiu")))
+
+    resultado = processar_gravacao(pasta_de_gravacao)
+
+    assert (caminho_do_vault / "reunioes" / f"{BASENAME}.md").is_file()
+    assert ler_estado(pasta_de_gravacao).status == STATUS_TRANSCRITO
+    for decisao in RESUMO_PADRAO.decisoes:
+        assert decisao in corpo(resultado.nota)
+
+
+# -- Falha do STT: a gravação é preservada e nada parcial entra no vault -----
+
+ERRO_DO_STT = "Deepgram respondeu HTTP 401 ao transcrever microfone.wav"
+
+
+def test_falha_no_stt_nao_escreve_nota_parcial(
+    processar_gravacao, pasta_de_gravacao: Path, caminho_do_vault: Path
+):
+    stt = STTFake(erro=ErroDeSTT(ERRO_DO_STT))
+
+    with pytest.raises(ErroDeSTT):
+        processar_gravacao(pasta_de_gravacao, stt=stt)
+
+    assert list((caminho_do_vault / "reunioes").glob("*.md")) == []
+    assert list((caminho_do_vault / "transcricoes").glob("*.md")) == []
+
+
+def test_falha_no_stt_sinaliza_o_erro_no_estado(processar_gravacao, pasta_de_gravacao: Path):
+    stt = STTFake(erro=ErroDeSTT(ERRO_DO_STT))
+
+    with pytest.raises(ErroDeSTT):
+        processar_gravacao(pasta_de_gravacao, stt=stt)
+
+    estado = ler_estado(pasta_de_gravacao)
+    assert estado.status == STATUS_FALHOU
+    assert ERRO_DO_STT in (estado.erro or ""), "o erro fica diagnosticável no estado.json"
+    assert estado.nota is None
+    assert estado.transcricao is None
+
+
+def test_falha_no_stt_preserva_a_gravacao(processar_gravacao, pasta_de_gravacao: Path):
+    stt = STTFake(erro=ErroDeSTT(ERRO_DO_STT))
+
+    with pytest.raises(ErroDeSTT):
+        processar_gravacao(pasta_de_gravacao, stt=stt)
+
+    assert (pasta_de_gravacao / "microfone.wav").is_file()
+    assert (pasta_de_gravacao / "sistema.wav").is_file()
+    assert (pasta_de_gravacao / "gravacao.json").is_file()
+
+
+def test_falha_no_stt_e_registrada_no_log(
+    processar_gravacao, pasta_de_gravacao: Path, caplog
+):
+    stt = STTFake(erro=ErroDeSTT(ERRO_DO_STT))
+
+    with caplog.at_level("ERROR", logger="second_brain.pipeline"):
+        with pytest.raises(ErroDeSTT):
+            processar_gravacao(pasta_de_gravacao, stt=stt)
+
+    assert ERRO_DO_STT in caplog.text
+
+
+def test_gravacao_com_stt_falho_vira_nota_no_reprocesso(
+    processar_gravacao, pasta_de_gravacao: Path, caminho_do_vault: Path
+):
+    with pytest.raises(ErroDeSTT):
+        processar_gravacao(pasta_de_gravacao, stt=STTFake(erro=ErroDeSTT("caiu a rede")))
+
+    resultado = processar_gravacao(pasta_de_gravacao)
+
+    assert (caminho_do_vault / "reunioes" / f"{BASENAME}.md").is_file()
+    assert ler_estado(pasta_de_gravacao).status == STATUS_TRANSCRITO
+    for fala in TRANSCRICAO_PADRAO.falas:
+        assert fala.texto in corpo(resultado.transcricao)

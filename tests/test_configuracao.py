@@ -70,3 +70,19 @@ def test_chave_da_deepgram_vem_da_configuracao_local(tmp_path: Path, monkeypatch
     monkeypatch.setenv(VARIAVEL_DE_AMBIENTE, str(arquivo))
 
     assert carregar().deepgram_api_key == "chave-de-teste"
+
+
+def test_modelo_do_claude_vem_da_configuracao_local(tmp_path: Path, monkeypatch):
+    arquivo = tmp_path / "config.toml"
+    arquivo.write_text(
+        'vault = "V"\ngravacoes = "G"\n\n[claude]\nmodelo = "claude-opus-5"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(VARIAVEL_DE_AMBIENTE, str(arquivo))
+
+    assert carregar().claude_modelo == "claude-opus-5"
+
+
+def test_sem_secao_claude_o_modelo_fica_vazio(arquivo_de_configuracao: Path):
+    assert carregar().claude_modelo == ""
+
