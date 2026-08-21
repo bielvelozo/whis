@@ -1,0 +1,119 @@
+"""Portas do pipeline: STT e resumo.
+
+O pipeline nunca fala com um provedor concreto — ele fala com estas duas
+portas. Os adaptadores reais (Deepgram na camada 03, Claude na camada 04)
+implementam os protocolos daqui; os fakes de `second_brain.fakes` fazem o
+mesmo para os testes. Trocar de provedor não toca o pipeline.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Protocol, runtime_checkable
+
+#: Rótulo do falante que é o próprio usuário — vem do canal do microfone.
+EU = "eu"
+
+#: Rótulo dos demais participantes — vem do canal do áudio do sistema (loopback).
+OUTROS = "outros"
+
+
+@dataclass(frozen=True)
+class Fala:
+    """Um trecho contínuo de fala de um dos lados da reunião.
+
+    `falante` é `EU` ou `OUTROS`: a distinção vem dos canais separados da
+    gravação, não de diarização. Um adaptador que conheça nomes reais pode
+    usá-los, mas nunca é obrigado a isso.
+    """
+
+    falante: str
+    texto: str
+    inicio_s: float | None = None
+
+
+@dataclass(frozen=True)
+class Transcricao:
+    """O que a porta de STT devolve: a reunião inteira em falas ordenadas."""
+
+    falas: tuple[Fala, ...]
+    idioma: str = "pt-BR"
+
+    def texto_corrido(self) -> str:
+        """A transcrição como texto simples, uma linha por fala."""
+        return "\n".join(f"{fala.falante}: {fala.texto}" for fala in self.falas)
+
+    def falantes(self) -> tuple[str, ...]:
+        """Os falantes distintos, na ordem em que aparecem."""
+        vistos: list[str] = []
+        for fala in self.falas:
+            if fala.falante not in vistos:
+                vistos.append(fala.falante)
+        return tuple(vistos)
+
+
+@dataclass(frozen=True)
+class Resumo:
+    """O que a porta de resumo devolve, sempre em português.
+
+    `participantes` é o que o resumo conseguiu identificar na transcrição;
+    quando vem vazio, o pipeline cai para os falantes da transcrição.
+    """
+
+    decisoes: tuple[str, ...] = ()
+    acoes: tuple[str, ...] = ()
+    topicos: tuple[str, ...] = ()
+    participantes: tuple[str, ...] = ()
+    titulo: str | None = None
+
+
+@dataclass(frozen=True)
+class CanaisDaGravacao:
+    """Os arquivos de áudio de uma pasta de gravação.
+
+    Um canal ausente (falha no loopback, por exemplo) chega como `None`:
+    o gravador só reporta, quem decide o que fazer é o adaptador de STT.
+    """
+
+    microfone: Path | None
+    sistema: Path | None
+    taxa_microfone_hz: int | None = None
+    taxa_sistema_hz: int | None = None
+    metadados: dict = field(default_factory=dict)
+
+
+class ErroDeSTT(RuntimeError):
+    """Falha na transcrição — a gravação é preservada e nada é escrito no vault.
+
+    O tratamento (retenção indefinida, sinalização) é da camada 03; a porta
+    já declara o erro para o adaptador real ter onde encaixar.
+    """
+
+
+class ErroDeResumo(RuntimeError):
+    """Falha na geração do resumo — a transcrição não se perde por isso."""
+
+
+@runtime_checkable
+class PortaSTT(Protocol):
+    """Transcreve os canais separados de uma gravação."""
+
+    def transcrever(self, canais: CanaisDaGravacao) -> Transcricao:
+        """Devolve a transcrição já com a distinção "eu vs. os outros".
+
+        Levanta `ErroDeSTT` quando o serviço falha.
+        """
+        ...
+
+
+@runtime_checkable
+class PortaResumo(Protocol):
+    """Resume uma transcrição em português."""
+
+    def resumir(self, transcricao: Transcricao, titulo: str | None = None) -> Resumo:
+        """Devolve decisões, ações/pendências e tópicos.
+
+        Levanta `ErroDeResumo` quando o serviço falha.
+        """
+        ...
