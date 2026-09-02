@@ -1,8 +1,10 @@
 r"""Entrada de linha de comando do Second Brain.
 
-Três subcomandos, todos sobre a mesma costura (`pipeline.processar`) e a mesma
-configuração local::
+Cinco subcomandos, todos sobre a mesma configuração local e, quando processam,
+sobre a mesma costura (`pipeline.processar`)::
 
+    python -m second_brain init
+    python -m second_brain bandeja
     python -m second_brain processar <pasta-da-gravacao>
     python -m second_brain reprocessar [<pasta> ...]
     python -m second_brain limpar [--simular]
@@ -11,8 +13,8 @@ Por padrão o comando usa os **adaptadores reais** — Deepgram para o STT, Clau
 (conta do usuário, OAuth) para o resumo. `--fakes` troca os dois pelas portas
 fake: é como exercitar o pipeline inteiro sem gastar crédito nem rede.
 
-A gravação em si tem entrada própria (`python -m second_brain.gravador`), e a
-bandeja da camada 05 chama `montar_portas()` daqui para não duplicar a fiação.
+A gravação em si também tem entrada própria (`python -m second_brain.gravador`),
+para diagnóstico de dispositivo; no uso normal quem a chama é a bandeja.
 """
 
 from __future__ import annotations
@@ -23,7 +25,12 @@ import sys
 from pathlib import Path
 
 from . import retencao as _retencao
-from .configuracao import Configuracao, ConfiguracaoInvalida, carregar
+from .configuracao import (
+    Configuracao,
+    ConfiguracaoInvalida,
+    caminho_padrao,
+    carregar,
+)
 from .fakes import ResumoFake, STTFake
 from .gravacao import GravacaoInvalida
 from .pipeline import processar
@@ -195,6 +202,82 @@ def _comando_limpar(args: argparse.Namespace) -> int:
     return 0
 
 
+# -- bandeja ----------------------------------------------------------------
+
+
+def _comando_bandeja(args: argparse.Namespace) -> int:
+    """Sobe o ícone na bandeja: o gesto da spec, um clique liga e outro desliga.
+
+    A bandeja é casca fina sobre o coletor; aqui só se decide de onde vêm as
+    portas — reais por padrão, fakes com `--fakes` para ensaiar o gesto inteiro
+    sem gastar crédito.
+    """
+    from . import bandeja as _bandeja
+
+    configuracao = _configuracao(args)
+    return _bandeja.executar(
+        configuracao,
+        portas=lambda: montar_portas(configuracao, fakes=args.fakes),
+        verboso=args.verboso,
+    )
+
+
+# -- init -------------------------------------------------------------------
+
+MODELO_DE_CONFIGURACAO = """\
+# Configuração do Second Brain. Use barras normais (/) nos caminhos:
+# no TOML a barra invertida é escape e quebra o arquivo.
+
+vault = "{vault}"
+gravacoes = "{gravacoes}"
+retencao_dias = 7            # dias que o áudio bruto sobrevive depois de virar nota
+
+[deepgram]
+api_key = ""                 # crédito de US$ 200; sem ela o STT real não roda
+
+[claude]
+modelo = ""                  # vazio = o modelo padrão da sua conta
+
+[audio]
+dispositivo_microfone = ""   # vazio = microfone padrão do Windows
+dispositivo_sistema = ""     # vazio = loopback da saída padrão do Windows
+"""
+
+
+def _comando_init(args: argparse.Namespace) -> int:
+    """Escreve o `config.toml` inicial na máquina de destino.
+
+    Antes disso o usuário tinha que criar o arquivo à mão, adivinhando as
+    chaves — e o primeiro erro provável era a barra invertida do Windows. O
+    arquivo nasce com caminhos no perfil do usuário e comentários explicando o
+    que preencher; nada aqui inventa dispositivo de áudio, que é sempre da
+    máquina de destino.
+    """
+    destino = Path(args.config) if args.config else caminho_padrao()
+    if destino.exists() and not args.forcar:
+        print(f"Já existe uma configuração em {destino}.")
+        print("Abra o arquivo para editar, ou rode 'init --forcar' para sobrescrever.")
+        return 1
+
+    perfil = Path.home()
+    conteudo = MODELO_DE_CONFIGURACAO.format(
+        vault=(perfil / "second-brain-vault").as_posix(),
+        gravacoes=(perfil / "second-brain-gravacoes").as_posix(),
+    )
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(conteudo, encoding="utf-8")
+
+    print(f"Configuração criada em {destino}")
+    print()
+    print("Próximos passos:")
+    print("  1. Confira os caminhos do vault e das gravações no arquivo.")
+    print("  2. Cole a chave da Deepgram em [deepgram].api_key.")
+    print("  3. Rode 'python -m second_brain.gravador dispositivos' e preencha [audio]")
+    print("     se o canal do sistema não sair no dispositivo certo.")
+    print("  4. Rode 'python -m second_brain bandeja' e clique no ícone para gravar.")
+    return 0
+
+
 # -- Bastidores da CLI ------------------------------------------------------
 
 
@@ -306,6 +389,27 @@ def construir_parser() -> argparse.ArgumentParser:
         help="prazo de retenção em dias (padrão: retencao_dias da configuração)",
     )
     limpar_cmd.set_defaults(funcao=_comando_limpar)
+
+    bandeja_cmd = subcomandos.add_parser(
+        "bandeja",
+        help="ícone na bandeja do Windows: um clique grava, outro vira nota no vault",
+    )
+    _acrescentar_config(bandeja_cmd)
+    bandeja_cmd.add_argument(
+        "--fakes",
+        action="store_true",
+        help="ensaia o gesto inteiro com STT e resumo fake (sem rede, sem crédito)",
+    )
+    bandeja_cmd.set_defaults(funcao=_comando_bandeja)
+
+    init_cmd = subcomandos.add_parser(
+        "init", help="cria o config.toml inicial com os caminhos e as chaves a preencher"
+    )
+    _acrescentar_config(init_cmd)
+    init_cmd.add_argument(
+        "--forcar", action="store_true", help="sobrescreve uma configuração existente"
+    )
+    init_cmd.set_defaults(funcao=_comando_init)
     return parser
 
 

@@ -15,7 +15,7 @@ import pytest
 
 from fixtures.gravacao import criar_pasta_de_gravacao, datar_processamento
 from second_brain.__main__ import main
-from second_brain.configuracao import VARIAVEL_DE_AMBIENTE
+from second_brain.configuracao import VARIAVEL_DE_AMBIENTE, carregar
 from second_brain.gravacao import STATUS_FALHOU, STATUS_TRANSCRITO, ler_estado
 
 BASENAME = "2026-08-20-1430-daily-do-time"
@@ -268,3 +268,52 @@ def test_comando_limpar_recusa_prazo_negativo(
 
     assert saida.value.code == 2
     assert pasta.is_dir()
+
+
+# -- init -------------------------------------------------------------------
+
+
+def test_comando_init_cria_a_configuracao_com_os_caminhos(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+):
+    destino = tmp_path / "config.toml"
+
+    codigo = main(["init", "--config", str(destino)])
+
+    assert codigo == 0
+    conteudo = destino.read_text(encoding="utf-8")
+    assert "vault" in conteudo and "gravacoes" in conteudo
+    assert "\\" not in conteudo  # caminhos com barra normal, como o TOML exige
+    assert "Próximos passos" in capsys.readouterr().out
+
+
+def test_configuracao_criada_pelo_init_e_lida_sem_erro(tmp_path: Path):
+    """O que o init escreve tem que passar pelo carregador — senão não serve."""
+    destino = tmp_path / "config.toml"
+    main(["init", "--config", str(destino)])
+
+    configuracao = carregar(destino)
+
+    assert configuracao.retencao_dias == 7
+    assert configuracao.deepgram_api_key == ""
+
+
+def test_comando_init_nao_sobrescreve_configuracao_existente(
+    tmp_path: Path, capsys: pytest.CaptureFixture
+):
+    destino = tmp_path / "config.toml"
+    destino.write_text('vault = "V"\ngravacoes = "G"\n', encoding="utf-8")
+
+    codigo = main(["init", "--config", str(destino)])
+
+    assert codigo == 1
+    assert destino.read_text(encoding="utf-8").startswith('vault = "V"')
+    assert "--forcar" in capsys.readouterr().out or "forcar" in capsys.readouterr().out
+
+
+def test_comando_init_forcar_sobrescreve(tmp_path: Path):
+    destino = tmp_path / "config.toml"
+    destino.write_text('vault = "V"\ngravacoes = "G"\n', encoding="utf-8")
+
+    assert main(["init", "--config", str(destino), "--forcar"]) == 0
+    assert "retencao_dias" in destino.read_text(encoding="utf-8")

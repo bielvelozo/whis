@@ -4,10 +4,39 @@
 
 **Blocked by:** 02 — Gravador WASAPI sob demanda; 03 — STT real: adapter Deepgram; 04 — Resumo real: adapter Claude.
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] Ícone na bandeja inicia e para a gravação com um clique e mostra o estado atual sem ambiguidade
-- [ ] Parar a gravação dispara o processamento completo sem interação extra
+- [x] Ícone na bandeja inicia e para a gravação com um clique e mostra o estado atual sem ambiguidade
+- [x] Parar a gravação dispara o processamento completo sem interação extra
 - [ ] Smoke manual da spec executado: reunião real no Meet → nota com resumo + transcrição linkada no Obsidian
-- [ ] Erros do pipeline aparecem de forma visível/diagnosticável (a bandeja não engole falhas)
-- [ ] A bandeja é casca fina: nenhuma lógica de pipeline vive nela
+- [x] Erros do pipeline aparecem de forma visível/diagnosticável (a bandeja não engole falhas)
+- [x] A bandeja é casca fina: nenhuma lógica de pipeline vive nela
+
+## Comments
+
+**Camada 05 entregue** — `src/second_brain/coletor.py`, `src/second_brain/bandeja.py`, os subcomandos `bandeja` e `init` em `src/second_brain/__main__.py`, a ponte `gravador.de_configuracao()`, o roteiro `docs/smoke-ponta-a-ponta.md` e os testes em `tests/test_coletor.py` e `tests/test_bandeja.py`. Suíte: **204 passaram, 3 desselecionados**.
+
+**A separação que faz a camada ser testável.** A spec exige que a bandeja seja casca fina, e casca fina não se prova por inspeção. O gesto virou dois módulos: o **coletor** (`second_brain.coletor`) é a máquina de estados — grava, para, dispara a costura `processar()` em outra thread, lembra do resultado — sem uma linha de UI; a **bandeja** é pixels, cliques e balões sobre ele. Assim tudo o que o ícone promete ao usuário é provado por teste de comportamento, e sobra para o smoke manual só o que é mesmo de hardware e de tela.
+
+Um teste guarda o critério explicitamente: `test_a_bandeja_nao_conhece_o_pipeline` lê o fonte do módulo e falha se ele passar a importar pipeline, vault, adaptadores ou portas.
+
+**Estados visíveis sem ambiguidade.** Quatro desenhos distintos como imagem (círculo vazado cinza = parado, círculo cheio vermelho = gravando, anel âmbar = processando, vermelho escuro com risco = falhou) — cor sozinha seria ambígua — e o tooltip repete tudo por escrito em português. Um teste compara os bytes dos quatro ícones para garantir que continuam diferentes entre si.
+
+**Erros não são engolidos**, em quatro lugares ao mesmo tempo: ícone de erro, tooltip com a mensagem, balão do Windows com o comando de recuperação (`reprocessar`) e o `bandeja.log` ao lado do `config.toml` — sem console, ele é a única forma de diagnosticar a reunião de ontem (user story 18). A gravação que falhou continua retida, como a camada 06 previu.
+
+**Um acréscimo além dos critérios, e a razão dele.** Na primeira execução real nesta máquina o canal do sistema saiu mudo (nada tocando) e isso só apareceu no log — exatamente a falha que arruinaria uma reunião inteira, porque a nota sairia só com a voz do usuário. A camada 02 já tinha construído `Gravador.niveis()` "para a bandeja mostrar canal mudo"; agora o coletor confere os níveis 20 s depois do início e, se um canal estiver em silêncio digital, a bandeja avisa **durante** a reunião, com o conserto na mensagem. Avisar não é falhar: o estado continua `gravando`.
+
+**Itens do DEFERRED que esta camada fecha:** `second-brain init` cria o `config.toml` com caminhos válidos e comentários (era escrito à mão antes); a mensagem de TOML inválido agora ensina o caso do caminho com barra invertida, em vez de só repetir "Invalid hex value"; e a leitura de configuração duplicada some no caminho que o produto usa — a bandeja lê uma vez e converte pela ponte `gravador.de_configuracao()`.
+
+**Provas executadas nesta máquina** (bandeja de verdade, pystray real, gravador real, portas fake — sem chave da Deepgram aqui):
+
+- Ciclo completo: ícone visível → clique → `gravando` com áudio real captado (`microfone.wav` e `sistema.wav`, 48 kHz, ~3 s) → clique → `processando` → `parado`, com a nota e a transcrição lidas no disco, frontmatter completo e wikilink correto. O `bandeja.log` registrou o caminho inteiro, do dispositivo de cada canal até "Reunião no vault".
+- Falha real de STT na bandeja: ícone e tooltip viraram `Falhou: Deepgram devolveu 503`, nenhuma nota parcial foi escrita, `estado.json` ficou `falhou` com o erro, e `second-brain reprocessar` depois completou a mesma gravação no vault.
+- Aviso de canal mudo com o loopback apontado de propósito para uma saída silenciosa: o tooltip passou a `Gravando: reunião — nenhum áudio está entrando...` e o balão saiu com a instrução de ajustar `[audio].dispositivo_sistema`. O veredito bateu com o do gravador ao fechar os arquivos (RMS 0,9 e 0,5, ambos MUDO).
+- `second-brain init` num caminho limpo: o arquivo gerado é lido de volta por `carregar()` sem erro, com barras normais.
+
+**Decisão deliberada: a bandeja não apaga áudio sozinha.** O `DEFERRED.md` sugeria a bandeja rodar a limpeza ao iniciar. Deixei de fora: apagar é irreversível e o usuário não pediu que acontecesse sem ele saber. A limpeza continua em `second-brain limpar`, com `--simular`, e o roteiro de smoke ensina a agendar.
+
+Achados registrados em `.scratch/tracer-bullet/DEFERRED.md`: nada impede duas bandejas simultâneas disputando os dispositivos; a bandeja não sobe com o Windows; toda gravação pela bandeja nasce sem título; e a duplicação de leitura de configuração sobrevive só no CLI do gravador, de propósito.
+
+**O que falta para a camada fechar — critério 3, e é do usuário.** O smoke de ponta a ponta com um Meet real, a chave da Deepgram e o Claude está escrito em `docs/smoke-ponta-a-ponta.md` e precisa ser executado na máquina de destino. É o mesmo critério que fecha o tracer bullet inteiro.

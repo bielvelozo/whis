@@ -138,6 +138,22 @@ def carregar_configuracao(caminho: str | os.PathLike[str] | None = None) -> Conf
     )
 
 
+def de_configuracao(configuracao) -> ConfiguracaoGravador:
+    """Extrai as chaves do gravador da configuração unificada do projeto.
+
+    Quem monta o coletor inteiro — a bandeja (camada 05) — lê o `config.toml`
+    uma vez por `second_brain.configuracao.carregar()` e passa o resultado
+    adiante. Sem esta ponte, o mesmo arquivo seria lido duas vezes por dois
+    parsers, que é como duas leituras da mesma chave passam a divergir.
+    """
+    return ConfiguracaoGravador(
+        gravacoes=Path(configuracao.gravacoes).expanduser(),
+        dispositivo_microfone=str(configuracao.dispositivo_microfone or "").strip(),
+        dispositivo_sistema=str(configuracao.dispositivo_sistema or "").strip(),
+        origem=configuracao.origem,
+    )
+
+
 # ---------------------------------------------------------------- dispositivos
 
 

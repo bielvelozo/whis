@@ -76,10 +76,13 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
             f"Crie o arquivo com as chaves 'vault' e 'gravacoes', ou aponte "
             f"{VARIAVEL_DE_AMBIENTE} para outro caminho."
         )
+    texto = arquivo.read_text(encoding="utf-8")
     try:
-        dados = tomllib.loads(arquivo.read_text(encoding="utf-8"))
+        dados = tomllib.loads(texto)
     except tomllib.TOMLDecodeError as erro:
-        raise ConfiguracaoInvalida(f"Configuração inválida em {arquivo}: {erro}") from erro
+        raise ConfiguracaoInvalida(
+            f"Configuração inválida em {arquivo}: {erro}{_dica_de_barra_invertida(texto)}"
+        ) from erro
 
     faltando = [chave for chave in ("vault", "gravacoes") if not dados.get(chave)]
     if faltando:
@@ -125,3 +128,27 @@ def _dias_de_retencao(valor: object, arquivo: Path) -> int:
             f"(veio {dias}). Use 0 para apagar o áudio assim que ele virar nota."
         )
     return dias
+
+
+def _dica_de_barra_invertida(texto: str) -> str:
+    r"""A explicação que falta quando o TOML reclama de um caminho do Windows.
+
+    O erro nativo é `Invalid hex value` — porque `"C:\Users\..."` faz o TOML
+    ler `\U` como escape Unicode. É o primeiro tropeço de quem copia o caminho
+    do Explorer, e a mensagem crua não ensina nada. Só aparece quando o arquivo
+    realmente tem uma barra invertida dentro de aspas.
+    """
+    suspeitas = [
+        linha.strip()
+        for linha in texto.splitlines()
+        if "\\" in linha and '"' in linha and not linha.lstrip().startswith("#")
+    ]
+    if not suspeitas:
+        return ""
+    exemplo = suspeitas[0]
+    return (
+        "\n\nParece um caminho do Windows com barra invertida: "
+        f"{exemplo}\n"
+        "No TOML a barra invertida é escape. Use barras normais — "
+        'vault = "C:/Users/voce/second-brain-vault" — ou dobre as barras.'
+    )
