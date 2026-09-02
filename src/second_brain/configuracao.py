@@ -87,16 +87,41 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
             f"Configuração em {arquivo} sem as chaves obrigatórias: {', '.join(faltando)}."
         )
 
+    retencao_dias = _dias_de_retencao(dados.get("retencao_dias", 7), arquivo)
+
     deepgram = dados.get("deepgram") or {}
     claude = dados.get("claude") or {}
     audio = dados.get("audio") or {}
     return Configuracao(
         vault=Path(dados["vault"]),
         gravacoes=Path(dados["gravacoes"]),
-        retencao_dias=int(dados.get("retencao_dias", 7)),
+        retencao_dias=retencao_dias,
         deepgram_api_key=str(deepgram.get("api_key", "")),
         claude_modelo=str(claude.get("modelo", "")),
         dispositivo_microfone=str(audio.get("dispositivo_microfone", "")),
         dispositivo_sistema=str(audio.get("dispositivo_sistema", "")),
         origem=arquivo,
     )
+
+
+def _dias_de_retencao(valor: object, arquivo: Path) -> int:
+    """Valida `retencao_dias` antes que ele mande apagar áudio.
+
+    A limpeza é irreversível e lê este número como "tudo mais velho que isto
+    pode sumir": um valor negativo diria "apague tudo que já virou nota",
+    incluindo a reunião de agora de manhã. Prazo inválido é erro de
+    configuração, não um padrão silencioso.
+    """
+    try:
+        dias = int(valor)
+    except (TypeError, ValueError):
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: 'retencao_dias' precisa ser um número "
+            f"inteiro de dias, e veio {valor!r}."
+        ) from None
+    if dias < 0:
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: 'retencao_dias' não pode ser negativo "
+            f"(veio {dias}). Use 0 para apagar o áudio assim que ele virar nota."
+        )
+    return dias

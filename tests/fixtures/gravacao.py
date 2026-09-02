@@ -8,9 +8,13 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import struct
 import wave
+from datetime import datetime, timedelta
 from pathlib import Path
+
+from second_brain.gravacao import ARQUIVO_DE_ESTADO, Estado, gravar_estado
 
 NOME_PADRAO = "2026-08-20-1430-daily-do-time"
 TITULO_PADRAO = "daily do time"
@@ -76,3 +80,43 @@ def criar_pasta_de_gravacao(
         json.dumps(metadados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     return pasta
+
+
+def datar_processamento(
+    pasta: Path,
+    *,
+    status: str,
+    dias_atras: float,
+    nota: str | None = None,
+    transcricao: str | None = None,
+    erro: str | None = None,
+    processado_em: str | None | bool = True,
+) -> Path:
+    """Escreve `estado.json` como se o processamento tivesse ocorrido no passado.
+
+    Nenhum teste dorme nem depende da hora que o relógio marca: a data é
+    calculada a partir de "agora" no momento do teste, então a idade em dias é
+    exatamente `dias_atras` qualquer que seja o dia da execução. O mtime do
+    arquivo é alinhado à mesma data, porque ele é a fonte de queda da retenção
+    quando `processado_em` falta.
+
+    `processado_em=None` grava o estado **sem** a data, para exercitar
+    justamente essa queda para o mtime.
+    """
+    quando = datetime.now().astimezone() - timedelta(days=dias_atras)
+    carimbo = (
+        quando.isoformat(timespec="seconds") if processado_em is True else processado_em
+    )
+    gravar_estado(
+        pasta,
+        Estado(
+            status=status,
+            processado_em=carimbo,
+            nota=nota,
+            transcricao=transcricao,
+            erro=erro,
+        ),
+    )
+    arquivo = Path(pasta) / ARQUIVO_DE_ESTADO
+    os.utime(arquivo, (quando.timestamp(), quando.timestamp()))
+    return arquivo

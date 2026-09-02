@@ -3,6 +3,10 @@
 Esta é a costura única do repositório. Tudo que é externo — STT e resumo —
 entra por porta injetada, então o mesmo caminho de código roda em teste (com
 fakes) e em produção (com Deepgram e Claude).
+
+A transcrição é guardada na pasta de gravação assim que o STT devolve, antes
+de qualquer tentativa de resumo: uma falha do Claude não pode custar uma
+segunda chamada à Deepgram no reprocesso.
 """
 
 from __future__ import annotations
@@ -29,6 +33,7 @@ class Resultado:
     gravacao: PastaDeGravacao
     estado: Estado
     reaproveitado: bool = False
+    transcricao_reaproveitada: bool = False
 
 
 def processar(
@@ -38,6 +43,7 @@ def processar(
     stt: PortaSTT,
     resumo: PortaResumo,
     reprocessar: bool = False,
+    reaproveitar_transcricao: bool = True,
 ) -> Resultado:
     """Transforma uma pasta de gravação em nota + transcrição no vault.
 
@@ -45,6 +51,10 @@ def processar(
     notas: os nomes vêm da pasta de gravação, e `estado.json` diz o que já
     foi feito. `reprocessar=True` força o caminho completo de novo, ainda
     escrevendo nos mesmos dois arquivos.
+
+    `reaproveitar_transcricao=False` manda ignorar a transcrição guardada na
+    pasta e chamar o STT de novo — é a saída para quando a transcrição em si
+    ficou ruim, e a única forma de gastar STT numa gravação que já tem uma.
     """
     gravacao = _gravacao.ler(Path(pasta))
     _log.info(
@@ -69,10 +79,23 @@ def processar(
             reaproveitado=True,
         )
 
+    guardada = gravacao.ler_transcricao() if reaproveitar_transcricao else None
     try:
-        _log.info("Transcrevendo os canais da gravação...")
-        transcricao = stt.transcrever(gravacao.canais)
-        _log.info("Transcrição pronta: %d falas.", len(transcricao.falas))
+        if guardada is not None:
+            transcricao = guardada
+            _log.info(
+                "Transcrição já guardada em %s (%d falas) — o STT não é chamado de novo.",
+                _gravacao.caminho_da_transcricao(gravacao.caminho),
+                len(transcricao.falas),
+            )
+        else:
+            _log.info("Transcrevendo os canais da gravação...")
+            transcricao = stt.transcrever(gravacao.canais)
+            _log.info("Transcrição pronta: %d falas.", len(transcricao.falas))
+            arquivo = gravacao.gravar_transcricao(transcricao)
+            _log.info(
+                "Transcrição guardada em %s — uma falha no resumo não a perde.", arquivo
+            )
 
         _log.info("Gerando o resumo em português...")
         resumo_gerado = resumo.resumir(transcricao, gravacao.titulo)
@@ -135,6 +158,7 @@ def processar(
         transcricao=transcricao_escrita,
         gravacao=gravacao,
         estado=estado_final,
+        transcricao_reaproveitada=guardada is not None,
     )
 
 

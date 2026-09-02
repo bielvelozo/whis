@@ -4,11 +4,11 @@
 
 **Blocked by:** 01 — Esqueleto do pipeline com portas fake.
 
-**Status:** claimed
+**Status:** resolved
 
 - [x] Resumo em português cobrindo decisões, ações/pendências e tópicos da reunião
 - [x] Autenticação pela conta Claude do usuário (OAuth), sem API key paga à parte
-- [ ] Falha na geração do resumo não perde a transcrição — nota pode ser regenerada
+- [x] Falha na geração do resumo não perde a transcrição — nota pode ser regenerada
 - [x] Testes da costura continuam verdes com o fake; o adapter real tem verificação própria mínima
 
 ## Comments
@@ -79,3 +79,10 @@ propriedade e casa com "gravação com falha fica retida indefinidamente".
 **Essa mudança foi atribuída à camada 06** (retenção e reprocesso), dona natural
 do reprocesso idempotente. O critério 3 deste ticket fecha quando eu revalidar o
 ciclo falha-do-resumo → reprocesso sem nova chamada de STT.
+
+**Critério 3 fechado no fechamento da camada 06.** O `transcricao.json` decidido
+aqui foi construído lá: o pipeline guarda a transcrição na pasta de gravação
+assim que o STT devolve, antes de qualquer tentativa de resumo. Revalidei o ciclo
+eu mesmo, com um STT que conta chamadas — resumo quebrado na primeira passada,
+resumo saudável na segunda, **1 chamada de STT no total**, transcrição
+reaproveitada e status final `transcrito`. A camada está resolvida.

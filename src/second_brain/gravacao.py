@@ -5,11 +5,17 @@ O formato é o do contrato `.scratch/tracer-bullet/contrato-pasta-gravacao.md`:
     <gravacoes>/YYYY-MM-DD-HHMM-<slug>/
       microfone.wav
       sistema.wav
-      gravacao.json   # dono: o gravador
-      estado.json     # dono: o pipeline
+      gravacao.json     # dono: o gravador
+      estado.json       # dono: o pipeline
+      transcricao.json  # dono: o pipeline — o que o STT devolveu
 
 `estado.json` é a fonte de verdade da idempotência (não reprocessar o que já
-virou nota) e, mais adiante, da retenção do áudio bruto.
+virou nota) e da retenção do áudio bruto.
+
+`transcricao.json` é o que o STT devolveu, gravado **antes** do resumo: uma
+falha no resumo não pode custar uma segunda chamada de STT no reprocesso. Vive
+na pasta de gravação, fora do vault, e some junto com ela na limpeza — a
+transcrição definitiva já está no vault a essa altura.
 """
 
 from __future__ import annotations
@@ -21,12 +27,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from .portas import CanaisDaGravacao
+from .portas import CanaisDaGravacao, Fala, Transcricao
 
 _log = logging.getLogger("second_brain.gravacao")
 
 #: Versão do formato de `estado.json`.
 VERSAO_DO_ESTADO = 1
+
+#: Versão do formato de `transcricao.json`.
+VERSAO_DA_TRANSCRICAO = 1
 
 STATUS_PENDENTE = "pendente"
 STATUS_TRANSCRITO = "transcrito"
@@ -36,6 +45,16 @@ _NOME_DA_PASTA = re.compile(r"^(?P<data>\d{4}-\d{2}-\d{2})-(?P<hora>\d{4})-(?P<s
 
 ARQUIVO_DE_METADADOS = "gravacao.json"
 ARQUIVO_DE_ESTADO = "estado.json"
+ARQUIVO_DE_TRANSCRICAO = "transcricao.json"
+
+
+def parece_pasta_de_gravacao(nome: str) -> bool:
+    """O nome segue `YYYY-MM-DD-HHMM-<slug>`?
+
+    A limpeza (`second_brain.retencao`) usa isto como cerca: pasta que não
+    nasceu do gravador nunca é candidata a ser apagada.
+    """
+    return _NOME_DA_PASTA.match(nome) is not None
 
 
 class GravacaoInvalida(RuntimeError):
@@ -97,6 +116,14 @@ class PastaDeGravacao:
         """Escreve `estado.json` na pasta de gravação (fora do vault)."""
         gravar_estado(self.caminho, estado)
 
+    def ler_transcricao(self) -> Transcricao | None:
+        """A transcrição já guardada, ou `None` quando o STT ainda não rodou."""
+        return ler_transcricao(self.caminho)
+
+    def gravar_transcricao(self, transcricao: Transcricao) -> Path:
+        """Guarda o que o STT devolveu, antes de qualquer tentativa de resumo."""
+        return gravar_transcricao(self.caminho, transcricao)
+
 
 def ler_estado(pasta: Path) -> Estado:
     """Lê `estado.json`; devolve estado `pendente` se não existir ou estiver corrompido."""
@@ -125,6 +152,61 @@ def gravar_estado(pasta: Path, estado: Estado) -> None:
         json.dumps(estado.como_dicionario(), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+
+
+def caminho_da_transcricao(pasta: Path) -> Path:
+    """Onde a transcrição guardada mora dentro da pasta de gravação."""
+    return Path(pasta) / ARQUIVO_DE_TRANSCRICAO
+
+
+def ler_transcricao(pasta: Path) -> Transcricao | None:
+    """Lê `transcricao.json`.
+
+    Devolve `None` quando o arquivo não existe (o STT ainda não rodou com
+    sucesso) e também quando existe mas está ilegível — nesse caso o pipeline
+    transcreve de novo, que é o único caminho seguro.
+    """
+    arquivo = caminho_da_transcricao(pasta)
+    if not arquivo.is_file():
+        return None
+    try:
+        dados = json.loads(arquivo.read_text(encoding="utf-8"))
+        falas = tuple(
+            Fala(
+                falante=str(fala["falante"]),
+                texto=str(fala["texto"]),
+                inicio_s=fala.get("inicio_s"),
+            )
+            for fala in dados["falas"]
+        )
+    except (json.JSONDecodeError, OSError, KeyError, TypeError):
+        _log.warning(
+            "Transcrição guardada ilegível em %s — será transcrita de novo.", arquivo
+        )
+        return None
+    return Transcricao(falas=falas, idioma=str(dados.get("idioma", "pt-BR")))
+
+
+def gravar_transcricao(pasta: Path, transcricao: Transcricao) -> Path:
+    """Escreve `transcricao.json` na pasta de gravação, fora do vault.
+
+    Chamado assim que o STT devolve e **antes** do resumo: é o que faz o
+    reprocesso de uma falha de resumo custar zero de STT.
+    """
+    arquivo = caminho_da_transcricao(pasta)
+    dados = {
+        "versao": VERSAO_DA_TRANSCRICAO,
+        "gerada_em": agora_iso(),
+        "idioma": transcricao.idioma,
+        "falas": [
+            {"falante": fala.falante, "texto": fala.texto, "inicio_s": fala.inicio_s}
+            for fala in transcricao.falas
+        ],
+    }
+    arquivo.write_text(
+        json.dumps(dados, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return arquivo
 
 
 def agora_iso() -> str:

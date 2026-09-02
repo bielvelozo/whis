@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 — Esqueleto do pipeline com portas fake.
 
-**Status:** claimed
+**Status:** ready-for-human
 
 - [ ] Pipeline com o adapter real transcreve uma gravação de teste em pt-BR com termos em inglês corretamente
 - [x] Transcrição distingue a fala do usuário da dos demais participantes
@@ -87,3 +87,9 @@ do agente. Fonte: https://developers.deepgram.com/docs/the-deepgram-model-improv
 **O que só fecha na máquina de destino, com a chave:** que a chave autentica, que
 a Deepgram aceita estes parâmetros e que a transcrição pt/en sai correta. Os dois
 testes marcados `rede` existem para isso e pulam sem chave.
+
+**Status ajustado para `ready-for-human` no fechamento da camada 06.** Todo o
+código do adaptador está aceito e commitado; o único critério aberto — transcrever
+pt-BR com termos em inglês corretamente — depende da chave da Deepgram na máquina
+de destino, exatamente como o smoke da camada 02 depende de um Meet real. Não há
+trabalho de agente pendente aqui.

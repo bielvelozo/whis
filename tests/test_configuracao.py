@@ -86,3 +86,32 @@ def test_modelo_do_claude_vem_da_configuracao_local(tmp_path: Path, monkeypatch)
 def test_sem_secao_claude_o_modelo_fica_vazio(arquivo_de_configuracao: Path):
     assert carregar().claude_modelo == ""
 
+
+def _com_retencao(tmp_path: Path, valor: str) -> Path:
+    arquivo = tmp_path / "config.toml"
+    arquivo.write_text(
+        '\n'.join(['vault = "V"', 'gravacoes = "G"', f"retencao_dias = {valor}", ""]),
+        encoding="utf-8",
+    )
+    return arquivo
+
+
+def test_retencao_dias_negativo_e_configuracao_invalida(tmp_path: Path):
+    """Prazo negativo mandaria a limpeza apagar tudo que já virou nota."""
+    with pytest.raises(ConfiguracaoInvalida) as erro:
+        carregar(_com_retencao(tmp_path, "-1"))
+
+    assert "retencao_dias" in str(erro.value)
+    assert "0" in str(erro.value)  # a mensagem ensina o valor mínimo válido
+
+
+def test_retencao_dias_nao_inteiro_e_configuracao_invalida(tmp_path: Path):
+    with pytest.raises(ConfiguracaoInvalida) as erro:
+        carregar(_com_retencao(tmp_path, '"sete"'))
+
+    assert "retencao_dias" in str(erro.value)
+
+
+def test_retencao_dias_zero_e_valida(tmp_path: Path):
+    """Zero é uma escolha legítima: apagar o áudio assim que ele virar nota."""
+    assert carregar(_com_retencao(tmp_path, "0")).retencao_dias == 0

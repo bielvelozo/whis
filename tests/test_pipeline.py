@@ -13,8 +13,13 @@ import pytest
 from fixtures.gravacao import criar_pasta_de_gravacao
 from fixtures.leitura import corpo, ler_frontmatter
 from second_brain.fakes import RESUMO_PADRAO, TRANSCRICAO_PADRAO, ResumoFake, STTFake
-from second_brain.gravacao import STATUS_FALHOU, STATUS_TRANSCRITO, ler_estado
-from second_brain.portas import ErroDeResumo, ErroDeSTT, Resumo
+from second_brain.gravacao import (
+    STATUS_FALHOU,
+    STATUS_TRANSCRITO,
+    ler_estado,
+    ler_transcricao,
+)
+from second_brain.portas import EU, ErroDeResumo, ErroDeSTT, Fala, Resumo, Transcricao
 
 BASENAME = "2026-08-20-1430-daily-do-time"
 
@@ -289,5 +294,141 @@ def test_gravacao_com_stt_falho_vira_nota_no_reprocesso(
 
     assert (caminho_do_vault / "reunioes" / f"{BASENAME}.md").is_file()
     assert ler_estado(pasta_de_gravacao).status == STATUS_TRANSCRITO
+    for fala in TRANSCRICAO_PADRAO.falas:
+        assert fala.texto in corpo(resultado.transcricao)
+
+
+# -- A transcrição não se perde: cache na pasta de gravação -----------------
+
+
+class STTIndisponivel:
+    """Porta de STT que denuncia qualquer chamada.
+
+    É mais honesto do que contar chamadas: se o pipeline tentar transcrever de
+    novo, o teste quebra na hora, dizendo exatamente o que aconteceu de errado.
+    Na produção isso seria uma chamada paga à Deepgram por uma falha que não
+    foi dela.
+    """
+
+    def transcrever(self, canais):
+        raise AssertionError(
+            "o STT foi chamado, mas a transcrição já estava guardada na pasta de gravação"
+        )
+
+
+def test_transcricao_fica_guardada_na_pasta_de_gravacao(
+    processar_gravacao, pasta_de_gravacao: Path
+):
+    processar_gravacao(pasta_de_gravacao)
+
+    guardada = ler_transcricao(pasta_de_gravacao)
+    assert guardada is not None
+    assert guardada.falas == TRANSCRICAO_PADRAO.falas
+    assert guardada.idioma == TRANSCRICAO_PADRAO.idioma
+
+
+def test_transcricao_guardada_vive_fora_do_vault(
+    processar_gravacao, pasta_de_gravacao: Path, caminho_do_vault: Path
+):
+    processar_gravacao(pasta_de_gravacao)
+
+    assert (pasta_de_gravacao / "transcricao.json").is_file()
+    assert list(caminho_do_vault.rglob("transcricao.json")) == []
+
+
+def test_falha_no_resumo_preserva_a_transcricao_na_pasta(
+    processar_gravacao, pasta_de_gravacao: Path
+):
+    with pytest.raises(ErroDeResumo):
+        processar_gravacao(pasta_de_gravacao, resumo=ResumoFake(erro=ErroDeResumo("caiu")))
+
+    guardada = ler_transcricao(pasta_de_gravacao)
+    assert guardada is not None, "a transcrição que já custou API não pode se perder"
+    assert guardada.falas == TRANSCRICAO_PADRAO.falas
+
+
+def test_reprocesso_apos_falha_de_resumo_nao_chama_o_stt_de_novo(
+    processar_gravacao, pasta_de_gravacao: Path, caminho_do_vault: Path
+):
+    """O ciclo inteiro: resumo falha, reprocesso completa a nota sem novo STT."""
+    with pytest.raises(ErroDeResumo):
+        processar_gravacao(
+            pasta_de_gravacao, resumo=ResumoFake(erro=ErroDeResumo("Claude fora do ar"))
+        )
+
+    resultado = processar_gravacao(pasta_de_gravacao, stt=STTIndisponivel())
+
+    assert (caminho_do_vault / "reunioes" / f"{BASENAME}.md").is_file()
+    assert ler_estado(pasta_de_gravacao).status == STATUS_TRANSCRITO
+    assert resultado.transcricao_reaproveitada is True
+    for fala in TRANSCRICAO_PADRAO.falas:
+        assert fala.texto in corpo(resultado.transcricao)
+
+
+def test_reaproveitamento_da_transcricao_aparece_no_log(
+    processar_gravacao, pasta_de_gravacao: Path, caplog
+):
+    with pytest.raises(ErroDeResumo):
+        processar_gravacao(pasta_de_gravacao, resumo=ResumoFake(erro=ErroDeResumo("caiu")))
+
+    with caplog.at_level("INFO", logger="second_brain.pipeline"):
+        processar_gravacao(pasta_de_gravacao, stt=STTIndisponivel())
+
+    assert "o STT não é chamado de novo" in caplog.text
+
+
+def test_falha_no_stt_nao_deixa_transcricao_guardada(
+    processar_gravacao, pasta_de_gravacao: Path
+):
+    with pytest.raises(ErroDeSTT):
+        processar_gravacao(pasta_de_gravacao, stt=STTFake(erro=ErroDeSTT("caiu a rede")))
+
+    assert ler_transcricao(pasta_de_gravacao) is None
+    assert not (pasta_de_gravacao / "transcricao.json").exists()
+
+
+def test_reprocesso_forcado_reaproveita_a_transcricao_por_padrao(
+    processar_gravacao, pasta_de_gravacao: Path
+):
+    processar_gravacao(pasta_de_gravacao)
+
+    resultado = processar_gravacao(
+        pasta_de_gravacao,
+        stt=STTIndisponivel(),
+        resumo=ResumoFake(Resumo(decisoes=("decisão revista",))),
+        reprocessar=True,
+    )
+
+    assert "decisão revista" in corpo(resultado.nota)
+
+
+def test_refazer_a_transcricao_chama_o_stt_de_novo(
+    processar_gravacao, pasta_de_gravacao: Path
+):
+    processar_gravacao(pasta_de_gravacao)
+
+    outra = Transcricao(falas=(Fala(EU, "Transcrição refeita do zero.", 0.0),))
+    resultado = processar_gravacao(
+        pasta_de_gravacao,
+        stt=STTFake(outra),
+        reprocessar=True,
+        reaproveitar_transcricao=False,
+    )
+
+    assert "Transcrição refeita do zero." in corpo(resultado.transcricao)
+    assert resultado.transcricao_reaproveitada is False
+    assert ler_transcricao(pasta_de_gravacao).falas == outra.falas
+
+
+def test_transcricao_guardada_ilegivel_e_refeita_pelo_stt(
+    processar_gravacao, pasta_de_gravacao: Path
+):
+    with pytest.raises(ErroDeResumo):
+        processar_gravacao(pasta_de_gravacao, resumo=ResumoFake(erro=ErroDeResumo("caiu")))
+    (pasta_de_gravacao / "transcricao.json").write_text("{ isto não é json", encoding="utf-8")
+
+    resultado = processar_gravacao(pasta_de_gravacao)
+
+    assert resultado.transcricao_reaproveitada is False
     for fala in TRANSCRICAO_PADRAO.falas:
         assert fala.texto in corpo(resultado.transcricao)
