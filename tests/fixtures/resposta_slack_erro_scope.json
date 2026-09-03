@@ -1,0 +1,6 @@
+{
+  "ok": false,
+  "error": "missing_scope",
+  "needed": "im:history",
+  "provided": "channels:history,channels:read,users:read"
+}

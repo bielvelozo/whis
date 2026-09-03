@@ -1,0 +1,35 @@
+{
+  "ok": true,
+  "messages": [
+    {
+      "type": "message",
+      "subtype": "bot_message",
+      "username": "Deploy Bot",
+      "bot_id": "B0DEPLOY",
+      "text": "Deploy do OMS concluído em produção",
+      "ts": "1788477000.000400"
+    },
+    {
+      "type": "message",
+      "user": "U0BRUNO",
+      "text": "",
+      "attachments": [
+        {
+          "fallback": "Relatório semanal do frete.pdf",
+          "text": "Relatório semanal do frete.pdf"
+        }
+      ],
+      "ts": "1788460200.000600"
+    },
+    {
+      "type": "message",
+      "user": "U0ANA",
+      "text": "isso aqui é do dia seguinte e o Slack não deveria ter devolvido",
+      "ts": "1788508800.000500"
+    }
+  ],
+  "has_more": false,
+  "response_metadata": {
+    "next_cursor": ""
+  }
+}

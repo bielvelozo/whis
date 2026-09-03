@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "messages": [
+    {
+      "type": "message",
+      "user": "U0ANA",
+      "text": "Subi o fix do frete em <#C0FRETE|frete-v2>, <@U0GABRIEL> revisa? Contexto em <https://linear.app/segundo-cerebro/issue/FN-123|FN-123> &amp; no print.",
+      "ts": "1788440520.000100",
+      "thread_ts": "1788440520.000100",
+      "reply_count": 2,
+      "latest_reply": "1788465900.000800"
+    },
+    {
+      "type": "message",
+      "user": "U0GABRIEL",
+      "text": "revisando agora &amp; comento por lá",
+      "ts": "1788445200.000200"
+    },
+    {
+      "type": "message",
+      "subtype": "channel_join",
+      "user": "U0BRUNO",
+      "text": "<@U0BRUNO> has joined the channel",
+      "ts": "1788447720.000300"
+    }
+  ],
+  "has_more": true,
+  "response_metadata": {
+    "next_cursor": "cursor-do-historico"
+  }
+}

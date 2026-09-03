@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "messages": [
+    {
+      "type": "message",
+      "user": "U0ANA",
+      "text": "consegue olhar o deploy do OMS amanhã cedo?",
+      "ts": "1788485700.000900"
+    }
+  ],
+  "has_more": false,
+  "response_metadata": {
+    "next_cursor": ""
+  }
+}

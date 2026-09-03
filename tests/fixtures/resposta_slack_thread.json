@@ -1,0 +1,31 @@
+{
+  "ok": true,
+  "messages": [
+    {
+      "type": "message",
+      "user": "U0ANA",
+      "text": "Subi o fix do frete em <#C0FRETE|frete-v2>, <@U0GABRIEL> revisa? Contexto em <https://linear.app/segundo-cerebro/issue/FN-123|FN-123> &amp; no print.",
+      "ts": "1788440520.000100",
+      "thread_ts": "1788440520.000100",
+      "reply_count": 2
+    },
+    {
+      "type": "message",
+      "user": "U0GABRIEL",
+      "text": "revisei, subi o ajuste do arredondamento",
+      "ts": "1788457500.000700",
+      "thread_ts": "1788440520.000100"
+    },
+    {
+      "type": "message",
+      "user": "U0ANA",
+      "text": "valeu <@U0GABRIEL>, mando pra produção amanhã",
+      "ts": "1788465900.000800",
+      "thread_ts": "1788440520.000100"
+    }
+  ],
+  "has_more": false,
+  "response_metadata": {
+    "next_cursor": ""
+  }
+}

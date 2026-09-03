@@ -1,0 +1,66 @@
+{
+  "U0ANA": {
+    "ok": true,
+    "user": {
+      "id": "U0ANA",
+      "team_id": "T0SEGUNDOCEREBRO",
+      "name": "ana.prado",
+      "real_name": "Ana Prado",
+      "is_bot": false,
+      "profile": {
+        "real_name": "Ana Prado",
+        "real_name_normalized": "Ana Prado",
+        "display_name": "ana",
+        "display_name_normalized": "ana"
+      }
+    }
+  },
+  "U0GABRIEL": {
+    "ok": true,
+    "user": {
+      "id": "U0GABRIEL",
+      "team_id": "T0SEGUNDOCEREBRO",
+      "name": "gabriel",
+      "real_name": "Gabriel Velozo",
+      "is_bot": false,
+      "profile": {
+        "real_name": "Gabriel Velozo",
+        "real_name_normalized": "Gabriel Velozo",
+        "display_name": "",
+        "display_name_normalized": ""
+      }
+    }
+  },
+  "U0BRUNO": {
+    "ok": true,
+    "user": {
+      "id": "U0BRUNO",
+      "team_id": "T0SEGUNDOCEREBRO",
+      "name": "bruno",
+      "real_name": "Bruno Lima",
+      "is_bot": false,
+      "profile": {
+        "real_name": "Bruno Lima",
+        "real_name_normalized": "Bruno Lima",
+        "display_name": "bruno",
+        "display_name_normalized": "bruno"
+      }
+    }
+  },
+  "U0JOANA": {
+    "ok": true,
+    "user": {
+      "id": "U0JOANA",
+      "team_id": "T0SEGUNDOCEREBRO",
+      "name": "joana.silva",
+      "real_name": "Joana Silva",
+      "is_bot": false,
+      "profile": {
+        "real_name": "Joana Silva",
+        "real_name_normalized": "Joana Silva",
+        "display_name": "joana",
+        "display_name_normalized": "joana"
+      }
+    }
+  }
+}

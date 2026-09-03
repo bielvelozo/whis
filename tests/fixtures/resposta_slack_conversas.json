@@ -1,0 +1,41 @@
+{
+  "ok": true,
+  "channels": [
+    {
+      "id": "C0PLATAFORMA",
+      "name": "plataforma",
+      "is_channel": true,
+      "is_group": false,
+      "is_im": false,
+      "is_mpim": false,
+      "is_private": false,
+      "is_archived": false,
+      "created": 1704067200
+    },
+    {
+      "id": "C0TERAPIA",
+      "name": "terapia",
+      "is_channel": true,
+      "is_group": false,
+      "is_im": false,
+      "is_mpim": false,
+      "is_private": true,
+      "is_archived": false,
+      "created": 1704067200
+    },
+    {
+      "id": "D0ANA",
+      "is_channel": false,
+      "is_group": false,
+      "is_im": true,
+      "is_mpim": false,
+      "is_private": true,
+      "is_archived": false,
+      "user": "U0ANA",
+      "created": 1704067200
+    }
+  ],
+  "response_metadata": {
+    "next_cursor": "cursor-das-conversas"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "ok": true,
+  "channels": [
+    {
+      "id": "C0GRUPO",
+      "name": "mpdm-gabriel--ana.prado--bruno-1",
+      "is_channel": false,
+      "is_group": true,
+      "is_im": false,
+      "is_mpim": true,
+      "is_private": true,
+      "is_archived": false,
+      "created": 1704067200
+    },
+    {
+      "id": "D0JOANA",
+      "is_channel": false,
+      "is_group": false,
+      "is_im": true,
+      "is_mpim": false,
+      "is_private": true,
+      "is_archived": false,
+      "user": "U0JOANA",
+      "created": 1704067200
+    }
+  ],
+  "response_metadata": {
+    "next_cursor": ""
+  }
+}
