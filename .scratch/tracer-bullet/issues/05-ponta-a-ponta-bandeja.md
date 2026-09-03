@@ -54,3 +54,41 @@ pediu para gravar, então a captura foi disparada por um script chamando o mesmo
 `Coletor` — não pelo clique no ícone. A bandeja em si foi exercitada hoje com
 pystray real, gravador real e áudio real (registrado acima), mas nunca durante
 uma reunião de verdade. O critério fecha na próxima reunião, com um clique.
+
+**Acabamento entregue (2026-09-03)** — `src/second_brain/instancia.py`,
+`src/second_brain/janelas.py`, `src/second_brain/automacao.py`,
+`src/second_brain/registro.py` e o subcomando `windows`, com testes em
+`tests/test_acabamento.py`. Suíte: **227 passaram, 3 desselecionados**.
+
+Quatro furos que só apareceriam no uso diário, fechados de uma vez:
+
+- **Instância única.** Duas bandejas disputando os mesmos dispositivos é como
+  uma reunião acaba não sendo gravada por ninguém. A trava é bloqueio de faixa
+  do próprio Windows (`msvcrt.locking`), não um arquivo-marcador — o sistema a
+  libera sozinho quando o processo morre, então um crash não exige limpeza
+  manual. Verificado: segunda instância recusada com o PID de quem segura,
+  processo morto com `taskkill`, terceira instância subiu normalmente.
+- **Sobe com o logon.** `second-brain windows` cria um atalho na pasta de
+  Inicialização apontando para `pythonw.exe -m second_brain bandeja` (sem
+  console piscando). Verificado de ponta a ponta com `APPDATA` temporário, para
+  não mexer na inicialização real da máquina: o `.lnk` foi criado e relido pelo
+  `WScript.Shell` com alvo, argumentos e diretório corretos, e `--remover` o
+  apagou.
+- **Título automático.** Sem lugar para digitar, o nome da reunião sai da janela
+  do Meet/Zoom/Teams. Código de sala (`abc-defg-hij`) é descartado de propósito:
+  não é nome de coisa nenhuma. É palpite, então só vira nome de arquivo, e um
+  palpite que exploda não derruba a gravação (teste cobre). Verificado que a
+  varredura de janelas funciona nesta máquina (10 janelas, nenhuma reunião
+  aberta → `None`, correto).
+- **Limpeza agendada.** `second-brain windows --limpeza` registra uma tarefa
+  diária no Agendador rodando `limpar`. Verificado de verdade: criada sem
+  privilégio de administrador, conferida no `schtasks /Query` (12:00, comando
+  certo, apontando a mesma configuração) e removida em seguida, sem deixar
+  resíduo.
+
+**Furo encontrado durante a verificação e corrigido:** a tarefa agendada roda com
+`pythonw.exe`, que não tem console — o relatório do que foi apagado iria para o
+nada. O log de arquivo saiu da bandeja para `second_brain.registro` e agora o
+`limpar` também escreve nele. Confirmado no `bandeja.log` da máquina.
+
+O critério 3 continua aberto: falta o clique numa reunião real.

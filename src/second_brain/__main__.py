@@ -1,10 +1,11 @@
 r"""Entrada de linha de comando do Second Brain.
 
-Cinco subcomandos, todos sobre a mesma configuração local e, quando processam,
+Seis subcomandos, todos sobre a mesma configuração local e, quando processam,
 sobre a mesma costura (`pipeline.processar`)::
 
     python -m second_brain init
     python -m second_brain bandeja
+    python -m second_brain windows [--limpeza] [--remover]
     python -m second_brain processar <pasta-da-gravacao>
     python -m second_brain reprocessar [<pasta> ...]
     python -m second_brain limpar [--simular]
@@ -24,6 +25,7 @@ import logging
 import sys
 from pathlib import Path
 
+from . import registro as _registro
 from . import retencao as _retencao
 from .configuracao import (
     Configuracao,
@@ -167,8 +169,13 @@ def _comando_reprocessar(args: argparse.Namespace) -> int:
 
 
 def _comando_limpar(args: argparse.Namespace) -> int:
-    """Apaga o áudio bruto já virado nota e vencido; `--simular` só mostra."""
+    """Apaga o áudio bruto já virado nota e vencido; `--simular` só mostra.
+
+    Registra também no arquivo de log: quando quem chama é a tarefa agendada
+    (sem console), o relatório impresso aqui não teria para onde ir.
+    """
     configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
     limpeza = _retencao.limpar_da_configuracao(
         configuracao, simular=args.simular, retencao_dias=args.dias
     )
@@ -275,6 +282,57 @@ def _comando_init(args: argparse.Namespace) -> int:
     print("  3. Rode 'python -m second_brain.gravador dispositivos' e preencha [audio]")
     print("     se o canal do sistema não sair no dispositivo certo.")
     print("  4. Rode 'python -m second_brain bandeja' e clique no ícone para gravar.")
+    return 0
+
+
+# -- windows ----------------------------------------------------------------
+
+
+def _comando_windows(args: argparse.Namespace) -> int:
+    """Amarra (ou desamarra) o coletor ao Windows: logon e limpeza diária.
+
+    Duas amarrações explícitas, cada uma com o seu `--remover`. A limpeza
+    agendada só existe se o usuário pedir: apagar áudio é irreversível e não
+    pode ser efeito colateral de instalar um atalho.
+    """
+    from . import automacao
+
+    configuracao = _configuracao(args) if args.config else None
+    origem = configuracao.origem if configuracao else None
+    feitos: list[str] = []
+
+    try:
+        if args.remover:
+            atalho = automacao.remover_inicializacao()
+            feitos.append(
+                f"Atalho de inicialização removido de {atalho}"
+                if atalho
+                else "Não havia atalho de inicialização."
+            )
+            if args.limpeza:
+                removida = automacao.desagendar_limpeza()
+                feitos.append(
+                    f"Tarefa '{automacao.NOME_DA_TAREFA}' removida do Agendador."
+                    if removida
+                    else "Não havia tarefa de limpeza agendada."
+                )
+        else:
+            atalho = automacao.instalar_inicializacao()
+            feitos.append(f"Atalho de inicialização criado em {atalho}")
+            feitos.append("A bandeja passa a subir sozinha no próximo logon.")
+            if args.limpeza:
+                automacao.agendar_limpeza(hora=args.hora, config=origem)
+                feitos.append(
+                    f"Limpeza diária agendada às {args.hora} como "
+                    f"'{automacao.NOME_DA_TAREFA}' — apaga só o áudio já virado "
+                    f"nota e vencido pelo prazo de retenção."
+                )
+    except automacao.ErroDeAutomacao as erro:
+        _log.error("%s", erro)
+        return 1
+
+    for linha in feitos:
+        print(linha)
     return 0
 
 
@@ -410,6 +468,26 @@ def construir_parser() -> argparse.ArgumentParser:
         "--forcar", action="store_true", help="sobrescreve uma configuração existente"
     )
     init_cmd.set_defaults(funcao=_comando_init)
+
+    windows_cmd = subcomandos.add_parser(
+        "windows",
+        help="faz a bandeja subir com o logon (e, opcionalmente, agenda a limpeza)",
+    )
+    _acrescentar_config(windows_cmd)
+    windows_cmd.add_argument(
+        "--limpeza",
+        action="store_true",
+        help="também agenda a limpeza diária do áudio bruto vencido",
+    )
+    windows_cmd.add_argument(
+        "--hora",
+        default="12:00",
+        help="hora da limpeza diária (padrão: 12:00, com o PC ligado)",
+    )
+    windows_cmd.add_argument(
+        "--remover", action="store_true", help="desfaz o que foi instalado"
+    )
+    windows_cmd.set_defaults(funcao=_comando_windows)
     return parser
 
 

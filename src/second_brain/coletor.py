@@ -35,6 +35,7 @@ from enum import Enum
 from pathlib import Path
 
 from . import gravador as _gravador
+from . import janelas as _janelas
 from . import pipeline as _pipeline
 from .configuracao import Configuracao
 from .portas import PortaResumo, PortaSTT
@@ -125,6 +126,7 @@ class Coletor:
         ao_mudar: Callable[[Situacao], None] | None = None,
         em_segundo_plano: bool = True,
         segundos_ate_conferir_canais: float = SEGUNDOS_ATE_CONFERIR_CANAIS,
+        deduzir_titulo: Callable[[], str | None] = _janelas.titulo_de_reuniao,
     ) -> None:
         self._configuracao = configuracao
         self._portas = portas
@@ -132,6 +134,7 @@ class Coletor:
         self._ao_mudar = ao_mudar
         self._em_segundo_plano = em_segundo_plano
         self._espera_do_aviso = segundos_ate_conferir_canais
+        self._deduzir_titulo = deduzir_titulo
 
         self._trava = threading.RLock()
         self._estado = Estado.PARADO
@@ -182,12 +185,16 @@ class Coletor:
     def iniciar(self, titulo: str | None = None) -> Path:
         """Começa a gravar. Devolve a pasta da gravação.
 
-        Começar uma reunião limpa o erro da anterior da tela — a gravação que
-        falhou continua retida no disco, e é o `reprocessar` que a completa.
+        Sem título, o coletor tenta deduzir um da janela da reunião (Meet, Zoom,
+        Teams) — é palpite, e por isso só vira o nome do arquivo. Começar uma
+        reunião limpa o erro da anterior da tela: a gravação que falhou continua
+        retida no disco, e é o `reprocessar` que a completa.
         """
         with self._trava:
             if self._estado is Estado.GRAVANDO:
                 raise ErroDoColetor("já existe uma gravação em andamento")
+            if titulo is None:
+                titulo = self._titulo_deduzido()
             gravador = self._garantir_gravador()
             pasta = gravador.iniciar(titulo)
             self._pasta = Path(pasta)
@@ -268,6 +275,18 @@ class Coletor:
             except Exception as erro:  # noqa: BLE001 — sair nunca pode explodir
                 _log.error("Falha ao encerrar a gravação: %s", erro)
         self.aguardar()
+
+    def _titulo_deduzido(self) -> str | None:
+        """O nome da reunião, quando alguma janela aberta denuncia um.
+
+        Falhar aqui não pode custar a gravação: sem título, a reunião vira
+        `<data>-<hora>-reuniao`, que é o comportamento que já existia.
+        """
+        try:
+            return self._deduzir_titulo()
+        except Exception as erro:  # noqa: BLE001 — palpite nunca derruba reunião
+            _log.debug("Não foi possível deduzir o título da reunião: %s", erro)
+            return None
 
     # -- canais mudos -------------------------------------------------------
 

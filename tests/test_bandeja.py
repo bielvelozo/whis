@@ -17,6 +17,7 @@ from pathlib import Path
 import pytest
 
 from second_brain import bandeja as _bandeja
+from second_brain import registro
 from second_brain.bandeja import Bandeja, desenhar_icone
 from second_brain.coletor import Coletor, Estado, Situacao
 from second_brain.configuracao import Configuracao
@@ -214,6 +215,7 @@ def test_a_bandeja_nao_conhece_o_pipeline():
 def test_o_log_da_bandeja_fica_ao_lado_da_configuracao(configuracao: Configuracao):
     """Sem console, o log é a única forma de diagnosticar a reunião de ontem."""
     destino = _bandeja.arquivo_de_log(configuracao)
+    assert destino == registro.arquivo_de_log(configuracao)  # a bandeja delega
 
     assert destino.parent == configuracao.origem.parent
     assert destino.name == "bandeja.log"

@@ -33,8 +33,10 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+from . import registro as _registro
 from .coletor import Coletor, Estado, Situacao
 from .configuracao import Configuracao
+from .instancia import OutraInstancia, Trava, caminho_da_trava
 
 _log = logging.getLogger("second_brain.bandeja")
 
@@ -225,39 +227,43 @@ class Bandeja:
 
 
 def arquivo_de_log(configuracao: Configuracao) -> Path:
-    """Onde a bandeja escreve o log — ao lado do `config.toml`.
-
-    Sem console, o log é a única forma de diagnosticar o que aconteceu numa
-    reunião de ontem: a spec pede logs legíveis do pipeline (user story 18).
-    """
-    base = configuracao.origem.parent if configuracao.origem else Path.home()
-    return base / "bandeja.log"
+    """Onde a bandeja escreve o log — ver `second_brain.registro`."""
+    return _registro.arquivo_de_log(configuracao)
 
 
 def configurar_logs(configuracao: Configuracao, *, verboso: bool = False) -> Path:
-    """Manda os logs para o arquivo (e para o console, se houver um)."""
-    destino = arquivo_de_log(configuracao)
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    formato = logging.Formatter("%(asctime)s  %(levelname)s  %(name)s  %(message)s")
+    """Manda os logs para o arquivo (e para o console, se houver um).
 
-    raiz = logging.getLogger("second_brain")
-    raiz.setLevel(logging.DEBUG if verboso else logging.INFO)
-    arquivo = logging.FileHandler(destino, encoding="utf-8")
-    arquivo.setFormatter(formato)
-    raiz.addHandler(arquivo)
-    return destino
+    Sem console — que é o caso do atalho de logon, com `pythonw.exe` — o
+    arquivo é a única forma de diagnosticar a reunião de ontem (user story 18).
+    """
+    return _registro.acrescentar_arquivo(configuracao, verboso=verboso)
 
 
 def executar(configuracao: Configuracao, *, portas, verboso: bool = False) -> int:
-    """Sobe a bandeja com o coletor de verdade. É o que o subcomando chama."""
+    """Sobe a bandeja com o coletor de verdade. É o que o subcomando chama.
+
+    A trava de instância única vem antes de qualquer coisa: duas bandejas
+    disputando os mesmos dispositivos é como uma reunião acaba não sendo
+    gravada por ninguém.
+    """
+    trava = Trava(caminho_da_trava(configuracao))
+    try:
+        trava.adquirir()
+    except OutraInstancia as erro:
+        print(f"{erro}")
+        return 1
+
     destino = configurar_logs(configuracao, verboso=verboso)
     _log.info("Bandeja iniciada. Log em %s", destino)
-    print(f"Second Brain na bandeja. Log em {destino}")
-    print("Clique no ícone para gravar; clique de novo para parar e processar.")
+    print(f"Second Brain na bandeja. Log em {destino}", flush=True)
+    print("Clique no ícone para gravar; clique de novo para parar e processar.", flush=True)
 
     bandeja = Bandeja(Coletor(configuracao, portas=portas))
     try:
         bandeja.executar()
     except KeyboardInterrupt:
         bandeja.sair()
+    finally:
+        trava.liberar()
     return 0
