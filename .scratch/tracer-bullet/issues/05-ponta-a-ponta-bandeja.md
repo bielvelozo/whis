@@ -4,11 +4,11 @@
 
 **Blocked by:** 02 — Gravador WASAPI sob demanda; 03 — STT real: adapter Deepgram; 04 — Resumo real: adapter Claude.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Ícone na bandeja inicia e para a gravação com um clique e mostra o estado atual sem ambiguidade
 - [x] Parar a gravação dispara o processamento completo sem interação extra
-- [ ] Smoke manual da spec executado: reunião real no Meet → nota com resumo + transcrição linkada no Obsidian
+- [x] Smoke manual da spec executado: reunião real no Meet → nota com resumo + transcrição linkada no Obsidian
 - [x] Erros do pipeline aparecem de forma visível/diagnosticável (a bandeja não engole falhas)
 - [x] A bandeja é casca fina: nenhuma lógica de pipeline vive nela
 
@@ -92,3 +92,28 @@ nada. O log de arquivo saiu da bandeja para `second_brain.registro` e agora o
 `limpar` também escreve nele. Confirmado no `bandeja.log` da máquina.
 
 O critério 3 continua aberto: falta o clique numa reunião real.
+
+**Critério 3 fechado — o gesto rodou pela bandeja (2026-09-03, 16:18).** O
+usuário clicou no ícone, falou, clicou de novo: a Deepgram transcreveu, o Claude
+resumiu e a nota apareceu no vault sem nenhum passo manual. O tracer bullet
+inteiro, no gesto que a spec decidiu.
+
+**Bug encontrado pelo uso real, e corrigido na mesma sessão.** No primeiro
+clique de teste o ícone ficou vermelho de erro e o usuário não recebeu
+explicação nenhuma. Causa: o tooltip do ícone cabe 128 caracteres no Windows
+(`szTip`) e a mensagem de erro da Deepgram tinha 272 — o pystray levantou
+`ValueError` no meio de `atualizar()`, **depois** de trocar o ícone e **antes**
+de disparar o balão. O `Coletor` engolia a exceção corretamente (interface
+quebrada não derruba reunião), então nada quebrou além do que mais importava: a
+explicação.
+
+Corrigido em duas frentes: os textos são cortados nos limites do próprio Windows
+(tooltip 128, balão 256, título do balão 64), e pintar deixou de ser
+pré-requisito para avisar — são blocos independentes agora. O balão também é
+registrado no log antes de ir para a tela. Teste de regressão com um ícone dublê
+que reclama como o Windows reclama, usando a mensagem real de 272 caracteres.
+
+**Observação sobre a falha do primeiro teste, que não era bug:** 1,8 s gravados
+em silêncio, a Deepgram devolveu zero falas nos dois canais e o pipeline recusou
+escrever nota vazia, preservando a gravação. É o comportamento certo — nota de
+reunião sem conteúdo é pior que nota nenhuma.
