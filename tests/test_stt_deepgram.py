@@ -411,7 +411,14 @@ def test_rede_transcreve_o_audio_de_exemplo_da_deepgram(tmp_path: Path):
         pytest.skip("sem [deepgram].api_key na configuração local")
 
     exemplo = tmp_path / "microfone.wav"
-    exemplo.write_bytes(httpx.get("https://dpgr.am/spacewalk.wav", timeout=60.0).content)
+    # `dpgr.am` é encurtador: sem seguir o redirect, o download vem vazio e a
+    # Deepgram devolve 400 ("corrupt or unsupported data") em vez de transcrever.
+    baixado = httpx.get(
+        "https://dpgr.am/spacewalk.wav", timeout=60.0, follow_redirects=True
+    )
+    baixado.raise_for_status()
+    exemplo.write_bytes(baixado.content)
+    assert exemplo.stat().st_size > 100_000, "o áudio de exemplo não baixou"
 
     transcricao = STTDeepgram(chave).transcrever(
         CanaisDaGravacao(microfone=exemplo, sistema=None)

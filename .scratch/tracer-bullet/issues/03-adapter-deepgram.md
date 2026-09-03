@@ -93,3 +93,37 @@ código do adaptador está aceito e commitado; o único critério aberto — tra
 pt-BR com termos em inglês corretamente — depende da chave da Deepgram na máquina
 de destino, exatamente como o smoke da camada 02 depende de um Meet real. Não há
 trabalho de agente pendente aqui.
+
+**Primeira execução com a chave real (orquestrador, 2026-09-02).** A chave do
+usuário entrou na configuração e os dois testes `rede` passam: o áudio de exemplo
+da Deepgram é transcrito e o Claude resume pela conta OAuth. Consertei um bug do
+próprio teste no caminho — `httpx.get("https://dpgr.am/spacewalk.wav")` sem
+`follow_redirects=True` baixava 0 byte, e a Deepgram respondia HTTP 400 ("corrupt
+or unsupported data") em vez de transcrever.
+
+Também rodei a costura completa com adaptadores reais contra um diálogo pt-BR
+**sintetizado** pelo TTS do Windows (voz pt-BR Maria), dois canais separados, com
+termos em inglês de propósito. Deepgram e Claude responderam 200; a fusão por
+tempo, os rótulos `eu`/`outros` e o resumo saíram corretos (o Claude inferiu
+`participantes: [Gabriel, Ana]` da conversa).
+
+**Achado com evidência, sobre o critério 1.** A transcrição **perdeu** boa parte
+dos termos em inglês. Conferi a resposta crua da Deepgram: a perda é dela, não do
+adapter — o `transcript` já vem sem as palavras, com `languages: ['pt']` e
+confiança 0,99.
+
+| pedido | sem `keyterm` | com `keyterm` |
+|---|---|---|
+| "esperar o code review" | "esperar o." | "esperar o code review" |
+| "subo o release em staging depois do review" | "subo o depois do," | "subo o release and stage depois do review" |
+| "decide o rollback amanhã" | "decide o rolar amanhã" | "decide o rollback amanhã" |
+
+Duas chamadas ao mesmo WAV, só mudando `keyterm=code review&keyterm=rollback&...`
+— e `keyterm` **funciona junto com `language=multi`** (não dá 400), o que a
+documentação não deixava claro. Isso promove o item do `DEFERRED.md` sobre
+`keyterm` de "seria bom" a provável pré-requisito do critério 1.
+
+**Ressalva honesta:** o áudio é TTS pt-BR pronunciando inglês com fonética
+portuguesa — o pior caso possível para code-switching. Fala humana real, com
+pronúncia inglesa nos termos ingleses, pode se comportar melhor sem `keyterm`. O
+critério 1 continua aberto e só o smoke com Meet real decide.
