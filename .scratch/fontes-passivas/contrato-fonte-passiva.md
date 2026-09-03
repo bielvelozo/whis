@@ -369,3 +369,69 @@ horários no mesmo flag confundiria; o do diário mora na configuração.
 - **Nenhum teste novo fala com serviço real** fora de `@pytest.mark.rede`. O `addopts` já
   desseleciona; o marcador é obrigatório.
 - **Nenhum segredo em teste, fixture ou doc.** Token de exemplo é `xoxp-EXEMPLO`.
+
+---
+
+## 9. Adendo: a daily (camada 07, decidida com o usuário em 2026-09-03)
+
+Escopo acrescentado depois de o primeiro diário real rodar. O diário é memória
+durável, escrita para ser relida meses depois; a **daily** é o oposto — um roteiro
+de trinta segundos, falado no dia seguinte, para outras pessoas. Sai do mesmo
+material, com outra forma.
+
+**Nasce junto do diário, na mesma chamada ao Claude.** Custo marginal zero: o dia
+já foi lido e enviado. Um comando que fizesse a própria chamada pagaria de novo
+(US$ 0,29 medidos) para reprocessar um dia já processado.
+
+### O tipo (`portas.py`)
+
+```python
+@dataclass(frozen=True)
+class Daily:
+    """As três batidas de uma daily, extraídas do mesmo dia do diário."""
+    entreguei: tuple[str, ...] = ()   # o que fechou ou andou
+    sigo_em: tuple[str, ...] = ()     # o que ficou em In Progress — o trabalho de amanhã
+    preciso_de: tuple[str, ...] = ()  # o que depende de OUTRA PESSOA
+```
+
+`ResumoDoDia` ganha `daily: Daily | None = None`.
+
+`preciso_de` é a distinção que dá valor ao comando: só entra o que espera alguém
+— review parado, PR sem merge, resposta pendente. Nota para si mesmo ("faltou
+testar o estado expirado") **não** é daily; continua em `Pendências`.
+
+Os nomes são do ponto de vista da nota, que é datada: `entreguei`, não `fiz
+ontem`. Quem diz "ontem" é o comando, na hora de imprimir.
+
+### Na nota
+
+Seção `## Daily`, depois de `## Pendências` e antes de `## Reuniões` — é uma
+visão derivada e mora junto das outras. Ausente quando o resumo falhou.
+
+```markdown
+## Daily
+
+**Entreguei**
+- ...
+
+**Sigo em**
+- ...
+
+**Preciso de**
+- ...
+```
+
+### O comando
+
+```
+second-brain daily [YYYY-MM-DD] [--config ...]
+```
+
+Sem data, lê **o diário mais recente que existir** em `diario/` — não "ontem".
+Numa segunda-feira o último diário é o de sexta; num dia de PC desligado, o de
+antes. "Ontem" daria mão vazia justamente nas manhãs em que a daily cobre mais
+de um dia.
+
+Não coleta, não chama o Claude, não escreve: lê a nota e imprime. Diário sem
+seção `## Daily` (nota antiga, ou resumo que falhou) não é erro de programa — é
+mensagem dizendo que aquele dia precisa ser regerado, e com qual comando.
