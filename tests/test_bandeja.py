@@ -248,3 +248,104 @@ def test_o_mesmo_aviso_nao_e_repetido(montar, icone: IconeDublê):
 
     incompletas = [n for n in icone.notificacoes if n[0] == "A gravação está saindo incompleta"]
     assert len(incompletas) == 1
+
+
+# -- os limites do Windows --------------------------------------------------
+
+
+class IconeEstrito(IconeDublê):
+    """Um ícone que reclama como o Windows reclama.
+
+    O pystray escreve o tooltip em `szTip` (128 caracteres) e o balão em
+    `szInfo` (256) — estourar levanta `ValueError`. Foi o que aconteceu numa
+    execução real: a mensagem de erro da Deepgram tinha 272 caracteres, a
+    exceção derrubou a atualização no meio, e o usuário viu o ícone vermelho
+    sem nunca receber o balão que explicava o motivo.
+    """
+
+    LIMITE_TOOLTIP = 128
+    LIMITE_BALAO = 256
+
+    def __setattr__(self, nome: str, valor) -> None:
+        if nome == "title" and isinstance(valor, str) and len(valor) >= self.LIMITE_TOOLTIP:
+            raise ValueError(f"string too long ({len(valor)}, maximum length 128)")
+        super().__setattr__(nome, valor)
+
+    def notify(self, mensagem: str, titulo: str) -> None:
+        if len(mensagem) >= self.LIMITE_BALAO:
+            raise ValueError(f"string too long ({len(mensagem)}, maximum length 256)")
+        super().notify(mensagem, titulo)
+
+
+class STTVerborragico:
+    """Um erro tão longo quanto o que a Deepgram devolve de verdade."""
+
+    MENSAGEM = (
+        "A Deepgram respondeu, mas não reconheceu nenhuma fala em microfone.wav, "
+        "sistema.wav. O caso mais comum é canal mudo: confira 'dispositivo_sistema' "
+        "e 'dispositivo_microfone' na configuração e ouça os WAV da pasta da "
+        "gravação, que continua preservada."
+    )
+
+    def transcrever(self, canais):
+        raise ErroDeSTT(self.MENSAGEM)
+
+
+def test_erro_longo_nao_engole_o_balao(
+    configuracao: Configuracao, caminho_das_gravacoes: Path
+):
+    """O ícone vermelho sem explicação é pior que erro nenhum."""
+    icone = IconeEstrito()
+    coletor = Coletor(
+        configuracao,
+        portas=lambda: (STTVerborragico(), ResumoFake()),
+        gravador=GravadorDublê(caminho_das_gravacoes),
+        em_segundo_plano=False,
+    )
+    bandeja = Bandeja(coletor, icone=icone)
+
+    bandeja.alternar()
+    bandeja.alternar()
+
+    assert icone.icon.tobytes() == desenhar_icone(Estado.ERRO).tobytes()
+    titulo, mensagem = icone.notificacoes[-1]
+    assert titulo == "A reunião não virou nota"
+    assert "Deepgram" in mensagem
+    assert len(icone.title) < IconeEstrito.LIMITE_TOOLTIP
+
+
+def test_o_tooltip_cabe_no_limite_do_windows(montar, icone: IconeDublê):
+    bandeja, _coletor = montar()
+
+    bandeja.atualizar(
+        Situacao(estado=Estado.GRAVANDO, titulo="reunião com um nome " * 20)
+    )
+
+    assert len(icone.title) <= _bandeja.LIMITE_DO_TOOLTIP
+    assert icone.title.endswith("…")
+
+
+def test_icone_que_recusa_pintar_ainda_deixa_o_balao_passar(
+    configuracao: Configuracao, caminho_das_gravacoes: Path
+):
+    """Defesa em profundidade: pintar e avisar não podem cair juntos."""
+
+    class IconeQueNaoPinta(IconeDublê):
+        def __setattr__(self, nome: str, valor) -> None:
+            if nome == "icon" and valor is not None:
+                raise RuntimeError("o Windows recusou o ícone")
+            super().__setattr__(nome, valor)
+
+    icone = IconeQueNaoPinta()
+    coletor = Coletor(
+        configuracao,
+        portas=lambda: (STTQuebrado(), ResumoFake()),
+        gravador=GravadorDublê(caminho_das_gravacoes),
+        em_segundo_plano=False,
+    )
+    bandeja = Bandeja(coletor, icone=icone)
+
+    bandeja.alternar()
+    bandeja.alternar()
+
+    assert any(titulo == "A reunião não virou nota" for titulo, _ in icone.notificacoes)

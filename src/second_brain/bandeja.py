@@ -53,6 +53,24 @@ CORES = {
 
 TITULO = "Second Brain"
 
+#: Limites do próprio Windows, não escolha nossa: o tooltip do ícone
+#: (`szTip`) cabe 128 caracteres, o corpo do balão (`szInfo`) 256 e o título
+#: dele (`szInfoTitle`) 64 — e o pystray levanta `ValueError` ao estourar. Uma
+#: mensagem de erro longa da Deepgram passa fácil dos 128, e sem corte a
+#: exceção derrubava a atualização inteira: o ícone virava vermelho e o balão
+#: que explicava o motivo nunca aparecia.
+LIMITE_DO_TOOLTIP = 127
+LIMITE_DO_BALAO = 255
+LIMITE_DO_TITULO_DO_BALAO = 63
+
+
+def encurtar(texto: str, limite: int) -> str:
+    """Corta no limite do Windows preservando o começo, que é o que importa."""
+    texto = " ".join(texto.split())
+    if len(texto) <= limite:
+        return texto
+    return texto[: max(1, limite - 1)].rstrip() + "…"
+
 
 def desenhar_icone(estado: Estado) -> Image.Image:
     """Um círculo cheio na cor do estado — com marca própria quando é erro.
@@ -154,10 +172,19 @@ class Bandeja:
         É o `ao_mudar` do coletor — a única ponte entre a máquina de estados e
         a interface.
         """
-        self._icone.icon = desenhar_icone(situacao.estado)
-        self._icone.title = f"{TITULO} — {situacao.descricao()}"
-        if hasattr(self._icone, "update_menu"):
-            self._icone.update_menu()
+        # Desenhar e avisar são independentes de propósito: numa execução real
+        # o tooltip estourou o limite do Windows e a exceção levou junto o balão
+        # que explicava o erro — o usuário ficou com um ícone vermelho e nenhum
+        # motivo. Falhar em pintar não pode calar a mensagem.
+        try:
+            self._icone.icon = desenhar_icone(situacao.estado)
+            self._icone.title = encurtar(
+                f"{TITULO} — {situacao.descricao()}", LIMITE_DO_TOOLTIP
+            )
+            if hasattr(self._icone, "update_menu"):
+                self._icone.update_menu()
+        except Exception as erro:  # noqa: BLE001
+            _log.error("Não foi possível repintar o ícone: %s", erro)
 
         if situacao.aviso and situacao.aviso != self._aviso_mostrado:
             # Reunião gravando torta ainda dá tempo de consertar — mas só se o
@@ -220,8 +247,12 @@ class Bandeja:
     def _balao(self, titulo: str, mensagem: str) -> None:
         if not self._notificar:
             return
+        _log.info("Aviso ao usuário — %s: %s", titulo, mensagem)
         try:
-            self._icone.notify(mensagem, titulo)
+            self._icone.notify(
+                encurtar(mensagem, LIMITE_DO_BALAO),
+                encurtar(titulo, LIMITE_DO_TITULO_DO_BALAO),
+            )
         except Exception as erro:  # noqa: BLE001 — sem balão o log ainda conta a história
             _log.debug("Notificação indisponível: %s", erro)
 
