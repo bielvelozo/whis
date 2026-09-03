@@ -1,0 +1,81 @@
+{
+  "data": {
+    "issues": {
+      "pageInfo": {
+        "hasNextPage": true,
+        "endCursor": "cursor-da-pagina-2"
+      },
+      "nodes": [
+        {
+          "identifier": "FN-123",
+          "title": "Corrigir o cálculo de frete",
+          "url": "https://linear.app/segundo-cerebro/issue/FN-123/corrigir-o-calculo-de-frete",
+          "createdAt": "2026-08-28T13:05:00.000Z",
+          "updatedAt": "2026-09-03T14:20:00.000Z",
+          "state": { "name": "Done" },
+          "team": { "name": "Plataforma" },
+          "project": { "name": "Frete v2" },
+          "creator": { "name": "Gabriel Velozo" },
+          "assignee": { "name": "Gabriel Velozo" },
+          "history": {
+            "nodes": [
+              {
+                "createdAt": "2026-09-01T12:00:00.000Z",
+                "actor": { "name": "Gabriel Velozo" },
+                "fromState": { "name": "Todo" },
+                "toState": { "name": "In Progress" }
+              },
+              {
+                "createdAt": "2026-09-03T13:40:00.000Z",
+                "actor": { "name": "Gabriel Velozo" },
+                "fromState": null,
+                "toState": null
+              },
+              {
+                "createdAt": "2026-09-03T14:20:00.000Z",
+                "actor": { "name": "Ana Prado" },
+                "fromState": { "name": "In Progress" },
+                "toState": { "name": "Done" }
+              }
+            ]
+          }
+        },
+        {
+          "identifier": "FN-124",
+          "title": "Escrever o roteiro de smoke do Linear",
+          "url": "https://linear.app/segundo-cerebro/issue/FN-124/escrever-o-roteiro-de-smoke-do-linear",
+          "createdAt": "2026-09-03T18:12:00.000Z",
+          "updatedAt": "2026-09-03T18:12:00.000Z",
+          "state": { "name": "Todo" },
+          "team": { "name": "Plataforma" },
+          "project": null,
+          "creator": { "name": "Gabriel Velozo" },
+          "assignee": { "name": "Gabriel Velozo" },
+          "history": { "nodes": [] }
+        },
+        {
+          "identifier": "FN-125",
+          "title": "Revisar o contrato de fonte passiva",
+          "url": "https://linear.app/segundo-cerebro/issue/FN-125/revisar-o-contrato-de-fonte-passiva",
+          "createdAt": "2026-07-10T09:00:00.000Z",
+          "updatedAt": "2026-09-04T01:35:00.000Z",
+          "state": { "name": "In Review" },
+          "team": { "name": "Plataforma" },
+          "project": { "name": "Fontes passivas" },
+          "creator": { "name": "Ana Prado" },
+          "assignee": { "name": "Gabriel Velozo" },
+          "history": {
+            "nodes": [
+              {
+                "createdAt": "2026-09-04T01:35:00.000Z",
+                "actor": { "name": "Gabriel Velozo" },
+                "fromState": null,
+                "toState": null
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

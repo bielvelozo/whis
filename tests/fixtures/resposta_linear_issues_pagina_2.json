@@ -1,0 +1,34 @@
+{
+  "data": {
+    "issues": {
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+      },
+      "nodes": [
+        {
+          "identifier": "FN-130",
+          "title": "Ajustar o rate limit do coletor",
+          "url": "https://linear.app/segundo-cerebro/issue/FN-130/ajustar-o-rate-limit-do-coletor",
+          "createdAt": "2026-08-30T11:00:00.000Z",
+          "updatedAt": "2026-09-03T20:05:00.000Z",
+          "state": { "name": "In Progress" },
+          "team": { "name": "Plataforma" },
+          "project": null,
+          "creator": { "name": "Bruno Lima" },
+          "assignee": { "name": "Bruno Lima" },
+          "history": {
+            "nodes": [
+              {
+                "createdAt": "2026-09-03T20:05:00.000Z",
+                "actor": { "name": "Bruno Lima" },
+                "fromState": null,
+                "toState": { "name": "In Progress" }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  }
+}

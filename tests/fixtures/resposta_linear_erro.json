@@ -1,0 +1,13 @@
+{
+  "errors": [
+    {
+      "message": "Authentication required, not authenticated",
+      "path": ["issues"],
+      "extensions": {
+        "type": "authentication error",
+        "userError": false,
+        "userPresentableMessage": "Authentication required"
+      }
+    }
+  ]
+}

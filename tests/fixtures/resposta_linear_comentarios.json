@@ -1,0 +1,48 @@
+{
+  "data": {
+    "comments": {
+      "pageInfo": {
+        "hasNextPage": false,
+        "endCursor": null
+      },
+      "nodes": [
+        {
+          "body": "Confirmei com o financeiro: a regra nova de frete só entra depois do fechamento do mês.",
+          "createdAt": "2026-09-03T15:02:00.000Z",
+          "url": "https://linear.app/segundo-cerebro/issue/FN-123/corrigir-o-calculo-de-frete#comment-9a1b2c3d",
+          "user": { "name": "Ana Prado" },
+          "project": null,
+          "issue": {
+            "identifier": "FN-123",
+            "title": "Corrigir o cálculo de frete",
+            "url": "https://linear.app/segundo-cerebro/issue/FN-123/corrigir-o-calculo-de-frete",
+            "team": { "name": "Plataforma" },
+            "project": { "name": "Frete v2" }
+          }
+        },
+        {
+          "body": "Subi o resumo da pesquisa das três fontes passivas no projeto.",
+          "createdAt": "2026-09-03T16:40:00.000Z",
+          "url": "https://linear.app/segundo-cerebro/project/fontes-passivas#comment-4e5f6a7b",
+          "user": { "name": "Gabriel Velozo" },
+          "project": { "name": "Fontes passivas" },
+          "issue": null
+        },
+        {
+          "body": "Comentário de ontem, que o filtro da API não deveria ter devolvido.",
+          "createdAt": "2026-09-02T10:00:00.000Z",
+          "url": "https://linear.app/segundo-cerebro/issue/FN-123/corrigir-o-calculo-de-frete#comment-0f0f0f0f",
+          "user": { "name": "Ana Prado" },
+          "project": null,
+          "issue": {
+            "identifier": "FN-123",
+            "title": "Corrigir o cálculo de frete",
+            "url": "https://linear.app/segundo-cerebro/issue/FN-123/corrigir-o-calculo-de-frete",
+            "team": { "name": "Plataforma" },
+            "project": { "name": "Frete v2" }
+          }
+        }
+      ]
+    }
+  }
+}
