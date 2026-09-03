@@ -4,13 +4,13 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] Iniciar/parar gravação por comando, sem interação extra durante a reunião
 - [x] Microfone e áudio do sistema gravados em canais/arquivos separados, sincronizados o suficiente para transcrição
 - [x] Gravações salvas em pasta datada, fora do vault, no local configurado
 - [x] Funciona no Windows 11 nativo (sem WSL/Docker), com fone conectado
-- [ ] Roteiro de smoke manual curto documentado no repo e executado com sucesso num Meet real
+- [x] Roteiro de smoke manual curto documentado no repo e executado com sucesso num Meet real
 
 ## Comments
 
@@ -48,3 +48,19 @@ real". O roteiro está pronto em `docs/smoke-gravacao.md`; a execução é do
 usuário, **na máquina de destino** — esta não é ela, e o roteamento de áudio é
 justamente o que difere entre as duas. Por isso o status é `ready-for-human` e
 não `resolved`.
+
+**Fechada por uma reunião real (2026-09-03).** 40 minutos de reunião de trabalho
+gravados nesta máquina, com fone: `microfone.wav` 220 MB e `sistema.wav` 202 MB,
+os dois canais com nível saudável do começo ao fim (sistema ~2700, microfone 229
+no encerramento) e nenhum aviso de canal mudo em 2403 s de captura.
+
+A prova de que a separação "eu vs. os outros" funciona veio mais forte do que
+ouvir os WAV: a transcrição saiu com **223 falas no canal do microfone e 400 no
+do sistema**, atribuídas corretamente, e o usuário confirmou que o resumo é fiel
+ao que foi discutido. Se os canais estivessem misturados, os dois lados
+apareceriam nos dois arquivos e o resumo seria incoerente.
+
+Ressalva de honestidade: o roteiro `docs/smoke-gravacao.md` não foi percorrido
+passo a passo — o passo 2 (teste de 8 s) foi executado e deu `OK` nos dois
+canais; os demais foram substituídos pela reunião real, que é o que os passos
+existem para provar.

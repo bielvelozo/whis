@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 — Esqueleto do pipeline com portas fake.
 
-**Status:** ready-for-human
+**Status:** resolved
 
-- [ ] Pipeline com o adapter real transcreve uma gravação de teste em pt-BR com termos em inglês corretamente
+- [x] Pipeline com o adapter real transcreve uma gravação de teste em pt-BR com termos em inglês corretamente
 - [x] Transcrição distingue a fala do usuário da dos demais participantes
 - [x] API key e opções vêm de configuração local; nenhum segredo no repo
 - [x] Falha do STT preserva a gravação, não escreve nota parcial e loga o erro de forma diagnosticável
@@ -127,3 +127,19 @@ documentação não deixava claro. Isso promove o item do `DEFERRED.md` sobre
 portuguesa — o pior caso possível para code-switching. Fala humana real, com
 pronúncia inglesa nos termos ingleses, pode se comportar melhor sem `keyterm`. O
 critério 1 continua aberto e só o smoke com Meet real decide.
+
+**Critério 1 fechado com fala humana real (2026-09-03).** Uma reunião de
+trabalho de 40 minutos, em português, transcrita pela Deepgram com a chave do
+usuário: 623 falas, 44 s de transcrição para os dois canais (220 MB e 202 MB
+enviados sem compressão, como o adapter faz). Os termos em inglês sobreviveram
+— `design` (16×), `merge` (4×), `call` (4×), `bug` (3×), `status`, `sprint`,
+`release` — e o usuário confirmou que a nota é fiel ao que foi discutido.
+
+Isso relativiza o achado do teste sintetizado: com pronúncia inglesa de verdade,
+`language=multi` dá conta do code-switching sem `keyterm`. O `keyterm` continua
+valendo como reforço (a evidência acima é real e reproduzível), mas deixou de
+ser pré-requisito do critério.
+
+Observação para quem for mexer nisso: a Deepgram reportou `idiomas detectados:
+pt, en, ru, es, hi` — os três últimos são quase certamente confusão dela em
+trechos ruidosos ou com falas sobrepostas. Não atrapalhou o resumo.

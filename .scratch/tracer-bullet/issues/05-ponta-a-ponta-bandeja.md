@@ -40,3 +40,17 @@ Um teste guarda o critério explicitamente: `test_a_bandeja_nao_conhece_o_pipeli
 Achados registrados em `.scratch/tracer-bullet/DEFERRED.md`: nada impede duas bandejas simultâneas disputando os dispositivos; a bandeja não sobe com o Windows; toda gravação pela bandeja nasce sem título; e a duplicação de leitura de configuração sobrevive só no CLI do gravador, de propósito.
 
 **O que falta para a camada fechar — critério 3, e é do usuário.** O smoke de ponta a ponta com um Meet real, a chave da Deepgram e o Claude está escrito em `docs/smoke-ponta-a-ponta.md` e precisa ser executado na máquina de destino. É o mesmo critério que fecha o tracer bullet inteiro.
+
+**Metade do critério 3, provada em reunião real (2026-09-03).** A reunião de 40
+minutos virou nota no vault com Deepgram e Claude de verdade: 623 falas, 7
+decisões, 12 ações, 14 tópicos, `participantes: [Daniel, Zeno, João, Biel,
+Ribeiro]` inferidos da conversa pelo Claude, transcrição linkada por wikilink e
+o usuário confirmando que o resumo é fiel. Tempo total do pós-gravação: **76
+segundos** para 40 minutos de reunião (23 s + 24 s de transcrição, 37 s de
+resumo).
+
+**O que ainda falta: o gesto.** A reunião já tinha começado quando o usuário
+pediu para gravar, então a captura foi disparada por um script chamando o mesmo
+`Coletor` — não pelo clique no ícone. A bandeja em si foi exercitada hoje com
+pystray real, gravador real e áudio real (registrado acima), mas nunca durante
+uma reunião de verdade. O critério fecha na próxima reunião, com um clique.
