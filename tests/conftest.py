@@ -1,9 +1,14 @@
-"""Fixtures da costura única do repositório: `processar(pasta) → arquivos no vault`.
+"""Fixtures das duas costuras do repositório.
 
-Todo teste de comportamento do pipeline se monta a partir daqui: um vault em
-`tmp_path`, uma pasta de gravação de fixture, uma configuração local apontada
-por `SECOND_BRAIN_CONFIG` e as portas fake. As camadas 03, 04 e 06 reaproveitam
-estas fixtures — trocar o fake por um adaptador é injetar outro objeto.
+A da reunião — `processar(pasta) → arquivos no vault` — se monta com um vault
+em `tmp_path`, uma pasta de gravação de fixture, uma configuração local
+apontada por `SECOND_BRAIN_CONFIG` e as portas fake. A do diário —
+`gerar_diario(data) → nota em diario/` — reaproveita o mesmo vault e ganha uma
+configuração própria, porque a janela do dia e o filtro de exclusão mudam de
+teste para teste.
+
+As camadas seguintes reaproveitam tudo isto: trocar um fake por um adaptador é
+injetar outro objeto.
 """
 
 from __future__ import annotations
@@ -85,6 +90,42 @@ def stt() -> STTFake:
 def resumo() -> ResumoFake:
     """Porta de resumo fake — decisões, ações e tópicos fixos."""
     return ResumoFake()
+
+
+@pytest.fixture
+def configuracao_do_diario(
+    tmp_path: Path,
+    caminho_do_vault: Path,
+    caminho_das_gravacoes: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Fábrica da configuração do diário: `configuracao_do_diario(...)`.
+
+    Escreve um `config.toml` com a janela e o filtro que o teste precisa e
+    aponta `SECOND_BRAIN_CONFIG` para ele — assim o mesmo cenário serve à
+    costura e ao subcomando.
+    """
+
+    def montar(
+        *, inicio_do_dia: str = "04:00", excluir: tuple[str, ...] = ()
+    ) -> Configuracao:
+        linhas = [
+            f'vault = "{caminho_do_vault.as_posix()}"',
+            f'gravacoes = "{caminho_das_gravacoes.as_posix()}"',
+            "",
+            "[diario]",
+            f'inicio_do_dia = "{inicio_do_dia}"',
+            "",
+            "[privacidade]",
+            "excluir = [" + ", ".join(f'"{padrao}"' for padrao in excluir) + "]",
+            "",
+        ]
+        arquivo = tmp_path / "config-do-diario.toml"
+        arquivo.write_text("\n".join(linhas), encoding="utf-8")
+        monkeypatch.setenv(VARIAVEL_DE_AMBIENTE, str(arquivo))
+        return carregar(arquivo)
+
+    return montar
 
 
 @pytest.fixture

@@ -2,8 +2,12 @@ r"""Configuração local em TOML.
 
 Lida de `%APPDATA%\second-brain\config.toml`, com override pela variável de
 ambiente `SECOND_BRAIN_CONFIG` — é assim que os testes apontam para um
-diretório temporário. Nenhum segredo mora no repositório: a chave da Deepgram
-vive só neste arquivo, que está no `.gitignore`.
+diretório temporário. Nenhum segredo mora no repositório: as chaves da
+Deepgram, do Linear e do Slack vivem só neste arquivo, que está no
+`.gitignore`.
+
+Toda chave nova nasce com padrão: uma configuração escrita antes das fontes
+passivas continua carregando sem edição nenhuma.
 """
 
 from __future__ import annotations
@@ -12,6 +16,8 @@ import os
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
+
+from .fontes import INICIO_DO_DIA_PADRAO, analisar_hora
 
 #: Variável de ambiente que sobrepõe o caminho padrão da configuração.
 VARIAVEL_DE_AMBIENTE = "SECOND_BRAIN_CONFIG"
@@ -34,6 +40,10 @@ class Configuracao:
     `claude_modelo` vazio significa "o modelo padrão da conta do usuário": o
     coletor roda contra a assinatura dele, e o CLI já escolhe um modelo que
     aquela conta pode usar. Preencher é para quem quer fixar um id.
+
+    As chaves das fontes passivas seguem a mesma regra: **vazia é fonte
+    desligada**. É o que permite o diário nascer só com git e Linear enquanto o
+    Slack espera aprovação do admin.
     """
 
     vault: Path
@@ -43,6 +53,16 @@ class Configuracao:
     claude_modelo: str = ""
     dispositivo_microfone: str = ""
     dispositivo_sistema: str = ""
+    diario_inicio_do_dia: str = INICIO_DO_DIA_PADRAO
+    diario_hora_da_tarefa: str = "19:00"
+    privacidade_excluir: tuple[str, ...] = ()
+    git_raiz: Path | None = None
+    git_profundidade: int = 3
+    git_excluir: tuple[str, ...] = ()
+    git_autores: tuple[str, ...] = ()
+    linear_api_key: str = ""
+    slack_user_token: str = ""
+    slack_conversas_excluidas: tuple[str, ...] = ()
     origem: Path | None = None
 
 
@@ -95,6 +115,12 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
     deepgram = dados.get("deepgram") or {}
     claude = dados.get("claude") or {}
     audio = dados.get("audio") or {}
+    diario = dados.get("diario") or {}
+    privacidade = dados.get("privacidade") or {}
+    git = dados.get("git") or {}
+    linear = dados.get("linear") or {}
+    slack = dados.get("slack") or {}
+    raiz_do_git = str(git.get("raiz", "")).strip()
     return Configuracao(
         vault=Path(dados["vault"]),
         gravacoes=Path(dados["gravacoes"]),
@@ -103,8 +129,62 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
         claude_modelo=str(claude.get("modelo", "")),
         dispositivo_microfone=str(audio.get("dispositivo_microfone", "")),
         dispositivo_sistema=str(audio.get("dispositivo_sistema", "")),
+        diario_inicio_do_dia=_hora(
+            diario.get("inicio_do_dia", INICIO_DO_DIA_PADRAO),
+            "[diario].inicio_do_dia",
+            arquivo,
+        ),
+        diario_hora_da_tarefa=_hora(
+            diario.get("hora_da_tarefa", "19:00"), "[diario].hora_da_tarefa", arquivo
+        ),
+        privacidade_excluir=_textos(privacidade.get("excluir")),
+        git_raiz=Path(raiz_do_git) if raiz_do_git else None,
+        git_profundidade=_profundidade(git.get("profundidade", 3), arquivo),
+        git_excluir=_textos(git.get("excluir")),
+        git_autores=_textos(git.get("autores")),
+        linear_api_key=str(linear.get("api_key", "")),
+        slack_user_token=str(slack.get("user_token", "")),
+        slack_conversas_excluidas=_textos(slack.get("conversas_excluidas")),
         origem=arquivo,
     )
+
+
+def _hora(valor: object, chave: str, arquivo: Path) -> str:
+    """Valida `HH:MM` em 24 horas — a janela do dia e a tarefa dependem disso."""
+    texto = str(valor)
+    try:
+        analisar_hora(texto)
+    except ValueError:
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '{chave}' precisa ser uma hora no formato "
+            f"HH:MM em 24 horas (por exemplo \"04:00\"), e veio {valor!r}."
+        ) from None
+    return texto.strip()
+
+
+def _textos(valor: object) -> tuple[str, ...]:
+    """Uma lista do TOML como tupla — `Configuracao` é frozen."""
+    if valor is None:
+        return ()
+    if isinstance(valor, str):
+        return (valor,)
+    return tuple(str(item) for item in valor)
+
+
+def _profundidade(valor: object, arquivo: Path) -> int:
+    try:
+        niveis = int(valor)
+    except (TypeError, ValueError):
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '[git].profundidade' precisa ser um número "
+            f"inteiro de níveis de pasta, e veio {valor!r}."
+        ) from None
+    if niveis < 1:
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '[git].profundidade' precisa ser pelo menos 1 "
+            f"(veio {niveis}) — abaixo disso a varredura não acharia repositório nenhum."
+        )
+    return niveis
 
 
 def _dias_de_retencao(valor: object, arquivo: Path) -> int:

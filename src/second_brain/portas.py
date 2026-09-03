@@ -1,9 +1,9 @@
-"""Portas do pipeline: STT e resumo.
+"""Portas dos serviços externos: STT, resumo de reunião e resumo do dia.
 
-O pipeline nunca fala com um provedor concreto — ele fala com estas duas
-portas. Os adaptadores reais (Deepgram na camada 03, Claude na camada 04)
-implementam os protocolos daqui; os fakes de `second_brain.fakes` fazem o
-mesmo para os testes. Trocar de provedor não toca o pipeline.
+Nem o pipeline nem o diário falam com um provedor concreto — falam com estas
+portas. Os adaptadores reais (Deepgram, Claude) implementam os protocolos
+daqui; os fakes de `second_brain.fakes` fazem o mesmo para os testes. Trocar
+de provedor não toca nenhuma das duas costuras.
 """
 
 from __future__ import annotations
@@ -11,6 +11,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Protocol, runtime_checkable
+
+from .fontes import Evento
 
 #: Rótulo do falante que é o próprio usuário — vem do canal do microfone.
 EU = "eu"
@@ -115,5 +117,37 @@ class PortaResumo(Protocol):
         """Devolve decisões, ações/pendências e tópicos.
 
         Levanta `ErroDeResumo` quando o serviço falha.
+        """
+        ...
+
+
+@dataclass(frozen=True)
+class ResumoDoDia:
+    """O que a porta de resumo do dia devolve, sempre em português.
+
+    Irmã de `Resumo`: o mesmo tipo de serviço externo, com outra entrada — os
+    eventos das fontes passivas no lugar de uma transcrição.
+    """
+
+    narrativa: str = ""
+    destaques: tuple[str, ...] = ()
+    pendencias: tuple[str, ...] = ()
+    temas: tuple[str, ...] = ()
+
+
+class ErroDeResumoDoDia(RuntimeError):
+    """Falha ao resumir o dia. O diário nasce sem narrativa, marcado."""
+
+
+@runtime_checkable
+class PortaResumoDoDia(Protocol):
+    """Resume um dia inteiro de fontes passivas em português."""
+
+    def resumir_dia(
+        self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...]
+    ) -> ResumoDoDia:
+        """Devolve narrativa, destaques, pendências e temas do dia.
+
+        Levanta `ErroDeResumoDoDia` quando o serviço falha.
         """
         ...

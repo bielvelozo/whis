@@ -1,7 +1,8 @@
 r"""Entrada de linha de comando do Second Brain.
 
-Seis subcomandos, todos sobre a mesma configuração local e, quando processam,
-sobre a mesma costura (`pipeline.processar`)::
+Sete subcomandos sobre a mesma configuração local e sobre as duas costuras do
+projeto — `pipeline.processar` para a reunião, `diario.gerar_diario` para as
+fontes passivas::
 
     python -m second_brain init
     python -m second_brain bandeja
@@ -9,10 +10,12 @@ sobre a mesma costura (`pipeline.processar`)::
     python -m second_brain processar <pasta-da-gravacao>
     python -m second_brain reprocessar [<pasta> ...]
     python -m second_brain limpar [--simular]
+    python -m second_brain diario [YYYY-MM-DD] [--simular]
 
 Por padrão o comando usa os **adaptadores reais** — Deepgram para o STT, Claude
-(conta do usuário, OAuth) para o resumo. `--fakes` troca os dois pelas portas
-fake: é como exercitar o pipeline inteiro sem gastar crédito nem rede.
+(conta do usuário, OAuth) para os resumos, git/Linear/Slack para as fontes.
+`--fakes` troca todos pelas portas fake: é como exercitar as costuras inteiras
+sem gastar crédito nem rede.
 
 A gravação em si também tem entrada própria (`python -m second_brain.gravador`),
 para diagnóstico de dispositivo; no uso normal quem a chama é a bandeja.
@@ -23,6 +26,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
+from datetime import date, datetime
 from pathlib import Path
 
 from . import registro as _registro
@@ -33,10 +37,17 @@ from .configuracao import (
     caminho_padrao,
     carregar,
 )
-from .fakes import ResumoFake, STTFake
+from .diario import (
+    NenhumaFonteConfigurada,
+    ResultadoDoDiario,
+    TodasAsFontesFalharam,
+    gerar_diario,
+)
+from .fakes import ResumoDoDiaFake, ResumoFake, STTFake, fontes_de_exemplo
+from .fontes import PortaFonte, data_do_diario
 from .gravacao import GravacaoInvalida
 from .pipeline import processar
-from .portas import ErroDeResumo, ErroDeSTT, PortaResumo, PortaSTT
+from .portas import ErroDeResumo, ErroDeSTT, PortaResumo, PortaResumoDoDia, PortaSTT
 
 _log = logging.getLogger("second_brain")
 
@@ -102,6 +113,54 @@ def montar_portas(
         configuracao.claude_modelo or "padrão da conta",
     )
     return stt, resumo
+
+
+def montar_fontes(configuracao: Configuracao, *, fakes: bool = False) -> list[PortaFonte]:
+    """As fontes passivas ligadas na configuração, na ordem git, Linear, Slack.
+
+    Chave vazia é fonte desligada, e o import de cada coletor mora dentro do
+    `if`: enquanto o módulo de uma fonte não existir, ela simplesmente não é
+    importada, e o diário nasce com as outras.
+    """
+    if fakes:
+        _log.warning("Usando fontes FAKE — nada é lido do git, do Linear nem do Slack.")
+        return list(fontes_de_exemplo())
+
+    fontes: list[PortaFonte] = []
+    if configuracao.git_raiz:
+        from . import fonte_git
+
+        fontes.append(fonte_git.de_configuracao(configuracao))
+    if configuracao.linear_api_key:
+        from . import fonte_linear
+
+        fontes.append(fonte_linear.de_configuracao(configuracao))
+    if configuracao.slack_user_token:
+        from . import fonte_slack
+
+        fontes.append(fonte_slack.de_configuracao(configuracao))
+    if not fontes:
+        raise NenhumaFonteConfigurada(
+            "Nenhuma fonte passiva está ligada na configuração"
+            f"{f' ({configuracao.origem})' if configuracao.origem else ''}. "
+            "Preencha [git].raiz, [linear].api_key ou [slack].user_token — "
+            "ou rode com --fakes para ver o diário funcionando sem rede."
+        )
+    _log.info("Fontes ligadas: %s.", ", ".join(fonte.nome for fonte in fontes))
+    return fontes
+
+
+def montar_resumo_do_dia(
+    configuracao: Configuracao, *, fakes: bool = False
+) -> PortaResumoDoDia:
+    """O resumo do dia: o Claude da conta do usuário, ou o fake."""
+    if fakes:
+        _log.warning("Usando resumo do dia FAKE — nada é enviado ao Claude.")
+        return ResumoDoDiaFake()
+
+    from .resumo_dia_claude import ResumoDoDiaClaude
+
+    return ResumoDoDiaClaude(modelo=configuracao.claude_modelo or None)
 
 
 # -- processar --------------------------------------------------------------
@@ -209,6 +268,67 @@ def _comando_limpar(args: argparse.Namespace) -> int:
     return 0
 
 
+# -- diario -----------------------------------------------------------------
+
+
+def _comando_diario(args: argparse.Namespace) -> int:
+    """Lê as fontes passivas do dia e escreve `diario/YYYY-MM-DD.md`.
+
+    Sem data, o dia é deduzido do relógio pela janela da configuração: às 02:00
+    de quinta, com `inicio_do_dia = "04:00"`, o diário a gerar ainda é o de
+    quarta. Registra também no arquivo de log, porque quem costuma chamar este
+    comando é a tarefa agendada, que não tem console.
+    """
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+
+    data = args.data or data_do_diario(
+        datetime.now().astimezone(), configuracao.diario_inicio_do_dia
+    )
+    fontes = montar_fontes(configuracao, fakes=args.fakes)
+    # Em simulação o resumo não é chamado; o fake entra como marcador para que
+    # conferir o filtro não dependa de credencial nem do adaptador do Claude.
+    resumo = montar_resumo_do_dia(configuracao, fakes=args.fakes or args.simular)
+
+    resultado = gerar_diario(
+        data,
+        configuracao=configuracao,
+        fontes=fontes,
+        resumo=resumo,
+        simular=args.simular,
+    )
+    _relatar_diario(resultado)
+    return 0
+
+
+def _relatar_diario(resultado: ResultadoDoDiario) -> None:
+    if resultado.vazio:
+        print(
+            f"Nada aconteceu em {resultado.data.isoformat()} — nenhum diário foi escrito."
+        )
+        return
+
+    if resultado.simulado:
+        print(f"Simulação do diário de {resultado.data.isoformat()} — nada foi escrito.")
+        print(f"Janela: {resultado.janela.como_texto()}")
+        for evento in resultado.eventos:
+            referencia = f" ({evento.referencia})" if evento.referencia else ""
+            print(f"  {evento.momento:%H:%M}  [{evento.fonte}]{referencia} {evento.titulo}")
+        if not resultado.eventos:
+            print("  (nenhum evento)")
+    else:
+        print(f"Diário: {resultado.nota}")
+
+    for reuniao in resultado.reunioes:
+        print(f"  reunião: {reuniao}")
+    if resultado.excluidos:
+        print(f"O filtro de exclusão removeu {resultado.excluidos} evento(s).")
+    for falha in resultado.fontes_com_falha:
+        print(f"Fonte '{falha.fonte}' não entrou: {falha.motivo}")
+    if resultado.falha_do_resumo:
+        print(f"Sem narrativa neste diário: {resultado.falha_do_resumo}")
+
+
 # -- bandeja ----------------------------------------------------------------
 
 
@@ -248,6 +368,26 @@ modelo = ""                  # vazio = o modelo padrão da sua conta
 [audio]
 dispositivo_microfone = ""   # vazio = microfone padrão do Windows
 dispositivo_sistema = ""     # vazio = loopback da saída padrão do Windows
+
+[diario]
+inicio_do_dia = "04:00"      # o diário de um dia vai desta hora à mesma hora do dia seguinte
+hora_da_tarefa = "19:00"     # quando a tarefa agendada gera o diário
+
+[privacidade]
+excluir = []                 # trechos que nunca saem da máquina (substring, sem diferenciar maiúsculas)
+
+[git]
+raiz = ""                    # pasta onde varrer repositórios; vazio = fonte desligada
+profundidade = 3
+excluir = []                 # pastas ignoradas na varredura
+autores = []                 # vazio = deduz do git config user.email de cada repositório
+
+[linear]
+api_key = ""                 # Personal API Key read-only; vazio = fonte desligada
+
+[slack]
+user_token = ""              # user token xoxp da app interna; vazio = fonte desligada
+conversas_excluidas = []     # canais e DMs que o coletor nunca lê
 """
 
 
@@ -353,6 +493,16 @@ def _dias_nao_negativos(texto: str) -> int:
     return dias
 
 
+def _data_iso(texto: str) -> date:
+    """A data do diário na linha de comando, sempre `YYYY-MM-DD`."""
+    try:
+        return datetime.strptime(texto, "%Y-%m-%d").date()
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            f"{texto!r} não é uma data no formato YYYY-MM-DD."
+        ) from None
+
+
 def _configuracao(args: argparse.Namespace) -> Configuracao:
     configuracao = carregar(args.config)
     _log.info("Configuração lida de %s", configuracao.origem)
@@ -448,6 +598,30 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     limpar_cmd.set_defaults(funcao=_comando_limpar)
 
+    diario_cmd = subcomandos.add_parser(
+        "diario",
+        help="lê as fontes passivas do dia e escreve o diário em diario/",
+    )
+    diario_cmd.add_argument(
+        "data",
+        nargs="?",
+        type=_data_iso,
+        default=None,
+        help="dia do diário (YYYY-MM-DD); sem ele, o dia deduzido do relógio",
+    )
+    _acrescentar_config(diario_cmd)
+    diario_cmd.add_argument(
+        "--fakes",
+        action="store_true",
+        help="usa fontes e resumo fake em vez de git, Linear, Slack e Claude",
+    )
+    diario_cmd.add_argument(
+        "--simular",
+        action="store_true",
+        help="mostra o que entraria no diário, sem enviar ao Claude e sem escrever",
+    )
+    diario_cmd.set_defaults(funcao=_comando_diario)
+
     bandeja_cmd = subcomandos.add_parser(
         "bandeja",
         help="ícone na bandeja do Windows: um clique grava, outro vira nota no vault",
@@ -498,7 +672,14 @@ def main(argv: list[str] | None = None) -> int:
     configurar_logs(args.verboso)
     try:
         return int(args.funcao(args))
-    except (ConfiguracaoInvalida, GravacaoInvalida, ErroDeSTT, ErroDeResumo) as erro:
+    except (
+        ConfiguracaoInvalida,
+        GravacaoInvalida,
+        ErroDeSTT,
+        ErroDeResumo,
+        TodasAsFontesFalharam,
+        NenhumaFonteConfigurada,
+    ) as erro:
         _log.error("%s", erro)
         return 1
 

@@ -1,13 +1,30 @@
 """Fakes das portas: implementações de verdade que devolvem dados fixos.
 
-Não são mocks — não gravam chamadas nem se deixam interrogar sobre elas. São
-os adaptadores que os testes (e a demo da camada 01) injetam no lugar da
-Deepgram e do Claude. Os testes verificam só o que aparece no vault.
+Não são mocks — não são interrogados sobre como foram chamados. São os
+adaptadores que os testes (e o `--fakes` da CLI) injetam no lugar da Deepgram,
+do Claude, do git, do Linear e do Slack. Os testes verificam só o que aparece
+no vault.
+
+A exceção é `ResumoDoDiaFake`, que guarda os eventos que recebeu: o filtro de
+exclusão promete que o conteúdo excluído **não sai da máquina**, e a única
+forma de provar isso é olhar o que chegou ao resumo.
 """
 
 from __future__ import annotations
 
-from .portas import EU, OUTROS, CanaisDaGravacao, Fala, Resumo, Transcricao
+from dataclasses import replace
+from datetime import date, datetime, time
+
+from .fontes import Evento, Janela
+from .portas import (
+    EU,
+    OUTROS,
+    CanaisDaGravacao,
+    Fala,
+    Resumo,
+    ResumoDoDia,
+    Transcricao,
+)
 
 #: Transcrição de exemplo — pt-BR com termos em inglês, como as reuniões reais.
 TRANSCRICAO_PADRAO = Transcricao(
@@ -24,6 +41,68 @@ RESUMO_PADRAO = Resumo(
     decisoes=("O rollback fica para depois do review.",),
     acoes=("Abrir a issue do rollback ainda hoje.",),
     topicos=("Deploy do pipeline novo", "Planejamento do rollback"),
+)
+
+#: O dia a que os eventos de exemplo pertencem; `FonteDeExemplo` os transporta.
+DATA_DE_EXEMPLO = date(2026, 9, 3)
+
+
+def _momento(hora: int, minuto: int) -> datetime:
+    return datetime.combine(DATA_DE_EXEMPLO, time(hora, minuto)).astimezone()
+
+
+#: Eventos de exemplo do git, no formato que o coletor da camada 02 devolverá.
+EVENTOS_DE_GIT = (
+    Evento(
+        fonte="git",
+        momento=_momento(9, 12),
+        titulo="`a1b2c3d` Fecha a camada 01 do diario",
+        referencia="second-brain",
+        pessoas=("Gabriel",),
+    ),
+    Evento(
+        fonte="git",
+        momento=_momento(17, 45),
+        titulo="`d4e5f6a` Corrige o calculo de frete no checkout",
+        referencia="loja",
+        pessoas=("Gabriel",),
+    ),
+)
+
+#: Eventos de exemplo do Linear, com url e comentário, para exercitar o formato.
+EVENTOS_DE_LINEAR = (
+    Evento(
+        fonte="linear",
+        momento=_momento(11, 20),
+        titulo="FN-123 Corrigir o cálculo de frete — movida para Done",
+        detalhe="Subiu em produção; falta acompanhar o gráfico de erros.",
+        referencia="Plataforma",
+        url="https://linear.app/exemplo/issue/FN-123",
+        pessoas=("Gabriel", "Ana"),
+    ),
+    Evento(
+        fonte="linear",
+        momento=_momento(14, 2),
+        titulo="FN-130 Diário automático — comentário",
+        detalhe="Combinamos gerar o diário às 19:00, com a máquina ligada.",
+        referencia="Plataforma",
+        url="https://linear.app/exemplo/issue/FN-130",
+        pessoas=("Ana",),
+    ),
+)
+
+#: Resumo do dia de exemplo, na estrutura que o diário espera.
+RESUMO_DO_DIA_PADRAO = ResumoDoDia(
+    narrativa=(
+        "Dia dividido entre fechar a camada do diário e apagar um incêndio no "
+        "checkout. A correção do frete saiu do Linear para produção no mesmo dia."
+    ),
+    destaques=(
+        "A camada 01 do diário foi fechada.",
+        "O cálculo de frete foi corrigido e subiu.",
+    ),
+    pendencias=("Acompanhar o gráfico de erros do checkout.",),
+    temas=("fontes passivas", "checkout"),
 )
 
 
@@ -59,3 +138,87 @@ class ResumoFake:
         if self._erro is not None:
             raise self._erro
         return self._resumo
+
+
+class FonteFake:
+    """Fonte passiva que devolve eventos fixos, recortados pela janela.
+
+    Recorta como uma fonte de verdade recortaria — filtrar por tempo é da
+    fonte, pelo contrato —, e é isso que torna a janela do dia testável pelo
+    comportamento. `erro` faz a coleta falhar, para exercitar a degradação
+    graciosa sem depender de rede.
+    """
+
+    def __init__(
+        self,
+        nome: str = "git",
+        eventos: tuple[Evento, ...] = (),
+        erro: Exception | None = None,
+    ) -> None:
+        self.nome = nome
+        self._eventos = tuple(eventos)
+        self._erro = erro
+
+    def coletar(self, janela: Janela) -> tuple[Evento, ...]:
+        if self._erro is not None:
+            raise self._erro
+        return tuple(
+            evento for evento in self._eventos if janela.contem(evento.momento)
+        )
+
+
+class FonteDeExemplo:
+    """Fonte fake que traz seus eventos de exemplo para a janela pedida.
+
+    Sem isso `second-brain diario --fakes` só produziria nota no dia em que os
+    exemplos foram escritos: em qualquer outra data eles cairiam fora da janela
+    e o dia seria vazio.
+    """
+
+    def __init__(self, nome: str, eventos: tuple[Evento, ...]) -> None:
+        self.nome = nome
+        self._eventos = tuple(eventos)
+
+    def coletar(self, janela: Janela) -> tuple[Evento, ...]:
+        do_dia = (_transportar(evento, janela.data) for evento in self._eventos)
+        return tuple(evento for evento in do_dia if janela.contem(evento.momento))
+
+
+def fontes_de_exemplo() -> list[FonteDeExemplo]:
+    """As fontes que o `--fakes` injeta: git e Linear com um dia plausível."""
+    return [
+        FonteDeExemplo("git", EVENTOS_DE_GIT),
+        FonteDeExemplo("linear", EVENTOS_DE_LINEAR),
+    ]
+
+
+class ResumoDoDiaFake:
+    """Porta de resumo do dia que devolve sempre o mesmo resumo em português.
+
+    Guarda em `eventos_recebidos` e `reunioes_recebidas` o que lhe entregaram:
+    é assim que o teste do filtro de exclusão prova que o conteúdo excluído
+    nunca chegou perto de sair da máquina.
+    """
+
+    def __init__(
+        self,
+        resumo: ResumoDoDia = RESUMO_DO_DIA_PADRAO,
+        erro: Exception | None = None,
+    ) -> None:
+        self._resumo = resumo
+        self._erro = erro
+        self.eventos_recebidos: tuple[Evento, ...] = ()
+        self.reunioes_recebidas: tuple[str, ...] = ()
+
+    def resumir_dia(
+        self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...]
+    ) -> ResumoDoDia:
+        self.eventos_recebidos = tuple(eventos)
+        self.reunioes_recebidas = tuple(reunioes)
+        if self._erro is not None:
+            raise self._erro
+        return self._resumo
+
+
+def _transportar(evento: Evento, dia: date) -> Evento:
+    return replace(evento, momento=datetime.combine(dia, evento.momento.time()).astimezone())
