@@ -41,6 +41,8 @@ Todas as decisões arquiteturais centrais fechadas — estender-Whis-vs-separado
 
 - [Decidir as integrações de fontes passivas](issues/13-decidir-fontes-passivas.md) — v1 lê git (varredura automática de repos) + Linear (tudo do time, API key read-only) + Slack (tudo que o usuário participa, com blocklist, via app interna xoxp); navegador fora da v1; diário gerado por tarefa agendada no fim do dia; filtro de exclusão configurável antes de qualquer coisa ir ao Claude.
 
+- **Entrega 2 — fontes passivas + daily** (2026-09-03/04): fechada e em uso real. Diário, daily com janela da última fala, coletores de git/Linear/Slack, e a daily lida numa reunião de verdade em 2026-09-04. Spec em [.scratch/fontes-passivas/spec.md](../fontes-passivas/spec.md); onze camadas, dez resolvidas e uma revertida.
+- **Entrega 3 — recuperação de contexto** (aberta em 2026-09-04): spec em [.scratch/recuperacao-contexto/spec.md](../recuperacao-contexto/spec.md), com contrato fixado e cinco camadas. O ticket 08 foi **refinado**: o agente não recebe `cwd` cru no vault, e sim ferramentas nossas — foi o que a pasta privada escolhida pelo usuário exigiu.
 - [Escrever a spec do tracer bullet](issues/09-spec-tracer-bullet.md) — **destino alcançado**: spec publicada em [.scratch/tracer-bullet/spec.md](../tracer-bullet/spec.md) (`ready-for-agent`), consolidando todas as decisões; nenhum ticket aberto resta no mapa.
 
 ## Not yet specified
