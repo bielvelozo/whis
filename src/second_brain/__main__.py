@@ -498,8 +498,7 @@ def _relatar_daily(resultado: ResultadoDaDaily) -> None:
         if not resultado.eventos:
             print("  (nenhum evento)")
     else:
-        print(f"Página: {resultado.pagina}")
-        print(f"Nota:   {resultado.nota}")
+        print(f"Nota: {resultado.nota}")
 
     for reuniao in resultado.reunioes:
         print(f"  reunião: {reuniao}")

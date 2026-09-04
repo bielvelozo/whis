@@ -339,7 +339,7 @@ def _listas_cruas(
     ]
 
     motivos = {falha.fonte: falha.motivo for falha in fontes_com_falha}
-    for fonte in fontes_em_ordem(fontes_lidas, [falha.fonte for falha in fontes_com_falha]):
+    for fonte in _fontes_em_ordem(fontes_lidas, [falha.fonte for falha in fontes_com_falha]):
         linhas.extend([f"## {nome_legivel(fonte)}", ""])
         if fonte in motivos:
             linhas.extend([f"_Não foi possível ler esta fonte: {motivos[fonte]}_", ""])
@@ -366,7 +366,7 @@ def _avisos(
     return avisos
 
 
-def fontes_em_ordem(lidas: Sequence[str], com_falha: Sequence[str]) -> list[str]:
+def _fontes_em_ordem(lidas: Sequence[str], com_falha: Sequence[str]) -> list[str]:
     """As fontes que aparecem na nota, sempre na ordem git, Linear, Slack.
 
     Fonte não configurada não entra em nenhuma das duas listas e por isso não
@@ -443,15 +443,6 @@ class PontosDaDaily:
 def caminho_da_daily(data: date) -> str:
     """Caminho relativo da daily: um arquivo por dia, sem hora no nome."""
     return f"{PASTA_DAILY}/{data.isoformat()}.md"
-
-
-def caminho_da_pagina_da_daily(data: date) -> str:
-    """A mesma daily como página, ao lado da nota.
-
-    A extensão importa para a âncora da janela: `ate_da_daily_anterior` varre
-    `daily/*.md`, então a página nunca é confundida com uma nota.
-    """
-    return f"{PASTA_DAILY}/{data.isoformat()}.html"
 
 
 def ate_da_daily_anterior(vault: Path, antes_de: date) -> datetime | None:

@@ -6,7 +6,7 @@ com Slack: "não queria que a daily fosse em um md, queria que gerasse uma html 
 
 **Blocked by:** 07, 08 (fechadas)
 
-**Status:** resolved
+**Status:** wontfix — construída, usada por um dia e **revertida**
 
 ## A decisão que o pedido não resolvia
 
@@ -75,3 +75,33 @@ existir — foi o jeito de saber que ela não mudou comportamento.
 
 **Não provado:** impressão em papel (há `@media print`, nunca exercitado) e a aparência no modo
 escuro, que só foi lida no claro.
+
+
+---
+
+## Revertida em 2026-09-04, no mesmo dia
+
+O usuário abriu o vault no Obsidian pela primeira vez, configurou as três opções de
+**Arquivos & Links** e disse: *"acho que o html se torna desnecessário agora como a opção de ver
+pelo obsidian o que é bem mais bonito"*. Ele tem razão, e vale registrar o porquê para ninguém
+reconstruir isto por engano.
+
+**A página existia para resolver "o markdown é feio de ler", e essa premissa caiu.** O Obsidian
+renderiza a mesma nota com tipografia boa, links clicáveis e cabeçalho recolhível — que era
+exatamente o que os `<details>` da página davam. O que sobrava de vantagem era marginal: corpo
+maior (o Obsidian tem zoom) e abrir sem o Obsidian (ele está sempre aberto).
+
+O que ficava do lado do custo era real: **240 KB por dia** de arquivo que ninguém abriria, um
+módulo e 28 testes para manter, e um segundo artefato podendo divergir da nota.
+
+**Removido:** `pagina_da_daily.py`, `tests/test_pagina_da_daily.py`, o campo `pagina` do
+resultado, a escrita na costura, `vault.caminho_da_pagina_da_daily` e os passos do smoke. A
+página de 2026-09-04 foi apagada do vault. Suíte de volta a **601 verdes**.
+
+**O que ficou, porque é melhor do que era:** `vault.agrupar_por_referencia`, extraída para a
+página não duplicar a regra de agrupamento, devolve dados em vez de markdown e continua sendo
+usada por `_secao_da_fonte`. `_fontes_em_ordem` voltou a ser privada, já que só a página a usava
+de fora.
+
+**Se um dia voltar a fazer sentido** — ler a daily no celular, mandar para alguém, imprimir —
+está inteira no commit `9a53218`, com os testes.
