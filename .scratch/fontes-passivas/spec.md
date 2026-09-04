@@ -34,8 +34,11 @@ O diário é o que conecta as duas fontes de contexto do vault: as reuniões que
 16. Como dono das minhas notas, quero que o coletor de diário escreva só em `diario/`, para minhas notas em `notas/` e as reuniões em `reunioes/` nunca serem tocadas por ele.
 17. Como usuário, quero que a tarefa agendada deixe rastro em log, para diagnosticar um diário que não nasceu.
 18. Como usuário com teto de R$ 100/mês, quero as três fontes rodando a custo zero, para o diário de todo dia não criar despesa nova.
-19. Como quem apresenta uma daily, quero as três batidas do dia — o que entreguei, o que sigo fazendo e o que espera outra pessoa — para falar trinta segundos sem garimpar a nota.
-20. Como quem chega na segunda-feira, quero que a daily leia o diário mais recente e me diga de que dia ele é, para o fim de semana não me deixar de mãos vazias.
+19. Como quem apresenta uma daily, quero as batidas do dia — o que entreguei, o que sigo fazendo, o que espera outra pessoa e as dúvidas abertas — para falar trinta segundos sem garimpar nada.
+20. Como quem fala todo dia, quero que a daily cubra **da última daily até agora**, para nada do fim de semana ou de um dia de folga cair no vão entre duas falas.
+21. Como quem tem um ponto específico a levantar, quero anotá-lo num arquivo meu e vê-lo aparecer na próxima daily, para não depender da memória na hora de falar.
+22. Como quem já falou um ponto, quero marcá-lo no Obsidian e vê-lo sumir da próxima, para a lista não virar entulho.
+23. Como quem só vai ler a daily, quero que ela carregue também as listas cruas, para o vault continuar tendo memória dos meus dias sem eu precisar abrir outro arquivo.
 
 ## Implementation Decisions
 
@@ -53,7 +56,8 @@ O diário é o que conecta as duas fontes de contexto do vault: as reuniões que
 - **Slack**: app interna com user token `xoxp`, lendo as conversas de que o usuário participa, inclusive DMs, respeitando a blocklist. É a última camada construída: depende de aprovação de admin no workspace.
 - **Cadência**: tarefa agendada do Windows, pelo mesmo mecanismo já usado pela limpeza (`automacao.py`). `second-brain windows --diario` registra; `--remover` desfaz.
 - **Configuração**: chaves novas no `config.toml` existente, sem renomear nenhuma. Nenhum segredo no repo; nenhuma variável de ambiente obrigatória.
-- **Daily** (acrescentada em 2026-09-03, depois do primeiro diário real): o mesmo resumo devolve também `entreguei`, `sigo_em` e `preciso_de`, gravados numa seção `## Daily` da nota; `second-brain daily` lê o diário mais recente e imprime. **Sem chamada nova ao Claude** — custo marginal zero. `preciso_de` é só o que depende de outra pessoa; nota para si mesmo continua em `Pendências`. Detalhe no [adendo do contrato](contrato-fonte-passiva.md).
+- **Daily** (acrescentada e redesenhada com o usuário em 2026-09-03): coletor próprio, `gerar_daily(agora) → nota em daily/`, com **janela da última daily até agora** — recorte diferente do dia civil do diário, e por isso não derivável dele. Escreve `daily/YYYY-MM-DD.md` com o roteiro em cima (`entreguei`, `sigo_em`, `preciso_de`, `duvidas` do Claude; `meus pontos` e `off_topic` do usuário) e **as listas cruas embaixo** — o que a torna o registro durável do vault. Os pontos do usuário vivem em `notas/daily.md`, na zona dele, consumidos por checkbox do Obsidian. **Nada é agendado**: o usuário roda na hora. Detalhe no [adendo do contrato](contrato-fonte-passiva.md).
+- **O diário deixa de ser agendado.** O usuário não vai lê-lo, e a daily já carrega as listas cruas: manter as duas rodando custaria duas chamadas ao Claude por dia para guardar a mesma coisa. `second-brain diario` continua existindo para um retrato de dia civil sob demanda.
 - **Idioma**: todo texto voltado ao usuário — nota, resumo, logs, mensagens de erro — em português.
 
 ## Testing Decisions

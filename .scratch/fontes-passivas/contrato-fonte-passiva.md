@@ -372,66 +372,145 @@ horários no mesmo flag confundiria; o do diário mora na configuração.
 
 ---
 
-## 9. Adendo: a daily (camada 07, decidida com o usuário em 2026-09-03)
+## 9. Adendo: a daily (camada 07, redesenhada com o usuário em 2026-09-03)
 
-Escopo acrescentado depois de o primeiro diário real rodar. O diário é memória
-durável, escrita para ser relida meses depois; a **daily** é o oposto — um roteiro
-de trinta segundos, falado no dia seguinte, para outras pessoas. Sai do mesmo
-material, com outra forma.
+Escopo acrescentado depois de o primeiro diário real rodar, e **redesenhado** na mesma
+conversa quando o usuário fixou duas coisas que viram o desenho anterior do avesso:
 
-**Nasce junto do diário, na mesma chamada ao Claude.** Custo marginal zero: o dia
-já foi lido e enviado. Um comando que fizesse a própria chamada pagaria de novo
-(US$ 0,29 medidos) para reprocessar um dia já processado.
+1. **A janela é da última daily até agora** — não um dia civil. Numa segunda-feira cobre o
+   fim de semana inteiro.
+2. **A daily é o arquivo que ele vai usar**; o diário ele não vai ler.
+
+Consequência direta: a daily **não deriva do diário**. As duas janelas são recortes
+diferentes (o diário é `04:00 → 04:00`; a daily é `última fala → agora`) e um não se
+reconstrói do outro depois de resumido. A daily coleta sozinha e faz a própria chamada ao
+Claude.
+
+E como ela carrega também as listas cruas, **ela vira o registro durável** — é o que a
+entrega seguinte (recuperação de contexto) vai ler. O diário continua existindo como
+comando, mas **deixa de ser agendado**: uma chamada por dia serve para as duas coisas.
+
+### A janela
+
+```python
+def janela_da_daily(agora: datetime, vault: Path) -> JanelaDaDaily
+```
+
+- `ate` = agora.
+- `desde` = o campo `ate` da daily mais recente **de um dia anterior**. Sem nenhuma, cai
+  para `agora - 24h` e a nota diz que foi a primeira.
+- Rodar de novo no mesmo dia **mantém o `desde`** e estende o `ate` até agora,
+  reescrevendo a nota daquele dia. É a mesma idempotência do diário: uma daily por dia,
+  sempre regenerável, e nada nunca cai no vão entre a geração e a fala — o que acontecer
+  depois entra na daily de amanhã.
+
+A âncora vive no **frontmatter da nota anterior**, não num arquivo de estado escondido: o
+vault é a fonte da verdade e o usuário consegue auditar a janela lendo a própria nota.
 
 ### O tipo (`portas.py`)
 
 ```python
 @dataclass(frozen=True)
 class Daily:
-    """As três batidas de uma daily, extraídas do mesmo dia do diário."""
-    entreguei: tuple[str, ...] = ()   # o que fechou ou andou
-    sigo_em: tuple[str, ...] = ()     # o que ficou em In Progress — o trabalho de amanhã
+    entreguei: tuple[str, ...] = ()   # o que fechou ou andou — o trabalho DELE
+    sigo_em: tuple[str, ...] = ()     # o que ficou em andamento
     preciso_de: tuple[str, ...] = ()  # o que depende de OUTRA PESSOA
+    duvidas: tuple[str, ...] = ()     # pergunta aberta no material do dia
 ```
 
-`ResumoDoDia` ganha `daily: Daily | None = None`.
+`off_topic` e os pontos livres **não** estão aqui: são do usuário, e vêm de `notas/daily.md`.
 
-`preciso_de` é a distinção que dá valor ao comando: só entra o que espera alguém
-— review parado, PR sem merge, resposta pendente. Nota para si mesmo ("faltou
-testar o estado expirado") **não** é daily; continua em `Pendências`.
+`preciso_de` é o que dá valor ao comando: só entra o que espera alguém — review parado, PR
+sem merge, aprovação pendente. Nota para si mesmo ("faltou testar o estado expirado") não é
+daily.
 
-Os nomes são do ponto de vista da nota, que é datada: `entreguei`, não `fiz
-ontem`. Quem diz "ontem" é o comando, na hora de imprimir.
+O prompt precisa distinguir **o trabalho dele** do **contexto do time**: os commits do git
+são dele por construção (a fonte filtra por autor), mas o Linear traz o time inteiro — 172
+eventos contra 28 commits, num dia real medido. `entreguei` e `sigo_em` são dele;
+movimentação alheia é contexto, e no máximo vira `duvidas` ou `preciso_de`.
 
-### Na nota
+### Os pontos do usuário (`notas/daily.md`)
 
-Seção `## Daily`, depois de `## Pendências` e antes de `## Reuniões` — é uma
-visão derivada e mora junto das outras. Ausente quando o resumo falhou.
+Mora na **zona do usuário**. O agente **lê** e nunca escreve por iniciativa própria — a
+única exceção é `--anotar`, que é o "pedido explícito" que o glossário já prevê.
 
 ```markdown
-## Daily
+# Daily — meus pontos
 
-**Entreguei**
-- ...
+Marque o checkbox depois de falar: o que estiver marcado não aparece na próxima daily.
 
-**Sigo em**
-- ...
+## Dúvidas
+- [ ] o link coringa muda para todo mundo ou só para novos pedidos?
 
-**Preciso de**
-- ...
+## Off-topic
+- [ ] staging caiu duas vezes ontem à tarde
+
+## Pontos
+- [ ] quero puxar a conversa sobre a retenção de 180 dias
 ```
+
+- Só entram na daily os itens **desmarcados** (`- [ ]`). O agente nunca marca nada: quem
+  marca é o usuário, no Obsidian, depois de falar. É o gesto de consumir sem o agente
+  encostar na zona dele.
+- Arquivo ausente, seção ausente ou lista vazia **não é erro** — a daily só não mostra
+  aquela seção.
+- `second-brain daily --anotar "texto"` acrescenta em `## Pontos`, criando o arquivo com o
+  cabeçalho acima se não existir. As outras duas seções se editam no Obsidian; ampliar o
+  `--anotar` para elas é decisão de outro dia.
+
+### A nota (`daily/YYYY-MM-DD.md` — zona nova)
+
+`vault.ESTRUTURA` ganha `daily`; `ZONAS_DA_DAILY = ("daily",)`. O coletor de daily escreve
+**só** ali, como o de diário só escreve em `diario/`.
+
+```markdown
+---
+tipo: daily
+data: 2026-09-04
+desde: 2026-09-03T09:12:00-03:00
+ate: 2026-09-04T09:05:00-03:00
+fontes: [git, linear]
+fontes_com_falha: []
+temas: [...]
+reunioes: ["[[reunioes/...]]"]
+---
+
+# Daily — 4 de setembro de 2026 (sexta-feira)
+
+Cobre de quinta, 03/09 09:12, até agora.
+
+## Entreguei
+## Sigo em
+## Preciso de
+## Dúvidas
+## Meus pontos
+## Off-topic
+
+## Reuniões
+## Git
+## Linear
+## Slack
+```
+
+- As seis primeiras são o roteiro, na ordem de falar. `## Dúvidas` junta as do Claude e as
+  desmarcadas do usuário; `## Meus pontos` e `## Off-topic` são só do usuário.
+- Seção manual vazia **não aparece** — o roteiro não pode ter buraco para o usuário pular
+  em voz alta.
+- Da `## Reuniões` para baixo é a memória durável, no mesmo formato do diário (mesma
+  função `_secao_da_fonte`, agrupada por referência).
+- A linha "Cobre de ..." é obrigatória: sem ela o usuário lê a daily de sexta na segunda
+  achando que é de ontem.
 
 ### O comando
 
 ```
-second-brain daily [YYYY-MM-DD] [--config ...]
+second-brain daily [--anotar TEXTO] [--fakes] [--simular] [--config ...]
 ```
 
-Sem data, lê **o diário mais recente que existir** em `diario/` — não "ontem".
-Numa segunda-feira o último diário é o de sexta; num dia de PC desligado, o de
-antes. "Ontem" daria mão vazia justamente nas manhãs em que a daily cobre mais
-de um dia.
+Sem argumento: coleta a janela, chama o Claude, escreve a nota e **imprime o roteiro** no
+terminal, pronto para ler em voz alta. `--simular` coleta e imprime sem chamar o Claude e
+sem escrever. `--anotar` só acrescenta em `notas/daily.md` e sai — não coleta nada.
 
-Não coleta, não chama o Claude, não escreve: lê a nota e imprime. Diário sem
-seção `## Daily` (nota antiga, ou resumo que falhou) não é erro de programa — é
-mensagem dizendo que aquele dia precisa ser regerado, e com qual comando.
+Degradação igual à do diário: fonte que falha vira marca na nota; resumo que falha deixa a
+nota nascer com as listas cruas e os pontos do usuário. **Nada é agendado** — o usuário
+decidiu rodar na hora, um minuto antes de falar.

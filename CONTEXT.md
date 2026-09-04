@@ -24,8 +24,12 @@ _Avoid_: always-on, background
 Nota diária em `diario/` que resume o trabalho do dia a partir das fontes passivas.
 _Avoid_: daily note, log
 
+**Daily**:
+Roteiro falado que o usuário lê na reunião diária do time, em `daily/`. Cobre da última daily até agora — não um dia civil — e carrega as listas cruas embaixo do roteiro, sendo por isso o registro durável do trabalho.
+_Avoid_: standup, resumo diário
+
 **Zona de propriedade**:
-Divisão do vault entre pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`) e a zona do usuário (`notas/`), que o agente só toca sob pedido explícito — nunca por iniciativa própria.
+Divisão do vault entre pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`, `daily/`) e a zona do usuário (`notas/`), que o agente só toca sob pedido explícito — nunca por iniciativa própria. `notas/daily.md` é o caso do pedido explícito: o agente lê os pontos que o usuário escreveu ali e só escreve neles quando mandado (`daily --anotar`).
 
 **Tracer bullet**:
 A primeira fatia construível de ponta a ponta: "aperto um botão durante a reunião → nota transcrita/resumida aparece no vault".
