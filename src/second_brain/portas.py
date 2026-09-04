@@ -1,9 +1,9 @@
-"""Portas dos serviços externos: STT, resumo de reunião e resumo do dia.
+"""Portas dos serviços externos: STT, resumo de reunião, resumo do dia e daily.
 
-Nem o pipeline nem o diário falam com um provedor concreto — falam com estas
-portas. Os adaptadores reais (Deepgram, Claude) implementam os protocolos
-daqui; os fakes de `second_brain.fakes` fazem o mesmo para os testes. Trocar
-de provedor não toca nenhuma das duas costuras.
+Nem o pipeline, nem o diário, nem a daily falam com um provedor concreto —
+falam com estas portas. Os adaptadores reais (Deepgram, Claude) implementam os
+protocolos daqui; os fakes de `second_brain.fakes` fazem o mesmo para os
+testes. Trocar de provedor não toca nenhuma das costuras.
 """
 
 from __future__ import annotations
@@ -149,5 +149,48 @@ class PortaResumoDoDia(Protocol):
         """Devolve narrativa, destaques, pendências e temas do dia.
 
         Levanta `ErroDeResumoDoDia` quando o serviço falha.
+        """
+        ...
+
+
+@dataclass(frozen=True)
+class Daily:
+    """As quatro batidas do roteiro que o usuário lê na daily do time.
+
+    Irmã de `ResumoDoDia`, com outro recorte e outro destino: o diário é
+    memória durável, escrita para ser relida meses depois; a daily é o oposto —
+    trinta segundos falados, agora, para outras pessoas ouvirem.
+
+    `entreguei` e `sigo_em` são o trabalho **dele**. Movimentação de outra
+    pessoa é contexto e, no máximo, vira `duvidas` ou `preciso_de`.
+
+    `preciso_de` é a batida que dá valor ao comando: só entra o que depende de
+    **outra pessoa** — review parado, PR sem merge, aprovação, acesso. Nota
+    para si mesmo não é daily.
+
+    Os pontos livres e o off-topic **não** estão aqui: são do usuário, vêm de
+    `notas/daily.md` e nunca passam por um serviço externo.
+    """
+
+    entreguei: tuple[str, ...] = ()
+    sigo_em: tuple[str, ...] = ()
+    preciso_de: tuple[str, ...] = ()
+    duvidas: tuple[str, ...] = ()
+
+
+class ErroDeDaily(RuntimeError):
+    """Falha ao montar o roteiro. A daily nasce sem ele, marcada."""
+
+
+@runtime_checkable
+class PortaDaily(Protocol):
+    """Transforma os eventos de uma janela no roteiro falado da daily."""
+
+    def resumir_daily(
+        self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...]
+    ) -> Daily:
+        """Devolve o que foi entregue, o que segue, o que espera alguém e as dúvidas.
+
+        Levanta `ErroDeDaily` quando o serviço falha.
         """
         ...

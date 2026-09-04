@@ -1,20 +1,26 @@
-"""Adaptador real da porta de resumo do dia: o Claude da conta do usuário.
+"""Adaptador real das duas perguntas sobre trabalho: o Claude da conta do usuário.
 
 Irmão de `resumo_claude`, com outra entrada: no lugar da transcrição de uma
-reunião chegam os eventos das fontes passivas do dia e as reuniões que já
-viraram nota no vault. A postura é a mesma — Claude Agent SDK, credenciais do
-`claude` CLI (a conta Pro/Max do usuário por OAuth, como manda o ADR 0001), um
-turno só, sem ferramenta nenhuma. Se uma chave de API paga estiver no ambiente,
-o adaptador **recusa a chamada** em vez de gastar dinheiro do usuário sem ele
-pedir.
+reunião chegam os eventos das fontes passivas e as reuniões que já viraram nota
+no vault. A postura é a mesma — Claude Agent SDK, credenciais do `claude` CLI
+(a conta Pro/Max do usuário por OAuth, como manda o ADR 0001), um turno só, sem
+ferramenta nenhuma. Se uma chave de API paga estiver no ambiente, o adaptador
+**recusa a chamada** em vez de gastar dinheiro do usuário sem ele pedir.
 
-O que se pede ao Claude não é uma lista reescrita: as listas cruas já ficam na
-nota, logo abaixo da narrativa. O que só ele consegue fazer é **ligar as fontes**
-— dizer que o commit da tarde é a issue que a reunião da manhã destravou.
+São duas perguntas porque são dois artefatos com recortes de tempo diferentes,
+e não um derivado do outro:
 
-Falhar aqui não custa o diário: `ErroDeResumoDoDia` é capturado pela costura, e
-a nota nasce com as listas cruas e a marca de que a narrativa faltou. Por isso
-toda mensagem de erro daqui é escrita para ser lida no aviso da nota.
+- `resumir_dia` escreve o **diário** de um dia civil. O que se pede não é uma
+  lista reescrita — as listas cruas já ficam na nota, logo abaixo da narrativa.
+  O que só o Claude consegue fazer é **ligar as fontes**: dizer que o commit da
+  tarde é a issue que a reunião da manhã destravou.
+- `resumir_daily` escreve o **roteiro falado** da daily, cobrindo tudo desde a
+  última fala — um dia, ou um fim de semana inteiro. O que se pede é separar o
+  trabalho **dele** do contexto do time e dizer o que espera outra pessoa.
+
+Falhar aqui não custa a nota: a costura captura o erro e o artefato nasce com as
+listas cruas e a marca do que faltou. Por isso toda mensagem de erro daqui é
+escrita para ser lida no aviso da nota.
 """
 
 from __future__ import annotations
@@ -36,7 +42,7 @@ from claude_agent_sdk import (
 )
 
 from .fontes import Evento
-from .portas import ErroDeResumoDoDia, ResumoDoDia
+from .portas import Daily, ErroDeDaily, ErroDeResumoDoDia, ResumoDoDia
 from .resumo_claude import VARIAVEIS_DE_API_PAGA
 
 _log = logging.getLogger("second_brain.resumo_do_dia")
@@ -101,14 +107,80 @@ vazio.
 - Uma lista vazia é uma resposta válida e melhor do que um item inventado.\
 """
 
+PROMPT_DA_DAILY = """\
+Você prepara o roteiro que um desenvolvedor vai FALAR na daily do time do dia, a \
+partir dos rastros que o trabalho dele deixou nas ferramentas: commits do git, \
+movimentação no Linear, conversas no Slack e as reuniões que já viraram nota no \
+vault.
+
+Os eventos cobrem tudo que aconteceu desde a última daily — pode ser um dia, \
+pode ser um fim de semana inteiro, pode ser uma semana de folga. Não diga "hoje" \
+nem "ontem": diga o que foi feito.
+
+Escreva em português do Brasil, na primeira pessoa e na voz de quem fala em voz \
+alta para o time. O usuário fala português com jargão técnico em inglês: \
+preserve esses termos exatamente como aparecem (deploy, rollback, review, sprint, \
+issue, daily, branch, merge, PR, bug). Nunca os traduza.
+
+Responda com um único objeto JSON, sem nenhum texto antes ou depois e sem cercas \
+de código, exatamente neste formato:
+
+{"entreguei": ["o que fechou ou andou"],
+ "sigo_em": ["o que continua agora"],
+ "preciso_de": ["o que espera outra pessoa"],
+ "duvidas": ["pergunta aberta no material"]}
+
+De quem é cada coisa — a regra que mais importa:
+- Os commits do git são DELE: a fonte já filtra por autor.
+- O Linear e o Slack trazem o time INTEIRO. Issue que outra pessoa moveu, \
+comentário que outra pessoa escreveu e mensagem de outra pessoa são CONTEXTO, \
+não trabalho dele.
+- "entreguei" e "sigo_em" são só o trabalho DELE. Quando não der para saber quem \
+fez, deixe de fora: uma daily curta e verdadeira é melhor que uma longa que \
+atribui a ele o trabalho de outra pessoa.
+- Movimentação alheia só entra na resposta se virar "preciso_de" (ele depende \
+dela para andar) ou "duvidas" (ela levanta uma pergunta para ele).
+
+O que vai em cada batida:
+- "entreguei": o que fechou ou andou de verdade, de três a cinco itens. Agrupe o \
+que é a mesma entrega em vez de listar commit por commit, e escreva o que outra \
+pessoa entenderia sem contexto. Frase curta, no passado: "subi a validação do \
+link coringa e fechei a FN-1610".
+- "sigo_em": o que ficou pela metade e continua agora — issue que terminou o \
+período em In Progress, branch sem PR, refatoração começada. De um a três itens, \
+no presente: "sigo nas FN-1617, FN-1618 e FN-1619, que ficaram em In Progress".
+- "preciso_de": SÓ o que depende de OUTRA PESSOA para andar — review parado, PR \
+sem merge, aprovação, acesso, resposta que não veio —, dizendo de quem ou de quê \
+é a dependência. "os PRs #1623 e #1628 estão aguardando merge" entra, porque quem \
+faz o merge é outra pessoa. Nota para si mesmo NÃO entra: "faltou exercitar o \
+estado expirado na validação" e "não fiz a comparação visual" dependem só dele e \
+ficam de fora da daily inteira. Se nada estiver esperando outra pessoa, devolva \
+lista vazia — dizer que não está bloqueado é uma daily melhor do que inventar um \
+bloqueio.
+- "duvidas": pergunta em aberto que apareceu no material e que vale levar ao \
+time — decisão sem dono, combinado ambíguo, erro sem explicação. Nunca invente \
+pergunta para preencher.
+
+Regras gerais:
+- Cada item é uma frase curta, dita em voz alta: o roteiro inteiro cabe em \
+sessenta segundos. Sem título, sem parágrafo e sem markdown dentro do item.
+- Registre apenas o que está nos eventos e nas reuniões listadas. Não invente, \
+não deduza o que não foi dito e não preencha uma batida só para ela não ficar \
+vazia.
+- Uma lista vazia é uma resposta válida e melhor do que um item inventado.\
+"""
+
 
 class ResumoDoDiaClaude:
-    """Porta de resumo do dia atendida pelo Claude da conta do usuário (OAuth).
+    """As portas de resumo do dia e da daily, pelo Claude da conta do usuário.
 
-    Levanta `ErroDeResumoDoDia` em qualquer falha — sem credencial, sem CLI,
-    tempo esgotado, dia grande demais ou resposta que não vira `ResumoDoDia`.
-    A costura do diário já sabe o que fazer com isso: escreve a nota com as
-    listas cruas e o aviso de que a narrativa faltou.
+    Um objeto só atende as duas porque é o mesmo serviço, a mesma credencial e
+    o mesmo teto de tamanho: o que muda é a pergunta e o formato da resposta.
+
+    Levanta `ErroDeResumoDoDia` (diário) ou `ErroDeDaily` (daily) em qualquer
+    falha — sem credencial, sem CLI, tempo esgotado, período grande demais ou
+    resposta que não vira o tipo esperado. As costuras já sabem o que fazer com
+    isso: escrevem a nota com as listas cruas e o aviso do que faltou.
     """
 
     def __init__(
@@ -149,6 +221,36 @@ class ResumoDoDiaClaude:
         )
         return resumo
 
+    def resumir_daily(
+        self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...]
+    ) -> Daily:
+        """Manda a janela ao Claude e devolve as quatro batidas do roteiro."""
+        pergunta = montar_pergunta_da_daily(eventos, reunioes)
+        self._recusar_periodo_longo(pergunta)
+
+        _log.info(
+            "Pedindo o roteiro da daily ao Claude (%d evento(s), %d reunião(ões), "
+            "%d caracteres, modelo: %s)...",
+            len(eventos),
+            len(reunioes),
+            len(pergunta),
+            self.modelo or "padrão da conta",
+        )
+        try:
+            resposta = self._conversar(pergunta, PROMPT_DA_DAILY)
+        except ErroDeResumoDoDia as erro:
+            raise ErroDeDaily(str(erro)) from erro
+        roteiro = interpretar_daily(resposta)
+        _log.info(
+            "Roteiro recebido: %d entregue(s), %d em andamento, %d esperando outra "
+            "pessoa, %d dúvida(s).",
+            len(roteiro.entreguei),
+            len(roteiro.sigo_em),
+            len(roteiro.preciso_de),
+            len(roteiro.duvidas),
+        )
+        return roteiro
+
     def _recusar_dia_longo(self, pergunta: str) -> None:
         if len(pergunta) <= self.limite_de_caracteres:
             return
@@ -159,7 +261,17 @@ class ResumoDoDiaClaude:
             f"restrinja o que é coletado em [privacidade].excluir ou nas fontes."
         )
 
-    def _conversar(self, pergunta: str) -> str:
+    def _recusar_periodo_longo(self, pergunta: str) -> None:
+        if len(pergunta) <= self.limite_de_caracteres:
+            return
+        raise ErroDeDaily(
+            f"Período grande demais para um roteiro em uma chamada só: "
+            f"{len(pergunta)} caracteres, limite {self.limite_de_caracteres}. "
+            f"A daily nasce com as listas cruas e sem roteiro; para caber, "
+            f"restrinja o que é coletado em [privacidade].excluir ou nas fontes."
+        )
+
+    def _conversar(self, pergunta: str, sistema: str = PROMPT_DO_SISTEMA) -> str:
         """Faz a chamada e devolve o texto cru da resposta.
 
         É o único ponto que toca a rede: os testes sem rede substituem este
@@ -169,7 +281,7 @@ class ResumoDoDiaClaude:
         try:
             return asyncio.run(
                 asyncio.wait_for(
-                    _conversar_async(pergunta, modelo=self.modelo),
+                    _conversar_async(pergunta, modelo=self.modelo, sistema=sistema),
                     timeout=self.timeout_s,
                 )
             )
@@ -232,6 +344,73 @@ def montar_pergunta(eventos: Sequence[Evento], reunioes: Sequence[str]) -> str:
     return "\n".join(linhas) + "\n"
 
 
+def montar_pergunta_da_daily(
+    eventos: Sequence[Evento], reunioes: Sequence[str]
+) -> str:
+    """O turno do usuário: a janela inteira desde a última daily.
+
+    Mesma lista cronológica do diário, com outra moldura: aqui o período pode
+    ter vários dias, e dizer isso é o que impede o Claude de escrever "hoje"
+    numa daily de segunda-feira que cobre o fim de semana.
+    """
+    linhas = [
+        "Tudo que aconteceu desde a última daily, em ordem cronológica, no "
+        "formato `DD/MM HH:MM [fonte] referência — título`:",
+        "",
+    ]
+    if eventos:
+        for evento in eventos:
+            linhas.extend(_linhas_do_evento(evento))
+    else:
+        linhas.append("(nenhum evento das fontes passivas neste período)")
+
+    linhas.extend(["", "Reuniões deste período já transcritas no vault:", ""])
+    if reunioes:
+        linhas.extend(f"- {_reuniao_legivel(reuniao)}" for reuniao in reunioes)
+    else:
+        linhas.append("(nenhuma reunião gravada neste período)")
+
+    return "\n".join(linhas) + "\n"
+
+
+def interpretar_daily(bruto: str) -> Daily:
+    """Traduz a resposta do Claude em `Daily`, ou levanta `ErroDeDaily`.
+
+    Um roteiro com as quatro batidas vazias vale como falha, e não como uma
+    daily curta: seções vazias sem aviso fariam a nota se passar por completa,
+    que é justamente o que ela promete nunca fazer.
+    """
+    try:
+        dados = _extrair_objeto(bruto)
+    except ErroDeResumoDoDia as erro:
+        raise ErroDeDaily(str(erro)) from erro
+
+    if not any(
+        chave in dados for chave in ("entreguei", "sigo_em", "preciso_de", "duvidas")
+    ):
+        _registrar_resposta_ilegivel(bruto)
+        raise ErroDeDaily(
+            "O Claude devolveu um JSON sem 'entreguei', 'sigo_em', 'preciso_de' "
+            f"nem 'duvidas' — resposta crua no log. Começo da resposta: {_trecho(bruto)!r}"
+        )
+
+    roteiro = Daily(
+        entreguei=_lista_de_textos(dados.get("entreguei")),
+        sigo_em=_lista_de_textos(dados.get("sigo_em")),
+        preciso_de=_lista_de_textos(dados.get("preciso_de")),
+        duvidas=_lista_de_textos(dados.get("duvidas")),
+    )
+    if not (
+        roteiro.entreguei or roteiro.sigo_em or roteiro.preciso_de or roteiro.duvidas
+    ):
+        _registrar_resposta_ilegivel(bruto)
+        raise ErroDeDaily(
+            "O Claude devolveu um roteiro de daily inteiramente vazio — resposta "
+            f"crua no log. Começo da resposta: {_trecho(bruto)!r}"
+        )
+    return roteiro
+
+
 def interpretar_resposta(bruto: str) -> ResumoDoDia:
     """Traduz a resposta do Claude em `ResumoDoDia`, ou levanta `ErroDeResumoDoDia`.
 
@@ -287,10 +466,12 @@ def registrar_custo(resultado: ResultMessage | None) -> None:
     )
 
 
-async def _conversar_async(pergunta: str, *, modelo: str | None) -> str:
+async def _conversar_async(
+    pergunta: str, *, modelo: str | None, sistema: str = PROMPT_DO_SISTEMA
+) -> str:
     """Um turno com o Claude, sem ferramentas e sem estado de projeto."""
     opcoes = ClaudeAgentOptions(
-        system_prompt=PROMPT_DO_SISTEMA,
+        system_prompt=sistema,
         model=modelo,
         # Resumir o dia é uma pergunta, não uma sessão de agente: sem
         # ferramentas, sem skills, sem CLAUDE.md nem settings da máquina, sem

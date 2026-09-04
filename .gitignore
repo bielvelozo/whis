@@ -16,3 +16,7 @@ gravacoes/
 
 # Vault de teste eventualmente criado na raiz
 vault/
+
+# Registro da orquestracao — local, nunca versionado
+/ORCHESTRATION.md
+/CHECKPOINT.md

@@ -15,16 +15,16 @@ janela, o tipo, os dois arquivos e o comportamento do comando.
 
 **Blocked by:** 01, 04
 
-**Status:** ready-for-agent
+**Status:** resolved
 
-- [ ] `portas.py`: `Daily` com `entreguei`, `sigo_em`, `preciso_de` e `duvidas`; `ResumoDoDia` **não** muda
-- [ ] `resumo_dia_claude.py`: método (ou porta irmã) que devolve `Daily` a partir dos eventos da janela, com prompt que separa **o trabalho dele** do **contexto do time**
-- [ ] `daily.py`: `gerar_daily(agora)` — janela da última daily de um dia anterior até agora, coleta, filtro de exclusão, reuniões, pontos do usuário, resumo, escrita; mesma degradação graciosa do diário
-- [ ] `vault.py`: zona `daily/` em `ESTRUTURA` e `ZONAS_DA_DAILY`; `montar_daily`; leitura do `ate` da daily anterior; leitura dos itens desmarcados de `notas/daily.md`; escrita em `notas/daily.md` **só** pelo `--anotar`
-- [ ] Subcomando `second-brain daily [--anotar TEXTO] [--fakes] [--simular]`, imprimindo o roteiro pronto para ler em voz alta
-- [ ] O que reaproveita coleta/filtro/reuniões com `diario.py` é **fatorado**, não duplicado — os 39 testes de `test_diario.py` continuam verdes sem edição
-- [ ] Testes de comportamento: a janela ancora na daily anterior; segunda-feira cobre o fim de semana; rodar duas vezes no mesmo dia mantém o `desde` e estende o `ate`; a primeira daily de todas cai para 24h e diz isso; item desmarcado aparece e item marcado não; `--anotar` cria e acrescenta em `notas/daily.md`; seção manual vazia não aparece; a daily escreve **só** em `daily/` (e em `notas/daily.md` apenas com `--anotar`)
-- [ ] Suíte inteira verde (**465 hoje**, 6 desselecionados), sem editar teste existente
+- [x] `portas.py`: `Daily` com `entreguei`, `sigo_em`, `preciso_de` e `duvidas`; `ResumoDoDia` **não** muda
+- [x] `resumo_dia_claude.py`: método (ou porta irmã) que devolve `Daily` a partir dos eventos da janela, com prompt que separa **o trabalho dele** do **contexto do time**
+- [x] `daily.py`: `gerar_daily(agora)` — janela da última daily de um dia anterior até agora, coleta, filtro de exclusão, reuniões, pontos do usuário, resumo, escrita; mesma degradação graciosa do diário
+- [x] `vault.py`: zona `daily/` em `ESTRUTURA` e `ZONAS_DA_DAILY`; `montar_daily`; leitura do `ate` da daily anterior; leitura dos itens desmarcados de `notas/daily.md`; escrita em `notas/daily.md` **só** pelo `--anotar`
+- [x] Subcomando `second-brain daily [--anotar TEXTO] [--fakes] [--simular]`, imprimindo o roteiro pronto para ler em voz alta
+- [x] O que reaproveita coleta/filtro/reuniões com `diario.py` é **fatorado**, não duplicado — os 39 testes de `test_diario.py` continuam verdes sem edição
+- [x] Testes de comportamento: a janela ancora na daily anterior; segunda-feira cobre o fim de semana; rodar duas vezes no mesmo dia mantém o `desde` e estende o `ate`; a primeira daily de todas cai para 24h e diz isso; item desmarcado aparece e item marcado não; `--anotar` cria e acrescenta em `notas/daily.md`; seção manual vazia não aparece; a daily escreve **só** em `daily/` (e em `notas/daily.md` apenas com `--anotar`)
+- [x] Suíte inteira verde (**465 hoje**, 6 desselecionados), sem editar teste existente
 
 ## Notas para o executor
 
@@ -53,3 +53,36 @@ janela, o tipo, os dois arquivos e o comportamento do comando.
 - **Nada é agendado.** O usuário decidiu rodar na hora. Não crie tarefa do Windows.
 - O diário continua existindo como comando e **deixa de ser agendado** — isso é da camada 06,
   não sua. Não mexa em `automacao.py`.
+
+## Comments
+
+**Camada 07 entregue** — `daily.py`, `coleta.py` (a leitura de fontes fatorada e compartilhada
+com `diario.py`), mais `portas.py`, `vault.py`, `resumo_dia_claude.py`, `__main__.py` e 73
+testes novos. Suite em **538 verdes**, 7 desselecionados. Os 40 testes de `test_diario.py`
+continuam verdes **sem edicao** — a fatoracao nao mexeu no comportamento da costura irma.
+
+O executor **morreu no fim** (stall de 600s do watchdog), enquanto acrescentava um teste de rede
+opcional para o prompt. O trabalho ja estava completo e verde; revisei e fechei direto, sem
+relancar executor, dentro da politica de execucao direta aprovada.
+
+**Fechada pelo orquestrador.** Provas executadas por mim, nao reportadas:
+
+- **Janela ancorada**: gerei uma daily na sexta as 09:00 e outra na segunda as 09:00. A de
+  segunda ancorou exatamente no `ate` da de sexta (`Fri 04/09 09:00 -> Mon 07/09 09:00`) e trouxe
+  os commits de **sabado e domingo** — o fim de semana nao caiu no vao.
+- **Primeira daily**: sem nota anterior, cai para 24h e a nota **diz isso** em portugues.
+- **Rodar de novo no mesmo dia**: manteve o `desde` e estendeu o `ate` (`09:00 -> 11:00`), com
+  **um arquivo por dia** em `daily/`.
+- **`notas/daily.md` intacto**: escrevi o arquivo a mao com item marcado, item desmarcado e um
+  comentario HTML; depois de `gerar_daily` o hash do arquivo **nao mudou**. So os desmarcados
+  entraram na nota; o marcado ficou de fora.
+- **`--anotar` e append puro**: o comentario do usuario, o item marcado e o texto anterior
+  sobreviveram, e o texto antigo continua sendo prefixo do novo.
+- **Zona de propriedade**: a daily escreveu so em `daily/`; `notas/ideias.md` e a nota de reuniao
+  intactas; `escrever(..., zonas=ZONAS_DA_DAILY)` recusa `diario/` e `notas/`.
+- **Mutacoes**: perder a ancora na daily anterior derruba 2 testes; fazer a janela escorregar ao
+  rodar de novo no mesmo dia derruba outros 2.
+
+Nao provado: o texto real do Claude para as batidas. O teste de rede gasta a assinatura do
+usuario e nao foi rodado; o executor morreu justamente ao acrescenta-lo, entao ele **nao existe**.
+Anotado no DEFERRED.

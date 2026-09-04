@@ -1,8 +1,8 @@
 r"""Entrada de linha de comando do Second Brain.
 
-Sete subcomandos sobre a mesma configuração local e sobre as duas costuras do
-projeto — `pipeline.processar` para a reunião, `diario.gerar_diario` para as
-fontes passivas::
+Oito subcomandos sobre a mesma configuração local e sobre as três costuras do
+projeto — `pipeline.processar` para a reunião, `diario.gerar_diario` para o dia
+civil, `daily.gerar_daily` para o roteiro falado::
 
     python -m second_brain init
     python -m second_brain bandeja
@@ -11,6 +11,7 @@ fontes passivas::
     python -m second_brain reprocessar [<pasta> ...]
     python -m second_brain limpar [--simular]
     python -m second_brain diario [YYYY-MM-DD] [--simular]
+    python -m second_brain daily [--anotar TEXTO] [--simular]
 
 Por padrão o comando usa os **adaptadores reais** — Deepgram para o STT, Claude
 (conta do usuário, OAuth) para os resumos, git/Linear/Slack para as fontes.
@@ -31,23 +32,35 @@ from pathlib import Path
 
 from . import registro as _registro
 from . import retencao as _retencao
+from . import vault as _vault
+from .coleta import TodasAsFontesFalharam
 from .configuracao import (
     Configuracao,
     ConfiguracaoInvalida,
     caminho_padrao,
     carregar,
 )
-from .diario import (
-    NenhumaFonteConfigurada,
-    ResultadoDoDiario,
-    TodasAsFontesFalharam,
-    gerar_diario,
+from .daily import ResultadoDaDaily, gerar_daily
+from .diario import NenhumaFonteConfigurada, ResultadoDoDiario, gerar_diario
+from .fakes import (
+    DailyFake,
+    ResumoDoDiaFake,
+    ResumoFake,
+    STTFake,
+    fontes_de_exemplo,
+    fontes_de_exemplo_da_daily,
 )
-from .fakes import ResumoDoDiaFake, ResumoFake, STTFake, fontes_de_exemplo
 from .fontes import PortaFonte, data_do_diario
 from .gravacao import GravacaoInvalida
 from .pipeline import processar
-from .portas import ErroDeResumo, ErroDeSTT, PortaResumo, PortaResumoDoDia, PortaSTT
+from .portas import (
+    ErroDeResumo,
+    ErroDeSTT,
+    PortaDaily,
+    PortaResumo,
+    PortaResumoDoDia,
+    PortaSTT,
+)
 
 _log = logging.getLogger("second_brain")
 
@@ -157,6 +170,33 @@ def montar_resumo_do_dia(
     if fakes:
         _log.warning("Usando resumo do dia FAKE — nada é enviado ao Claude.")
         return ResumoDoDiaFake()
+
+    from .resumo_dia_claude import ResumoDoDiaClaude
+
+    return ResumoDoDiaClaude(modelo=configuracao.claude_modelo or None)
+
+
+def montar_fontes_da_daily(
+    configuracao: Configuracao, *, fakes: bool = False
+) -> list[PortaFonte]:
+    """As mesmas fontes do diário; só o `--fakes` muda.
+
+    A janela da daily não é um dia civil, então as fontes fake do diário — que
+    trazem os exemplos numa hora fixa — cairiam fora dela quase sempre.
+    """
+    if fakes:
+        _log.warning("Usando fontes FAKE — nada é lido do git, do Linear nem do Slack.")
+        return list(fontes_de_exemplo_da_daily())
+    return montar_fontes(configuracao)
+
+
+def montar_roteiro_da_daily(
+    configuracao: Configuracao, *, fakes: bool = False
+) -> PortaDaily:
+    """O roteiro da daily: o Claude da conta do usuário, ou o fake."""
+    if fakes:
+        _log.warning("Usando roteiro da daily FAKE — nada é enviado ao Claude.")
+        return DailyFake()
 
     from .resumo_dia_claude import ResumoDoDiaClaude
 
@@ -327,6 +367,90 @@ def _relatar_diario(resultado: ResultadoDoDiario) -> None:
         print(f"Fonte '{falha.fonte}' não entrou: {falha.motivo}")
     if resultado.falha_do_resumo:
         print(f"Sem narrativa neste diário: {resultado.falha_do_resumo}")
+
+
+# -- daily ------------------------------------------------------------------
+
+
+def _comando_daily(args: argparse.Namespace) -> int:
+    """Lê da última daily até agora, escreve `daily/` e imprime o roteiro.
+
+    O que sai no terminal é o que o usuário lê em voz alta um minuto depois; a
+    nota guarda o mesmo roteiro com as listas cruas embaixo. Nada é agendado:
+    quem decide a hora é ele.
+    """
+    configuracao = _configuracao(args)
+    if args.anotar is not None:
+        return _anotar_ponto(configuracao, args.anotar)
+
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    fontes = montar_fontes_da_daily(configuracao, fakes=args.fakes)
+    # Em simulação o roteiro não é pedido; o fake entra como marcador para que
+    # conferir o filtro não dependa de credencial nem do adaptador do Claude.
+    roteiro = montar_roteiro_da_daily(configuracao, fakes=args.fakes or args.simular)
+
+    resultado = gerar_daily(
+        datetime.now().astimezone(),
+        configuracao=configuracao,
+        fontes=fontes,
+        roteiro=roteiro,
+        simular=args.simular,
+    )
+    _relatar_daily(resultado)
+    return 0
+
+
+def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
+    """Acrescenta um ponto em `notas/daily.md` e sai, sem coletar nada."""
+    if not texto.strip():
+        _log.error("Nada a anotar: --anotar precisa de um texto.")
+        return 1
+    raiz = _vault.preparar(configuracao.vault)
+    arquivo = _vault.anotar_ponto(raiz, texto)
+    print(f"Anotado em {arquivo}")
+    print("Ele entra na próxima daily enquanto o checkbox estiver desmarcado.")
+    return 0
+
+
+def _relatar_daily(resultado: ResultadoDaDaily) -> None:
+    if resultado.vazio:
+        print("Nada aconteceu desde a última daily — nenhuma nota foi escrita.")
+        print(_vault.cobertura_da_janela(resultado.janela))
+        return
+
+    print(f"Daily — {resultado.janela.data.isoformat()}")
+    print(_vault.cobertura_da_janela(resultado.janela))
+    print()
+
+    for titulo, itens in _vault.secoes_do_roteiro(resultado.roteiro, resultado.pontos):
+        print(f"{titulo}:")
+        for item in itens:
+            print(f"  - {item}")
+        if not itens:
+            print("  (nada)")
+        print()
+
+    if resultado.simulado:
+        print("Simulação — o Claude não foi chamado e nada foi escrito.")
+        for evento in resultado.eventos:
+            referencia = f" ({evento.referencia})" if evento.referencia else ""
+            print(
+                f"  {evento.momento:%d/%m %H:%M}  [{evento.fonte}]{referencia} "
+                f"{evento.titulo}"
+            )
+        if not resultado.eventos:
+            print("  (nenhum evento)")
+    else:
+        print(f"Nota: {resultado.nota}")
+
+    for reuniao in resultado.reunioes:
+        print(f"  reunião: {reuniao}")
+    if resultado.excluidos:
+        print(f"O filtro de exclusão removeu {resultado.excluidos} evento(s).")
+    for falha in resultado.fontes_com_falha:
+        print(f"Fonte '{falha.fonte}' não entrou: {falha.motivo}")
+    if resultado.falha_do_roteiro:
+        print(f"Sem roteiro nesta daily: {resultado.falha_do_roteiro}")
 
 
 # -- bandeja ----------------------------------------------------------------
@@ -621,6 +745,29 @@ def construir_parser() -> argparse.ArgumentParser:
         help="mostra o que entraria no diário, sem enviar ao Claude e sem escrever",
     )
     diario_cmd.set_defaults(funcao=_comando_diario)
+
+    daily_cmd = subcomandos.add_parser(
+        "daily",
+        help="monta o roteiro da daily desde a última fala e escreve em daily/",
+    )
+    _acrescentar_config(daily_cmd)
+    daily_cmd.add_argument(
+        "--anotar",
+        metavar="TEXTO",
+        default=None,
+        help="acrescenta um ponto em notas/daily.md e sai, sem coletar nada",
+    )
+    daily_cmd.add_argument(
+        "--fakes",
+        action="store_true",
+        help="usa fontes e roteiro fake em vez de git, Linear, Slack e Claude",
+    )
+    daily_cmd.add_argument(
+        "--simular",
+        action="store_true",
+        help="mostra o que entraria na daily, sem enviar ao Claude e sem escrever",
+    )
+    daily_cmd.set_defaults(funcao=_comando_daily)
 
     bandeja_cmd = subcomandos.add_parser(
         "bandeja",

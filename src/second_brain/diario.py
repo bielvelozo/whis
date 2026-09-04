@@ -18,27 +18,27 @@ from datetime import date
 from pathlib import Path
 
 from . import vault as _vault
+# `FalhaDeFonte` e `TodasAsFontesFalharam` são re-exportados de propósito: quem
+# trata o diário os conhece por aqui desde a camada 01 e não precisa saber que
+# eles passaram a morar na coleta compartilhada com a daily.
+from .coleta import FalhaDeFonte, TodasAsFontesFalharam, coletar
 from .configuracao import Configuracao
-from .fontes import Evento, ErroDeFonte, Janela, PortaFonte, filtrar, janela_do_dia, ordenar
+from .fontes import Evento, Janela, PortaFonte, janela_do_dia
 from .portas import ErroDeResumoDoDia, PortaResumoDoDia, ResumoDoDia
+
+__all__ = [
+    "FalhaDeFonte",
+    "NenhumaFonteConfigurada",
+    "ResultadoDoDiario",
+    "TodasAsFontesFalharam",
+    "gerar_diario",
+]
 
 _log = logging.getLogger("second_brain.diario")
 
 
-class TodasAsFontesFalharam(RuntimeError):
-    """Nenhuma fonte respondeu — nada é escrito, o comando termina em erro."""
-
-
 class NenhumaFonteConfigurada(RuntimeError):
     """Não há fonte ligada na configuração para ler."""
-
-
-@dataclass(frozen=True)
-class FalhaDeFonte:
-    """Uma fonte que não pôde ser lida, com o motivo que vai para a nota."""
-
-    fonte: str
-    motivo: str
 
 
 @dataclass(frozen=True)
@@ -79,41 +79,21 @@ def gerar_diario(
     janela = janela_do_dia(data, configuracao.diario_inicio_do_dia)
     _log.info("Diário de %s — janela %s", data.isoformat(), janela.como_texto())
 
-    coletados, lidas, falhas = _coletar(fontes, janela)
-    # O filtro age aqui e em nenhum outro lugar: sobre o que toda fonte
-    # devolveu, antes do resumo e antes do vault. Espalhá-lo pelos coletores
-    # faria a régua depender de nenhum deles esquecer de aplicá-la.
-    eventos, excluidos = filtrar(coletados, configuracao.privacidade_excluir)
-    if excluidos:
-        _log.info(
-            "Filtro de exclusão removeu %d evento(s) — não vão ao Claude nem ao vault.",
-            excluidos,
-        )
-    eventos = ordenar(eventos)
-
-    reunioes = _vault.reunioes_na_janela(configuracao.vault, janela)
-    _log.info("%d reunião(ões) do dia já no vault.", len(reunioes))
-
-    if falhas and not lidas:
-        raise TodasAsFontesFalharam(
-            "Nenhuma fonte respondeu, então nada foi escrito — um diário ausente "
-            "é mais honesto que um vazio. Motivos: "
-            + "; ".join(f"{falha.fonte}: {falha.motivo}" for falha in falhas)
-        )
+    colhido = coletar(fontes, janela, configuracao=configuracao)
 
     parcial = ResultadoDoDiario(
         data=data,
         janela=janela,
         nota=None,
-        eventos=eventos,
-        excluidos=excluidos,
-        fontes_lidas=lidas,
-        fontes_com_falha=falhas,
-        reunioes=reunioes,
+        eventos=colhido.eventos,
+        excluidos=colhido.excluidos,
+        fontes_lidas=colhido.fontes_lidas,
+        fontes_com_falha=colhido.fontes_com_falha,
+        reunioes=colhido.reunioes,
         resumo=None,
     )
 
-    if not eventos and not reunioes:
+    if colhido.vazia():
         _log.info("Nada aconteceu em %s — nenhuma nota foi escrita.", data.isoformat())
         return replace(parcial, vazio=True)
 
@@ -121,7 +101,7 @@ def gerar_diario(
         _log.info("Simulação — o resumo não foi chamado e nada foi escrito.")
         return replace(parcial, simulado=True)
 
-    resumo_do_dia, falha_do_resumo = _resumir(resumo, eventos, reunioes)
+    resumo_do_dia, falha_do_resumo = _resumir(resumo, colhido.eventos, colhido.reunioes)
 
     raiz = _vault.preparar(configuracao.vault)
     caminho = _vault.caminho_do_diario(data)
@@ -131,10 +111,10 @@ def gerar_diario(
         _vault.montar_diario(
             data=data,
             janela=janela,
-            eventos=eventos,
-            reunioes=reunioes,
-            fontes_lidas=lidas,
-            fontes_com_falha=falhas,
+            eventos=colhido.eventos,
+            reunioes=colhido.reunioes,
+            fontes_lidas=colhido.fontes_lidas,
+            fontes_com_falha=colhido.fontes_com_falha,
             resumo=resumo_do_dia,
             falha_do_resumo=falha_do_resumo,
         ),
@@ -145,27 +125,6 @@ def gerar_diario(
     return replace(
         parcial, nota=nota, resumo=resumo_do_dia, falha_do_resumo=falha_do_resumo
     )
-
-
-def _coletar(
-    fontes: Sequence[PortaFonte], janela: Janela
-) -> tuple[tuple[Evento, ...], tuple[str, ...], tuple[FalhaDeFonte, ...]]:
-    """Lê as fontes na ordem recebida; uma que falha não impede as outras."""
-    eventos: list[Evento] = []
-    lidas: list[str] = []
-    falhas: list[FalhaDeFonte] = []
-    for fonte in fontes:
-        nome = getattr(fonte, "nome", type(fonte).__name__)
-        try:
-            colhidos = tuple(fonte.coletar(janela))
-        except ErroDeFonte as erro:
-            _log.error("Fonte '%s' não entrou no diário: %s", nome, erro)
-            falhas.append(FalhaDeFonte(fonte=nome, motivo=str(erro)))
-            continue
-        _log.info("Fonte '%s': %d evento(s).", nome, len(colhidos))
-        eventos.extend(colhidos)
-        lidas.append(nome)
-    return tuple(eventos), tuple(lidas), tuple(falhas)
 
 
 def _resumir(
