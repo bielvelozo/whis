@@ -390,3 +390,38 @@ def test_o_prompt_manda_calar_na_duvida():
     """Errar para o silêncio é o certo aqui: o roteiro é falado para o time."""
     assert "Na dúvida sobre se uma conversa é trabalho, deixe de fora" in PROMPT_DA_DAILY
     assert "não é citado nem de passagem" in PROMPT_DA_DAILY
+
+
+# -- a linha que diz o que a daily cobre --------------------------------------
+
+
+def test_rodar_de_novo_no_mesmo_dia_nao_afirma_que_a_janela_tem_24_horas():
+    """A primeira execução ancora 24h atrás; a segunda estende o fim.
+
+    A linha antiga dizia "as últimas 24 horas" em toda daily marcada como
+    primeira, inclusive na segunda execução do dia — que já cobria 34 horas na
+    máquina do usuário.
+    """
+    from second_brain.daily import JanelaDaDaily
+    from second_brain.vault import cobertura_da_janela
+
+    inicio = datetime.now().astimezone() - timedelta(hours=34)
+    janela = JanelaDaDaily(
+        data=inicio.date(), desde=inicio, ate=datetime.now().astimezone(), primeira=True
+    )
+
+    linha = cobertura_da_janela(janela)
+
+    assert "primeira daily" in linha, "a explicação da âncora continua"
+    assert "as últimas 24 horas" not in linha
+    assert "24 horas antes da primeira execução" in linha
+
+
+def test_a_linha_de_cobertura_sempre_diz_de_quando_a_daily_fala():
+    from second_brain.daily import JanelaDaDaily
+    from second_brain.vault import cobertura_da_janela
+
+    desde = datetime.now().astimezone() - timedelta(hours=5)
+    janela = JanelaDaDaily(data=desde.date(), desde=desde, ate=datetime.now().astimezone())
+
+    assert f"{desde:%d/%m %H:%M}" in cobertura_da_janela(janela)

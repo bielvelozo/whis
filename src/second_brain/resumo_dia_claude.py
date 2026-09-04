@@ -477,18 +477,20 @@ def interpretar_resposta(bruto: str) -> ResumoDoDia:
 
 
 def registrar_custo(resultado: ResultMessage | None) -> None:
-    """Deixa no log quanto esta chamada consumiu da assinatura do usuário.
+    """Deixa no log o peso desta chamada na assinatura do usuário.
 
-    O diário roda todo dia por tarefa agendada. Sem esta linha não há como
-    responder, um mês depois, quanto o hábito custou — e a única resposta
-    honesta seria "não sei".
+    A conta é por **assinatura**, via OAuth: nada é cobrado por token, e o
+    valor em dólar **não é uma cobrança**. Ele é o que a mesma chamada custaria
+    na API paga, e serve como medida relativa — é assim que se responde, um mês
+    depois, se o hábito ficou pesado na cota de uso.
     """
     if resultado is None:
         return
     uso = resultado.usage or {}
     _log.info(
-        "Resumo do dia: custo %s, %s tokens de entrada (%s lidos de cache), "
-        "%s de saída, em %s ms.",
+        "Resumo do dia: equivalente a %s na tabela da API — a assinatura não "
+        "cobra por token —, %s tokens de entrada (%s lidos de cache), %s de "
+        "saída, em %s ms.",
         _dinheiro(resultado.total_cost_usd),
         uso.get("input_tokens", "?"),
         uso.get("cache_read_input_tokens", "?"),

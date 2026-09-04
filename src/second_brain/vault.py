@@ -602,12 +602,17 @@ def cobertura_da_janela(janela: "JanelaDaDaily") -> str:
     """A linha "Cobre de ... até agora" — obrigatória na nota e no terminal.
 
     Sem ela o usuário lê a daily de sexta numa segunda achando que é de ontem.
+
+    A frase da primeira daily não afirma que o período tem 24 horas: rodar de
+    novo no mesmo dia mantém o início e estende o fim, e a janela passa disso.
+    O que ela explica é de onde veio a âncora.
     """
     quando = f"{_dia_curto(janela.desde)}, {janela.desde:%d/%m %H:%M}"
     if janela.primeira:
         return (
-            f"Cobre de {quando}, até agora — as últimas 24 horas, porque esta é a "
-            f"primeira daily e não havia nota anterior para ancorar a janela."
+            f"Cobre de {quando}, até agora — esta é a primeira daily, e sem nota "
+            f"anterior para ancorar a janela ela começa 24 horas antes da primeira "
+            f"execução."
         )
     return f"Cobre de {quando}, até agora."
 

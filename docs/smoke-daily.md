@@ -156,8 +156,9 @@ Um minuto antes de falar:
 python -m second_brain daily
 ```
 
-Este passo **chama o Claude** (a conta da sua assinatura, ~US$ 0,42 num dia
-cheio) e **escreve** `daily/YYYY-MM-DD.md`. O terminal imprime o roteiro
+Este passo **chama o Claude** pela sua assinatura e **escreve**
+`daily/YYYY-MM-DD.md`. Não há cobrança por token; o que ele consome é cota de
+uso do plano. O terminal imprime o roteiro
 pronto para ler em voz alta.
 
 **Sucesso:**
@@ -244,13 +245,24 @@ Abra `%APPDATA%\second-brain\bandeja.log`. Procure a última linha
 nasceu, e as linhas acima dela dizem qual fonte falhou e por quê, com o mesmo
 texto que iria para o aviso da nota.
 
-## Custo
+## Quanto pesa na assinatura
 
-Uma chamada ao Claude por daily, pela assinatura — **US$ 0,4235 medidos** em
-2026-09-04, num período de 262 eventos (52 commits em 29 repositórios + 210 do
-Linear), 69 mil caracteres de pergunta e 38 segundos. `--simular` e `--anotar`
-custam zero.
+Uma chamada ao Claude por daily. **Nada é cobrado por token**: o adaptador usa
+a sua conta por OAuth e recusa qualquer API key paga que esteja no ambiente. O
+que a daily consome é **cota de uso do plano**.
 
-A linha de custo no log traz `total_cost_usd`, que é o número confiável; os
-tokens de entrada que ela mostra vêm subnotificados (o volume real cai em
-`cache_creation_input_tokens`, que a linha não lê).
+O valor em dólar no log é o que a mesma chamada custaria **na API paga**, não
+uma fatura. Serve como medida relativa, e é o jeito de saber se o hábito ficou
+pesado. Duas execuções reais medidas:
+
+| quando | eventos | pergunta | equivalente |
+|---|---|---|---|
+| 2026-09-04, sem Slack | 262 | 69 mil caracteres | US$ 0,42 |
+| 2026-09-04, com Slack | 603 | 143 mil caracteres | US$ 0,84 |
+
+Ligar o Slack dobrou o peso. `--simular` e `--anotar` não chamam o Claude e
+pesam zero.
+
+Os tokens de entrada que a linha mostra vêm subnotificados: o volume real cai
+em `cache_creation_input_tokens`, que ela não lê. O equivalente em dólar está
+certo.
