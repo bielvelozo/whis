@@ -156,9 +156,10 @@ Um minuto antes de falar:
 python -m second_brain daily
 ```
 
-Este passo **chama o Claude** pela sua assinatura e **escreve**
-`daily/YYYY-MM-DD.md`. Não há cobrança por token; o que ele consome é cota de
-uso do plano. O terminal imprime o roteiro
+Este passo **chama o Claude** pela sua assinatura e escreve **dois** arquivos:
+`daily/YYYY-MM-DD.md`, que é o registro durável, e `daily/YYYY-MM-DD.html`, que
+é a página para você ler em voz alta. Não há cobrança por token; o que ele
+consome é cota de uso do plano. O terminal imprime o roteiro
 pronto para ler em voz alta.
 
 **Sucesso:**
@@ -199,7 +200,27 @@ aviso `> Git não entrou nesta daily: Raiz de desenvolvimento não encontrada...
 abaixo do título, e o código de saída é `3`. O mesmo motivo, palavra por
 palavra, está em `bandeja.log`.
 
-## Passo 5 — Ler no Obsidian
+## Passo 5 — Ler a página, que é o que você abre para falar
+
+O comando imprime os dois caminhos. Abra o `.html` no navegador:
+
+```
+start C:\Users\<voce>\second-brain-vault\daily\2026-09-04.html
+```
+
+**Sucesso:**
+
+- o roteiro ocupa a tela, em corpo grande, na ordem de falar;
+- a linha "Cobre de ..." está logo abaixo do título;
+- as listas cruas estão **recolhidas**, uma por fonte, com a contagem no rótulo
+  — abra uma só quando quiser conferir de onde veio uma afirmação;
+- os links do roteiro são clicáveis e abrem em outra aba;
+- o rodapé diz quantos eventos ficaram só na nota por serem de projeto pessoal.
+
+A página é autossuficiente: o estilo vai dentro dela e nada é buscado na rede.
+Funciona sem internet, que é o caso de quem abre no meio de uma reunião.
+
+## Passo 5b — Ler no Obsidian
 
 Abra `daily/YYYY-MM-DD.md` no vault.
 
@@ -210,7 +231,8 @@ Abra `daily/YYYY-MM-DD.md` no vault.
 - a linha `Cobre de ...` bate com a do terminal;
 - o roteiro está em cima e, da `## Reuniões` para baixo, as listas cruas por
   fonte, agrupadas por repositório ou projeto — é isso que faz da daily o
-  registro durável do seu período;
+  registro durável do seu período, e é por isso que a nota continua existindo
+  ao lado da página;
 - os wikilinks de `## Reuniões` abrem as notas de reunião;
 - `notas/daily.md` continua exatamente como você deixou: o checkbox do seu
   ponto **segue desmarcado**. O agente nunca marca nada.

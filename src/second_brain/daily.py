@@ -22,6 +22,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from . import pagina_da_daily as _pagina
 from . import vault as _vault
 from .coleta import FalhaDeFonte, coletar
 from .configuracao import Configuracao
@@ -54,6 +55,8 @@ class ResultadoDaDaily:
 
     janela: JanelaDaDaily
     nota: Path | None
+    #: A mesma daily como página, ao lado da nota. `None` em simulação e vazio.
+    pagina: Path | None
     eventos: tuple[Evento, ...]
     excluidos: int
     fontes_lidas: tuple[str, ...]
@@ -172,6 +175,7 @@ def gerar_daily(
     parcial = ResultadoDaDaily(
         janela=janela,
         nota=None,
+        pagina=None,
         eventos=colhido.eventos,
         excluidos=colhido.excluidos,
         fontes_lidas=colhido.fontes_lidas,
@@ -224,9 +228,27 @@ def gerar_daily(
         ),
         zonas=_vault.ZONAS_DA_DAILY,
     )
-    _log.info("Daily disponível no vault: %s", caminho)
+    pagina = _vault.escrever(
+        raiz,
+        _vault.caminho_da_pagina_da_daily(janela.data),
+        _pagina.montar_pagina(
+            janela=janela,
+            eventos=colhido.eventos,
+            reunioes=colhido.reunioes,
+            fontes_lidas=colhido.fontes_lidas,
+            fontes_com_falha=colhido.fontes_com_falha,
+            roteiro=falado,
+            pontos=pontos,
+            falha_do_roteiro=falha,
+            calados=len(calados),
+        ),
+        zonas=_vault.ZONAS_DA_DAILY,
+    )
+    _log.info("Daily disponível no vault: %s (e a página ao lado)", caminho)
 
-    return replace(parcial, nota=nota, roteiro=falado, falha_do_roteiro=falha)
+    return replace(
+        parcial, nota=nota, pagina=pagina, roteiro=falado, falha_do_roteiro=falha
+    )
 
 
 def _montar_roteiro(

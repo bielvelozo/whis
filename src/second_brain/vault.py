@@ -339,7 +339,7 @@ def _listas_cruas(
     ]
 
     motivos = {falha.fonte: falha.motivo for falha in fontes_com_falha}
-    for fonte in _fontes_em_ordem(fontes_lidas, [falha.fonte for falha in fontes_com_falha]):
+    for fonte in fontes_em_ordem(fontes_lidas, [falha.fonte for falha in fontes_com_falha]):
         linhas.extend([f"## {nome_legivel(fonte)}", ""])
         if fonte in motivos:
             linhas.extend([f"_Não foi possível ler esta fonte: {motivos[fonte]}_", ""])
@@ -366,7 +366,7 @@ def _avisos(
     return avisos
 
 
-def _fontes_em_ordem(lidas: Sequence[str], com_falha: Sequence[str]) -> list[str]:
+def fontes_em_ordem(lidas: Sequence[str], com_falha: Sequence[str]) -> list[str]:
     """As fontes que aparecem na nota, sempre na ordem git, Linear, Slack.
 
     Fonte não configurada não entra em nenhuma das duas listas e por isso não
@@ -377,25 +377,42 @@ def _fontes_em_ordem(lidas: Sequence[str], com_falha: Sequence[str]) -> list[str
     return conhecidas + [fonte for fonte in presentes if fonte not in ORDEM_DAS_FONTES]
 
 
-def _secao_da_fonte(fonte: str, eventos: Sequence[Evento]) -> list[str]:
-    da_fonte = [evento for evento in eventos if evento.fonte == fonte]
-    if not da_fonte:
-        return ["_(nada registrado)_", ""]
+def agrupar_por_referencia(
+    fonte: str, eventos: Sequence[Evento]
+) -> list[tuple[str | None, list[Evento]]]:
+    """Os eventos de uma fonte, por referência, na ordem da primeira aparição.
 
-    linhas: list[str] = []
-    for evento in da_fonte:
-        if not evento.referencia:
-            linhas.extend(_linhas_do_evento(evento))
-    if linhas:
-        linhas.append("")
+    Devolve dados, não markdown, porque a nota e a página HTML mostram o mesmo
+    agrupamento de jeitos diferentes — e a regra de agrupar é do contrato, não
+    de um formato. `None` é o grupo dos eventos sem referência, que vem primeiro.
+    """
+    da_fonte = [evento for evento in eventos if evento.fonte == fonte]
+    grupos: list[tuple[str | None, list[Evento]]] = []
+
+    soltos = [evento for evento in da_fonte if not evento.referencia]
+    if soltos:
+        grupos.append((None, soltos))
 
     for referencia in dict.fromkeys(
         evento.referencia for evento in da_fonte if evento.referencia
     ):
-        linhas.extend([f"### {referencia}", ""])
-        for evento in da_fonte:
-            if evento.referencia == referencia:
-                linhas.extend(_linhas_do_evento(evento))
+        grupos.append(
+            (referencia, [e for e in da_fonte if e.referencia == referencia])
+        )
+    return grupos
+
+
+def _secao_da_fonte(fonte: str, eventos: Sequence[Evento]) -> list[str]:
+    grupos = agrupar_por_referencia(fonte, eventos)
+    if not grupos:
+        return ["_(nada registrado)_", ""]
+
+    linhas: list[str] = []
+    for referencia, do_grupo in grupos:
+        if referencia is not None:
+            linhas.extend([f"### {referencia}", ""])
+        for evento in do_grupo:
+            linhas.extend(_linhas_do_evento(evento))
         linhas.append("")
     return linhas
 
@@ -426,6 +443,15 @@ class PontosDaDaily:
 def caminho_da_daily(data: date) -> str:
     """Caminho relativo da daily: um arquivo por dia, sem hora no nome."""
     return f"{PASTA_DAILY}/{data.isoformat()}.md"
+
+
+def caminho_da_pagina_da_daily(data: date) -> str:
+    """A mesma daily como página, ao lado da nota.
+
+    A extensão importa para a âncora da janela: `ate_da_daily_anterior` varre
+    `daily/*.md`, então a página nunca é confundida com uma nota.
+    """
+    return f"{PASTA_DAILY}/{data.isoformat()}.html"
 
 
 def ate_da_daily_anterior(vault: Path, antes_de: date) -> datetime | None:
