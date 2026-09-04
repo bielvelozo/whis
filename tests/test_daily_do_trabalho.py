@@ -425,3 +425,101 @@ def test_a_linha_de_cobertura_sempre_diz_de_quando_a_daily_fala():
     janela = JanelaDaDaily(data=desde.date(), desde=desde, ate=datetime.now().astimezone())
 
     assert f"{desde:%d/%m %H:%M}" in cobertura_da_janela(janela)
+
+
+# -- o "preciso de" que é dele ------------------------------------------------
+
+
+def _pontos_com(caminho_do_vault: Path, texto: str) -> None:
+    from second_brain import vault as modulo_vault
+
+    modulo_vault.preparar(caminho_do_vault)
+    (caminho_do_vault / "notas" / "daily.md").write_text(texto, encoding="utf-8")
+
+
+def test_o_preciso_de_do_usuario_entra_na_batida(gerar, caminho_do_vault: Path):
+    """Um bloqueio combinado numa conversa não deixa rastro em fonte nenhuma."""
+    from second_brain.portas import Daily
+
+    _pontos_com(
+        caminho_do_vault,
+        "# Daily\n\n## Preciso de\n- [ ] o Luan precisa liberar o acesso ao painel\n",
+    )
+    roteiro = DailyFake(Daily(entreguei=("subi o frete",)))
+
+    resultado, _ = gerar(eventos=dois_eventos_do_modulo(), roteiro=roteiro)
+
+    texto = corpo(resultado.nota)
+    assert "o Luan precisa liberar o acesso ao painel" in texto
+    assert texto.index("## Preciso de") < texto.index("## Dúvidas")
+
+
+def test_o_meu_preciso_de_junta_com_o_do_claude(gerar, caminho_do_vault: Path):
+    """É uma batida só, falada uma vez — não duas seções parecidas."""
+    from second_brain.portas import Daily
+
+    _pontos_com(
+        caminho_do_vault, "# Daily\n\n## Preciso de\n- [ ] acesso ao painel\n"
+    )
+    roteiro = DailyFake(Daily(preciso_de=("review da Ana na FN-123",)))
+
+    resultado, _ = gerar(eventos=dois_eventos_do_modulo(), roteiro=roteiro)
+
+    texto = corpo(resultado.nota)
+    assert texto.count("## Preciso de") == 1
+    assert "review da Ana na FN-123" in texto
+    assert "acesso ao painel" in texto
+
+
+def test_item_marcado_do_preciso_de_nao_volta(gerar, caminho_do_vault: Path):
+    _pontos_com(
+        caminho_do_vault,
+        "# Daily\n\n## Preciso de\n- [x] ja falei disso\n- [ ] isso ainda trava\n",
+    )
+
+    resultado, _ = gerar(eventos=dois_eventos_do_modulo())
+
+    texto = corpo(resultado.nota)
+    assert "isso ainda trava" in texto
+    assert "ja falei disso" not in texto
+
+
+def test_so_um_preciso_de_ja_faz_a_daily_existir(gerar, caminho_do_vault: Path):
+    """O que ele escreveu é a única coisa que não se recupera de lugar nenhum."""
+    _pontos_com(caminho_do_vault, "# Daily\n\n## Preciso de\n- [ ] acesso ao painel\n")
+
+    resultado, _ = gerar(eventos=())
+
+    assert resultado.vazio is False
+    assert "acesso ao painel" in corpo(resultado.nota)
+
+
+def test_o_preciso_de_dele_nunca_vai_ao_claude(gerar, caminho_do_vault: Path):
+    """A nota dele é local: o que ele escreve ali não sai da máquina."""
+    _pontos_com(
+        caminho_do_vault, "# Daily\n\n## Preciso de\n- [ ] segredo do usuario\n"
+    )
+    roteiro = DailyFake()
+
+    gerar(eventos=dois_eventos_do_modulo(), roteiro=roteiro)
+
+    recebido = " ".join(
+        f"{e.titulo} {e.detalhe}" for e in roteiro.eventos_recebidos
+    )
+    assert "segredo do usuario" not in recebido
+
+
+def test_o_modelo_do_arquivo_ja_traz_a_secao(caminho_do_vault: Path):
+    from second_brain import vault as modulo_vault
+
+    modulo_vault.preparar(caminho_do_vault)
+    modulo_vault.anotar_ponto(caminho_do_vault, "um ponto qualquer")
+
+    texto = (caminho_do_vault / "notas" / "daily.md").read_text(encoding="utf-8")
+    assert "## Preciso de" in texto
+    assert texto.index("## Preciso de") < texto.index("## Dúvidas")
+
+
+def dois_eventos_do_modulo() -> tuple[Evento, ...]:
+    agora = datetime.now().astimezone()
+    return (_evento(TRABALHO, "`a1b2c3d` Corrige o frete", agora - timedelta(hours=2)),)

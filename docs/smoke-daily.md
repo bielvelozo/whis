@@ -146,7 +146,10 @@ nada**. Abra o arquivo no Obsidian: o ponto está em `## Pontos` como
 `- [ ] ...`, desmarcado. Se o arquivo já existia, tudo que estava nele
 continua onde estava — o agente só acrescenta.
 
-`## Dúvidas` e `## Off-topic` se editam direto no Obsidian, no mesmo arquivo.
+`## Preciso de`, `## Dúvidas` e `## Off-topic` se editam direto no Obsidian, no
+mesmo arquivo. As duas primeiras **se juntam** ao que o Claude achou, numa seção
+só: é onde você sabe mais que ele. Um bloqueio combinado numa conversa não deixa
+rastro em commit nem em issue, então só existe na daily se você escrever.
 
 ## Passo 3 — Gerar a daily de verdade
 

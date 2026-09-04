@@ -90,6 +90,8 @@ _ITEM_DESMARCADO = re.compile(r"^\s*[-*]\s+\[ \]\s+(?P<texto>.+?)\s*$")
 
 #: Os títulos que `notas/daily.md` pode ter, e o campo de `PontosDaDaily` de cada um.
 _SECOES_DOS_PONTOS = {
+    "preciso de": "preciso_de",
+    "preciso_de": "preciso_de",
     "dúvidas": "duvidas",
     "duvidas": "duvidas",
     "off-topic": "off_topic",
@@ -102,6 +104,8 @@ MODELO_DOS_PONTOS = """\
 # Daily — meus pontos
 
 Marque o checkbox depois de falar: o que estiver marcado não aparece na próxima daily.
+
+## Preciso de
 
 ## Dúvidas
 
@@ -431,13 +435,14 @@ def _linhas_do_evento(evento: Evento) -> list[str]:
 class PontosDaDaily:
     """O que o usuário escreveu em `notas/daily.md` e ainda não falou."""
 
+    preciso_de: tuple[str, ...] = ()
     duvidas: tuple[str, ...] = ()
     off_topic: tuple[str, ...] = ()
     pontos: tuple[str, ...] = ()
 
     def tem_algo(self) -> bool:
         """Há alguma coisa dele para levar à daily?"""
-        return bool(self.duvidas or self.off_topic or self.pontos)
+        return bool(self.preciso_de or self.duvidas or self.off_topic or self.pontos)
 
 
 def caminho_da_daily(data: date) -> str:
@@ -500,7 +505,12 @@ def pontos_da_daily(vault: Path) -> PontosDaDaily:
     if not arquivo.is_file():
         return PontosDaDaily()
 
-    colhidos: dict[str, list[str]] = {"duvidas": [], "off_topic": [], "pontos": []}
+    colhidos: dict[str, list[str]] = {
+        "preciso_de": [],
+        "duvidas": [],
+        "off_topic": [],
+        "pontos": [],
+    }
     secao: str | None = None
     for linha in arquivo.read_text(encoding="utf-8").splitlines():
         if linha.lstrip().startswith("#"):
@@ -511,12 +521,15 @@ def pontos_da_daily(vault: Path) -> PontosDaDaily:
             colhidos[secao].append(item["texto"])
 
     _log.info(
-        "notas/daily.md: %d dúvida(s), %d off-topic e %d ponto(s) por falar.",
+        "notas/daily.md: %d em 'preciso de', %d dúvida(s), %d off-topic e "
+        "%d ponto(s) por falar.",
+        len(colhidos["preciso_de"]),
         len(colhidos["duvidas"]),
         len(colhidos["off_topic"]),
         len(colhidos["pontos"]),
     )
     return PontosDaDaily(
+        preciso_de=tuple(colhidos["preciso_de"]),
         duvidas=tuple(colhidos["duvidas"]),
         off_topic=tuple(colhidos["off_topic"]),
         pontos=tuple(colhidos["pontos"]),
@@ -599,13 +612,20 @@ def secoes_do_roteiro(
     As quatro do Claude aparecem mesmo vazias, porque "nada esperando ninguém"
     é uma daily boa de ouvir; as duas que são só do usuário desaparecem quando
     ele não escreveu nada.
+
+    `Preciso de` e `Dúvidas` **juntam** o que o Claude achou com o que o usuário
+    escreveu: cada uma é uma batida só, falada uma vez. E é nessas duas que ele
+    sabe mais que o modelo — um bloqueio combinado numa conversa que não deixou
+    rastro nas fontes só existe se ele escrever.
     """
+    preciso_de = (*(roteiro.preciso_de if roteiro else ()), *pontos.preciso_de)
     duvidas = (*(roteiro.duvidas if roteiro else ()), *pontos.duvidas)
     secoes: list[tuple[str, tuple[str, ...]]] = []
     if roteiro is not None:
         secoes.append(("Entreguei", roteiro.entreguei))
         secoes.append(("Sigo em", roteiro.sigo_em))
-        secoes.append(("Preciso de", roteiro.preciso_de))
+    if roteiro is not None or preciso_de:
+        secoes.append(("Preciso de", preciso_de))
     if roteiro is not None or duvidas:
         secoes.append(("Dúvidas", duvidas))
     if pontos.pontos:
