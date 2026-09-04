@@ -126,7 +126,7 @@ def test_daily_sem_uma_fonte_nasce_marcada_e_sai_parcial(
     nota = _unica_nota(caminho_do_vault, "daily")
     assert codigo == SAIDA_PARCIAL
     assert ler_frontmatter(nota)["fontes_com_falha"] == ["slack"]
-    assert f"> Slack não entrou nesta daily: {MOTIVO_DO_SLACK}" in corpo(nota)
+    assert f"> [!warning] Slack não entrou nesta daily: {MOTIVO_DO_SLACK}" in corpo(nota)
 
 
 def test_daily_sem_roteiro_nasce_com_as_listas_cruas_e_sai_parcial(
@@ -207,7 +207,7 @@ def test_diario_sem_uma_fonte_nasce_marcado_e_sai_parcial(
     nota = caminho_do_vault / "diario" / f"{DIA}.md"
     assert codigo == SAIDA_PARCIAL
     assert ler_frontmatter(nota)["fontes_com_falha"] == ["slack"]
-    assert f"> Slack não entrou neste diário: {MOTIVO_DO_SLACK}" in corpo(nota)
+    assert f"> [!warning] Slack não entrou neste diário: {MOTIVO_DO_SLACK}" in corpo(nota)
 
 
 def test_diario_sem_resumo_nasce_com_as_listas_cruas_e_sai_parcial(

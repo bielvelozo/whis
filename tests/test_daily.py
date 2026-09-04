@@ -392,7 +392,7 @@ def test_fonte_que_falha_deixa_a_daily_nascer_marcada(gerar, caminho_do_vault: P
     texto = corpo(nota)
     assert campos["fontes"] == ["git"]
     assert campos["fontes_com_falha"] == ["slack"]
-    assert "> Slack não entrou nesta daily: token do Slack ausente" in texto
+    assert "> [!warning] Slack não entrou nesta daily: token do Slack ausente" in texto
     assert "_Não foi possível ler esta fonte: token do Slack ausente" in texto
     assert resultado.fontes_com_falha[0].fonte == "slack"
 

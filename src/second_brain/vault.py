@@ -333,7 +333,7 @@ def montar_diario(
 
     corpo = [f"# Diário — {_data_por_extenso(data)}", ""]
     for aviso in _avisos(fontes_com_falha, resumo, falha_do_resumo):
-        corpo.extend([f"> {aviso}", ""])
+        corpo.extend([f"> [!warning] {aviso}", ""])
 
     if resumo is not None and resumo.narrativa.strip():
         corpo.extend([resumo.narrativa.strip(), ""])
@@ -354,6 +354,11 @@ def _listas_cruas(
 ) -> list[str]:
     """As reuniões e uma seção por fonte — a memória durável de diário e daily."""
     linhas = [
+        "---",
+        "",
+        "*Daqui para baixo, tudo que a janela trouxe, para conferir de onde veio "
+        "cada afirmação. Recolha um cabeçalho para tirá-lo da tela.*",
+        "",
         "## Reuniões",
         "",
         _lista(tuple(wikilink(reuniao) for reuniao in reunioes)),
@@ -362,7 +367,11 @@ def _listas_cruas(
 
     motivos = {falha.fonte: falha.motivo for falha in fontes_com_falha}
     for fonte in _fontes_em_ordem(fontes_lidas, [falha.fonte for falha in fontes_com_falha]):
-        linhas.extend([f"## {nome_legivel(fonte)}", ""])
+        # A contagem só entra quando há o que contar: uma fonte muda fica com o
+        # título limpo, e é ele que precede o `_(nada registrado)_`.
+        quantos = sum(1 for evento in eventos if evento.fonte == fonte)
+        rotulo = f"{nome_legivel(fonte)} ({quantos})" if quantos else nome_legivel(fonte)
+        linhas.extend([f"## {rotulo}", ""])
         if fonte in motivos:
             linhas.extend([f"_Não foi possível ler esta fonte: {motivos[fonte]}_", ""])
             continue
@@ -608,11 +617,11 @@ def montar_daily(
     corpo = [
         f"# Daily — {_data_por_extenso(janela.data)}",
         "",
-        cobertura_da_janela(janela),
+        f"> [!info] {cobertura_da_janela(janela)}",
         "",
     ]
     for aviso in _avisos_da_daily(fontes_com_falha, roteiro, falha_do_roteiro):
-        corpo.extend([f"> {aviso}", ""])
+        corpo.extend([f"> [!warning] {aviso}", ""])
 
     for titulo, itens in secoes_do_roteiro(roteiro, pontos):
         corpo.extend([f"## {titulo}", "", _lista(itens), ""])
