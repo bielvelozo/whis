@@ -18,6 +18,11 @@ Por padrão o comando usa os **adaptadores reais** — Deepgram para o STT, Clau
 `--fakes` troca todos pelas portas fake: é como exercitar as costuras inteiras
 sem gastar crédito nem rede.
 
+`diario` e `daily` saem com um código que diz **se a nota nasceu, e inteira**:
+`0` completa, `3` parcial (uma fonte ou o Claude falhou — a nota existe,
+marcada), `1` não nasceu (todas as fontes falharam, nenhuma configurada, ou
+não havia nada no período). `2` é do argparse: erro de uso.
+
 A gravação em si também tem entrada própria (`python -m second_brain.gravador`),
 para diagnóstico de dispositivo; no uso normal quem a chama é a bandeja.
 """
@@ -63,6 +68,22 @@ from .portas import (
 )
 
 _log = logging.getLogger("second_brain")
+
+#: Códigos de saída de `diario` e `daily`. `2` fica de fora de propósito: é o
+#: que o argparse devolve para erro de uso, e um script que confundisse "data
+#: digitada errada" com "nota parcial" leria a daily errada.
+SAIDA_COMPLETA = 0
+SAIDA_NAO_NASCEU = 1
+SAIDA_PARCIAL = 3
+
+CODIGOS_DE_SAIDA = f"""\
+códigos de saída:
+  {SAIDA_COMPLETA}  a nota nasceu inteira
+  {SAIDA_PARCIAL}  a nota nasceu parcial: uma fonte ou o Claude falhou, e a nota diz qual
+  {SAIDA_NAO_NASCEU}  a nota não nasceu: todas as fontes falharam, nenhuma está
+     configurada, ou não havia nada no período
+  2  erro de uso (argumento inválido)
+o rastro de toda execução fica em bandeja.log, ao lado do config.toml"""
 
 
 def forcar_utf8_na_saida() -> None:
@@ -157,7 +178,7 @@ def montar_fontes(configuracao: Configuracao, *, fakes: bool = False) -> list[Po
             "Nenhuma fonte passiva está ligada na configuração"
             f"{f' ({configuracao.origem})' if configuracao.origem else ''}. "
             "Preencha [git].raiz, [linear].api_key ou [slack].user_token — "
-            "ou rode com --fakes para ver o diário funcionando sem rede."
+            "ou rode com --fakes para ver o comando funcionando sem rede."
         )
     _log.info("Fontes ligadas: %s.", ", ".join(fonte.nome for fonte in fontes))
     return fontes
@@ -338,7 +359,30 @@ def _comando_diario(args: argparse.Namespace) -> int:
         simular=args.simular,
     )
     _relatar_diario(resultado)
-    return 0
+    return _codigo_de_saida(
+        f"Diário de {data.isoformat()}",
+        vazio=resultado.vazio,
+        parcial=bool(resultado.fontes_com_falha or resultado.falha_do_resumo),
+    )
+
+
+def _codigo_de_saida(nota: str, *, vazio: bool, parcial: bool) -> int:
+    """O código que diz se a nota nasceu, e inteira — e o registra no log.
+
+    A linha no log é o que sobra de uma execução que ninguém viu: o terminal
+    já fechou, mas o arquivo diz se a daily daquele dia nasceu sem o Slack ou
+    não nasceu.
+    """
+    if vazio:
+        _log.info(
+            "%s: a nota não nasceu, nada no período (saída %d).", nota, SAIDA_NAO_NASCEU
+        )
+        return SAIDA_NAO_NASCEU
+    if parcial:
+        _log.warning("%s: a nota nasceu parcial (saída %d).", nota, SAIDA_PARCIAL)
+        return SAIDA_PARCIAL
+    _log.info("%s: a nota nasceu inteira (saída %d).", nota, SAIDA_COMPLETA)
+    return SAIDA_COMPLETA
 
 
 def _relatar_diario(resultado: ResultadoDoDiario) -> None:
@@ -397,7 +441,11 @@ def _comando_daily(args: argparse.Namespace) -> int:
         simular=args.simular,
     )
     _relatar_daily(resultado)
-    return 0
+    return _codigo_de_saida(
+        f"Daily de {resultado.janela.data.isoformat()}",
+        vazio=resultado.vazio,
+        parcial=bool(resultado.fontes_com_falha or resultado.falha_do_roteiro),
+    )
 
 
 def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
@@ -725,6 +773,8 @@ def construir_parser() -> argparse.ArgumentParser:
     diario_cmd = subcomandos.add_parser(
         "diario",
         help="lê as fontes passivas do dia e escreve o diário em diario/",
+        epilog=CODIGOS_DE_SAIDA,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     diario_cmd.add_argument(
         "data",
@@ -749,6 +799,8 @@ def construir_parser() -> argparse.ArgumentParser:
     daily_cmd = subcomandos.add_parser(
         "daily",
         help="monta o roteiro da daily desde a última fala e escreve em daily/",
+        epilog=CODIGOS_DE_SAIDA,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _acrescentar_config(daily_cmd)
     daily_cmd.add_argument(
