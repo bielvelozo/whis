@@ -173,6 +173,10 @@ pronto para ler em voz alta.
 - o que a daily cobra vem **com link clicável** quando o material tinha um: a PR
   aparece como `[#1636](https://github.com/...)`, que você lê em voz alta como
   "#1636" e clica depois;
+- **nada de assunto pessoal das suas DMs** aparece no roteiro. Trabalho e vida
+  moram na mesma thread, e a blocklist não separa isso: quem separa é o prompt,
+  com ordem de calar na dúvida. Se algo pessoal escapar, ponha a DM inteira em
+  `[slack].conversas_excluidas` ou o assunto em `[privacidade].excluir`;
 - o código de saída é `0`.
 
 **Falha — o Claude não respondeu:** a daily nasce mesmo assim, com o aviso

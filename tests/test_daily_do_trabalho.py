@@ -375,3 +375,18 @@ def test_periodo_so_pessoal_nao_gasta_chamada_e_diz_a_verdade(
     texto = corpo(resultado.nota)
     assert "Research: push em PWA" in texto, "o vault guarda o período mesmo assim"
     assert "referencias_pessoais" in texto
+
+
+# -- a DM mistura trabalho e vida ---------------------------------------------
+
+
+def test_o_prompt_manda_deixar_o_assunto_pessoal_da_dm_de_fora():
+    """A blocklist não alcança isto: trabalho e vida moram na mesma thread."""
+    assert "mistura trabalho e vida pessoal na mesma thread" in PROMPT_DA_DAILY
+    assert "SÓ o que é trabalho entra no roteiro" in PROMPT_DA_DAILY
+
+
+def test_o_prompt_manda_calar_na_duvida():
+    """Errar para o silêncio é o certo aqui: o roteiro é falado para o time."""
+    assert "Na dúvida sobre se uma conversa é trabalho, deixe de fora" in PROMPT_DA_DAILY
+    assert "não é citado nem de passagem" in PROMPT_DA_DAILY

@@ -138,6 +138,12 @@ não trabalho dele.
 - "entreguei" e "sigo_em" são só o trabalho DELE. Quando não der para saber quem \
 fez, deixe de fora: uma daily curta e verdadeira é melhor que uma longa que \
 atribui a ele o trabalho de outra pessoa.
+- Conversa de DM no Slack mistura trabalho e vida pessoal na mesma thread: \
+piada, combinação de almoço, papo de futebol, assunto de família. SÓ o que é \
+trabalho entra no roteiro. Assunto pessoal não vira "entreguei", não vira \
+"duvidas" e não é citado nem de passagem — nem para dizer que aconteceu. Na \
+dúvida sobre se uma conversa é trabalho, deixe de fora: o roteiro é falado na \
+frente do time inteiro.
 - Movimentação alheia só entra na resposta se virar "preciso_de" (ele depende \
 dela para andar) ou "duvidas" (ela levanta uma pergunta para ele).
 
