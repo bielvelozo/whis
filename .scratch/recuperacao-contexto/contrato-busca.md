@@ -1,7 +1,7 @@
 # Contrato: a busca, as ferramentas e a fronteira
 
 Decisão do orquestrador, fixada **antes** de abrir qualquer camada, para que a costura, o
-adaptador real, as duas entradas e as fontes ao vivo sejam construídos contra o mesmo formato.
+adaptador real, as fontes ao vivo e a DM do Slack sejam construídos contra o mesmo formato.
 Não substitui nenhuma decisão da [spec](spec.md) — fecha o que ela deixou em aberto entre
 camadas. Executor que discordar **surfaceia ao orquestrador**, não altera sozinho.
 
@@ -35,7 +35,12 @@ class ErroDeBusca(RuntimeError):
 
 @runtime_checkable
 class PortaBusca(Protocol):
-    def perguntar(self, pergunta: str, ferramentas: "Ferramentas") -> Resposta: ...
+    def perguntar(
+        self,
+        pergunta: str,
+        ferramentas: "Ferramentas",
+        historico: tuple["Turno", ...] = (),
+    ) -> Resposta: ...
 ```
 
 `Resposta.achou=False` é **resposta legítima**, não erro: "não achei isso no vault" é o que
@@ -61,8 +66,8 @@ Regras que valem para **todas** elas, e que a camada 01 fixa em um ponto só:
   `vault.escrever` já faz: `..` no meio não escapa.
 - **Nenhuma abre nada sob `[privacidade].pastas_privadas`.** Nem em busca, nem em leitura, nem em
   listagem, nem sob pedido explícito do usuário. Um arquivo privado **não existe** para o agente.
-- **Nenhuma escreve.** Escrita é outro caminho, sob pedido explícito, por `vault.escrever` com
-  zonas (camada 03).
+- **Nenhuma escreve.** Escrita é outro caminho, sob pedido explícito na conversa, por
+  `vault.escrever` com zonas (camada 04).
 - Caminho recusado levanta `ForaDaFronteira`, que o adaptador traduz para o modelo como "esse
   arquivo não existe" — e **não** como "esse arquivo é privado". Dizer que existe algo escondido
   já é vazar o que a pasta privada promete esconder.
@@ -86,6 +91,7 @@ def responder(
     *,
     configuracao: Configuracao,
     busca: PortaBusca,
+    conversa: Conversa | None = None,
 ) -> Resposta
 ```
 
@@ -93,9 +99,34 @@ Ordem fixa:
 
 1. Recusa pergunta vazia, com mensagem em português.
 2. Monta `Ferramentas(configuracao)`.
-3. Chama `busca.perguntar(pergunta, ferramentas)`.
-4. `ErroDeBusca` sobe para a CLI, que decide o código de saída.
-5. Registra no log o que foi perguntado, quantas citações voltaram e o custo.
+3. Chama `busca.perguntar(pergunta, ferramentas, historico=conversa.historico if conversa else ())`.
+4. Acrescenta a pergunta e a resposta ao fio da conversa.
+5. `ErroDeBusca` sobe para quem chamou, que decide o que fazer.
+6. Registra no log o que foi perguntado, quantas citações voltaram e o custo.
+
+### O fio de 24 horas (`src/second_brain/conversa.py`, dono: camada 01)
+
+```python
+@dataclass(frozen=True)
+class Turno:
+    quem: str          # "usuario" | "agente"
+    texto: str
+    momento: datetime  # aware
+
+
+class Conversa:
+    """O fio de uma DM, que expira depois de 24h de silêncio."""
+    def historico(self) -> tuple[Turno, ...]: ...
+    def acrescentar(self, quem: str, texto: str, *, agora: datetime) -> None: ...
+```
+
+- **Expira por silêncio, não por relógio de parede**: 24 horas desde o **último** turno. Uma
+  conversa ativa às 23h continua no dia seguinte; uma parada há 25 horas começa limpa.
+- **Mora ao lado do `config.toml`**, em `conversas.json`, e **não no vault**: é rascunho de
+  conversa, e o vault guarda memória durável, não rascunho.
+- **O relógio é injetado** (`agora`), porque a expiração é comportamento e precisa de teste sem
+  esperar 24 horas.
+- Arquivo corrompido ou ilegível **não derruba o atendimento**: vale como conversa vazia.
 
 ## 4. Configuração — todas as chaves de uma vez (dono: camada 01)
 
@@ -115,11 +146,15 @@ Configuração antiga continua carregando.
 
 | camada | entrega | não toca |
 |---|---|---|
-| 01 | `busca.py`, `ferramentas.py`, `pergunta.py`, as chaves, o fake | — |
+| 01 | `busca.py`, `ferramentas.py`, `conversa.py`, `pergunta.py`, as chaves, o fake | — |
 | 02 | `busca_claude.py`: o adaptador real, o prompt, as tool definitions | `pergunta.py`, `ferramentas.py` |
-| 03 | `perguntar` e `chat` na CLI, e a escrita em `notas/` sob pedido | `busca.py` |
-| 04 | as fontes ao vivo como ferramentas, pelos coletores existentes | a fronteira da camada 01 |
-| 05 | log, códigos de saída, custo, `docs/smoke-busca.md` | — |
+| 03 | as fontes ao vivo como ferramentas, pelos coletores existentes | a fronteira da camada 01 |
+| 04 | `atendente.py` + `second-brain atender`: a DM do Slack por Socket Mode | `busca.py`, `conversa.py` |
+| 05 | logon, log, custo, `docs/smoke-atendente.md` | — |
+
+A camada 04 é a única que depende da aprovação do admin. As três primeiras se provam pelo
+comando de diagnóstico `second-brain perguntar`, que existe **para teste**, não como caminho
+principal.
 
 ## 6. O que nenhuma camada deve fazer
 
@@ -127,7 +162,7 @@ Configuração antiga continua carregando.
   da pasta privada só existe porque todo acesso passa por `Ferramentas`.
 - **Nenhuma camada além da 01 edita** `configuracao.py`, `busca.py`, `ferramentas.py` ou
   `pergunta.py`. Precisou? Surfaceia.
-- **Nenhuma reimplementa coletor de fonte.** A camada 04 chama `fonte_git`, `fonte_linear` e
+- **Nenhuma reimplementa coletor de fonte.** A camada 03 chama `fonte_git`, `fonte_linear` e
   `fonte_slack` pelas fábricas `de_configuracao` — é o que faz a blocklist do Slack e o
   `so_com_mencao` continuarem valendo na consulta ao vivo.
 - **Nenhum teste novo fala com serviço real** fora de `@pytest.mark.rede`.
@@ -135,10 +170,12 @@ Configuração antiga continua carregando.
 
 ## 7. A demo-mestra
 
-A pergunta que fecha a entrega, feita na máquina do usuário, com o vault real:
+O gesto que fecha a entrega, na máquina do usuário, com o vault real:
 
-> `second-brain perguntar "o que ficou decidido sobre a retenção de 180 dias?"`
+> O usuário manda **na DM do Slack**, do celular: *"o que ficou decidido sobre a retenção de 180
+> dias?"* — e a resposta chega ali, citando um arquivo do vault.
 
-**Sucesso**: a resposta cita pelo menos um arquivo do vault que o usuário reconhece, diz o que
-foi decidido, e ele confere abrindo o arquivo citado. Se a decisão não estiver no vault, a
-resposta diz que não achou — e isso também é sucesso.
+**Sucesso**: ele reconhece o arquivo citado, abre e confere. Depois manda uma pergunta de
+acompanhamento (*"e quem levantou isso?"*) e o agente responde **sem ele repetir o assunto** —
+que é a prova do fio de 24 horas. Se a decisão não estiver no vault, a resposta diz que não
+achou, e isso também é sucesso.
