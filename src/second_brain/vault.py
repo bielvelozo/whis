@@ -100,18 +100,36 @@ _SECOES_DOS_PONTOS = {
 }
 
 #: O arquivo que `--anotar` cria quando o usuário ainda não tem um.
+#:
+#: As linhas em itálico e o callout são só para quem lê no Obsidian: o leitor
+#: só enxerga títulos e itens `- [ ]`, então explicar ali não custa nada — e é
+#: o que evita o usuário abrir um arquivo de títulos vazios sem saber o que
+#: cada um quer dizer.
 MODELO_DOS_PONTOS = """\
 # Daily — meus pontos
 
-Marque o checkbox depois de falar: o que estiver marcado não aparece na próxima daily.
+> [!tip] Como funciona
+> Escreva em qualquer seção como `- [ ] o que eu quero falar`.
+> Só o que está **desmarcado** entra na próxima daily.
+> Depois de falar, marque o checkbox: o item sai da daily e fica aqui como registro.
+> Este arquivo é seu. O agente lê, nunca escreve por conta própria e nunca marca nada.
 
 ## Preciso de
 
+*O que espera outra pessoa e não deixou rastro em commit nem em issue — acesso, \
+aprovação, uma resposta combinada no boca a boca. Junta-se ao que o Claude achar.*
+
 ## Dúvidas
+
+*Pergunta aberta para levar ao time. Junta-se às que o Claude achar.*
 
 ## Off-topic
 
+*O que não é trabalho mas você quer avisar: viagem, consulta, um dia fora.*
+
 ## Pontos
+
+*Assunto que você quer puxar na daily, mesmo sem ser entrega nem bloqueio.*
 """
 
 

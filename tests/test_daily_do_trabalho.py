@@ -523,3 +523,42 @@ def test_o_modelo_do_arquivo_ja_traz_a_secao(caminho_do_vault: Path):
 def dois_eventos_do_modulo() -> tuple[Evento, ...]:
     agora = datetime.now().astimezone()
     return (_evento(TRABALHO, "`a1b2c3d` Corrige o frete", agora - timedelta(hours=2)),)
+
+
+# -- o arquivo dos pontos é para humano ler -----------------------------------
+
+
+def test_a_ajuda_do_modelo_nao_vira_item(caminho_do_vault: Path):
+    """As explicações existem para o Obsidian; o leitor só enxerga `- [ ]`."""
+    from second_brain import vault as modulo_vault
+
+    modulo_vault.preparar(caminho_do_vault)
+    (caminho_do_vault / "notas" / "daily.md").write_text(
+        modulo_vault.MODELO_DOS_PONTOS, encoding="utf-8"
+    )
+
+    pontos = modulo_vault.pontos_da_daily(caminho_do_vault)
+
+    assert pontos.tem_algo() is False, f"a ajuda virou item: {pontos}"
+
+
+def test_o_modelo_explica_cada_secao(caminho_do_vault: Path):
+    from second_brain.vault import MODELO_DOS_PONTOS as modelo
+
+    for titulo in ("## Preciso de", "## Dúvidas", "## Off-topic", "## Pontos"):
+        assert titulo in modelo
+    assert "> [!tip]" in modelo, "o aviso do topo é um callout do Obsidian"
+    assert "nunca marca nada" in modelo
+
+
+def test_anotar_ponto_continua_funcionando_com_o_modelo_novo(caminho_do_vault: Path):
+    """A ajuda em itálico não pode empurrar o item para fora da seção."""
+    from second_brain import vault as modulo_vault
+
+    modulo_vault.preparar(caminho_do_vault)
+    modulo_vault.anotar_ponto(caminho_do_vault, "puxar a retenção de 180 dias")
+
+    pontos = modulo_vault.pontos_da_daily(caminho_do_vault)
+
+    assert pontos.pontos == ("puxar a retenção de 180 dias",)
+    assert pontos.preciso_de == () and pontos.duvidas == ()
