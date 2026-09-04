@@ -514,3 +514,85 @@ sem escrever. `--anotar` só acrescenta em `notas/daily.md` e sai — não colet
 Degradação igual à do diário: fonte que falha vira marca na nota; resumo que falha deixa a
 nota nascer com as listas cruas e os pontos do usuário. **Nada é agendado** — o usuário
 decidiu rodar na hora, um minuto antes de falar.
+
+---
+
+## 10. Adendo: o que o roteiro sabe do mundo (camada 08)
+
+Escopo acrescentado em 2026-09-04, depois de o usuário ler a **primeira daily real**. Três
+achados da mesma família: o roteiro precisa de fatos que os dados não carregam.
+
+O que a daily real mostrou, e que nenhum teste pegaria:
+
+1. **Projeto pessoal entrou na fala.** `[git].raiz` é a pasta de desenvolvimento inteira, e
+   naquele dia **30 dos 52 commits** eram de projeto pessoal (`second-brain`, `renovo-hub`)
+   contra 22 do trabalho. O Claude não errou: os commits são do usuário, e nada nos dados diz
+   que um repositório é do trabalho e outro não.
+2. **O roteiro inventou uma revisão humana.** Escreveu que cinco PRs esperavam "revisão humana e
+   merge". No time do usuário **a aprovação do Zeno basta**, e **o merge é dele mesmo** — então
+   aquelas PRs não dependem de ninguém e, pela regra do próprio prompt, não deviam estar em
+   `preciso_de`. A inferência veio do nome do estado `In Review` no Linear.
+3. **O link foi descartado.** A URL das PRs **já chegava ao Claude**, dentro do `detalhe` do
+   comentário do Linear, e o modelo escreveu só `#1636`. Nada falta nos dados.
+
+### As chaves novas (`configuracao.py`)
+
+O contrato reserva `configuracao.py` à camada 01 (seção 8). **O orquestrador libera a camada 08
+a editá-lo**, com exatamente estas duas chaves e nenhuma outra:
+
+```toml
+[daily]
+referencias_do_trabalho = []   # repositórios, projetos e canais do trabalho; vazio = tudo é trabalho
+contexto_do_time = ""          # como o seu processo funciona, em texto livre, para o roteiro não inventar
+```
+
+Campos achatados em `Configuracao`, no padrão já existente:
+`daily_referencias_do_trabalho: tuple[str, ...] = ()` e `daily_contexto_do_time: str = ""`.
+`MODELO_DE_CONFIGURACAO` ganha a seção com estes comentários. Configuração antiga continua
+carregando, e **lista vazia significa "tudo é trabalho"** — o comportamento de hoje, preservado
+para quem não configurar nada.
+
+A comparação é **substring com `casefold()`** contra `Evento.referencia`, como o filtro de
+exclusão já faz. Falhar para o lado de **falar demais** é o certo aqui: trabalho que sumiu do
+roteiro o usuário vê ao reler antes de falar, e nada se perde do vault; projeto pessoal que
+vaza, ele só descobre na frente do time.
+
+### Onde cada coisa age
+
+| achado | mecanismo | por quê |
+|---|---|---|
+| trabalho vs. pessoal | **filtro**, antes de chamar a porta | o modelo pode escorregar; o que se fala na frente do time não pode depender de persuasão |
+| processo do time | **texto no prompt** | errar produz frase imprecisa, não vazamento |
+| link | **regra fixa do prompt** | vale para qualquer usuário, não é configuração |
+
+O corte de trabalho/pessoal acontece em `daily.gerar_daily`, entre a coleta e a chamada da
+porta. **A porta não muda de assinatura** e o adaptador não conhece o conceito:
+
+- o que vai a `roteiro.resumir_daily(...)` é só o do trabalho;
+- **`vault.montar_daily` continua recebendo todos os eventos** — as listas cruas guardam tudo,
+  porque a daily é o registro durável do vault e a memória é do usuário, não do time.
+
+`contexto_do_time` entra em `montar_pergunta_da_daily` como um bloco próprio, rotulado, depois
+dos eventos. Vazio, nenhum bloco aparece.
+
+### O que **não** muda
+
+- **O diário não é tocado.** `gerar_diario` continua levando tudo ao Claude, projeto pessoal
+  incluído: o diário é o retrato do dia civil **dele**, e silenciar metade do dia ali seria
+  mentir sobre o dia que ele viveu.
+- **As listas cruas da daily não perdem nada.** Se um teste passar filtrando os eventos da nota,
+  a camada quebrou a decisão que faz a daily existir.
+- **`evento.url` continua fora do prompt.** O DEFERRED registrou essa escolha na camada 04, e
+  ela foi reconsiderada aqui: mandar a URL de ~260 eventos por dia para beneficiar duas linhas
+  do roteiro não se paga. A camada 08 usa só o que **já está no material**, dentro do `detalhe`.
+- **Nenhuma dependência nova**, e nenhum teste existente editado.
+
+### O exemplo errado que está no prompt hoje
+
+`PROMPT_DA_DAILY` ensina que `"os PRs #1623 e #1628 estão aguardando merge" entra, porque quem
+faz o merge é outra pessoa`. Para este usuário isso é **falso**, e o exemplo empurra o modelo
+para o erro que a daily real cometeu. O exemplo precisa parar de afirmar de quem é o merge — a
+regra geral ("só o que depende de OUTRA PESSOA") já estava certa e continua valendo. Há testes
+de prompt em `tests/test_roteiro_da_daily.py` que citam a frase antiga; a camada 08 **pode
+editá-los**, e esta é a única exceção à regra de não tocar teste existente.
+

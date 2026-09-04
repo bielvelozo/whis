@@ -39,6 +39,9 @@ O diário é o que conecta as duas fontes de contexto do vault: as reuniões que
 21. Como quem tem um ponto específico a levantar, quero anotá-lo num arquivo meu e vê-lo aparecer na próxima daily, para não depender da memória na hora de falar.
 22. Como quem já falou um ponto, quero marcá-lo no Obsidian e vê-lo sumir da próxima, para a lista não virar entulho.
 23. Como quem só vai ler a daily, quero que ela carregue também as listas cruas, para o vault continuar tendo memória dos meus dias sem eu precisar abrir outro arquivo.
+24. Como quem tem projetos pessoais na mesma pasta de desenvolvimento, quero que a daily fale só do trabalho, para eu não contar da minha vida pessoal para o time — e quero que o vault continue guardando tudo, porque a memória é minha.
+25. Como quem tem um processo próprio de review, quero contar ao roteiro como o meu time funciona, para ele não inventar bloqueio que não existe.
+26. Como quem precisa agir depois de falar, quero o link junto do que a daily me cobra, para eu não ter que decorar número de PR.
 
 ## Implementation Decisions
 
@@ -59,6 +62,9 @@ O diário é o que conecta as duas fontes de contexto do vault: as reuniões que
 - **Daily** (acrescentada e redesenhada com o usuário em 2026-09-03): coletor próprio, `gerar_daily(agora) → nota em daily/`, com **janela da última daily até agora** — recorte diferente do dia civil do diário, e por isso não derivável dele. Escreve `daily/YYYY-MM-DD.md` com o roteiro em cima (`entreguei`, `sigo_em`, `preciso_de`, `duvidas` do Claude; `meus pontos` e `off_topic` do usuário) e **as listas cruas embaixo** — o que a torna o registro durável do vault. Os pontos do usuário vivem em `notas/daily.md`, na zona dele, consumidos por checkbox do Obsidian. **Nada é agendado**: o usuário roda na hora. Detalhe no [adendo do contrato](contrato-fonte-passiva.md).
 - **O diário deixa de ser agendado.** O usuário não vai lê-lo, e a daily já carrega as listas cruas: manter as duas rodando custaria duas chamadas ao Claude por dia para guardar a mesma coisa. `second-brain diario` continua existindo para um retrato de dia civil sob demanda.
 - **Idioma**: todo texto voltado ao usuário — nota, resumo, logs, mensagens de erro — em português.
+- **O roteiro precisa saber coisas que os dados não dizem** (acrescentado com o usuário em 2026-09-04, depois da primeira daily real): três achados da mesma família. Quais referências são do **trabalho** — a varredura do git pega a pasta de desenvolvimento inteira, e num dia real 30 dos 52 commits eram de projeto pessoal; como o **processo do time** funciona — a primeira daily disse que cinco PRs esperavam "revisão humana", que não existe lá, e o merge é do próprio usuário, então elas nem deviam estar em `preciso_de`; e o **link** do que a daily cobra, que já chegava ao Claude dentro do detalhe e era descartado. Os dois primeiros são configuração; o terceiro é regra fixa do prompt. Detalhe no [adendo do contrato](contrato-fonte-passiva.md).
+- **Silenciar o pessoal é filtro, não pedido ao modelo.** O que não é do trabalho não chega ao Claude, pelo mesmo motivo que o filtro de exclusão age na coleta: uma regra de prompt que o modelo pode escorregar é fraca demais para o que se fala na frente do time. Já o processo do time é contexto e vai como texto no prompt — errar ali produz uma frase imprecisa, não um vazamento.
+- **Nada disso alcança o diário.** O diário é o retrato do dia civil **dele**, e projeto pessoal é trabalho igual: silenciá-lo lá seria mentir sobre o dia que ele viveu. A distinção trabalho/pessoal existe só na fala da daily.
 
 ## Testing Decisions
 
