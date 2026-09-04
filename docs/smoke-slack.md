@@ -26,6 +26,21 @@ Duas camadas de privacidade, nesta ordem:
 2. **`[privacidade].excluir`** — o filtro geral do diário, que age depois, sobre
    o que todas as fontes trouxeram.
 
+E uma terceira régua, que é de **ruído** e não de privacidade:
+
+3. **`[slack].so_com_mencao`** — canais em que só entra a mensagem que **cita
+   você** (ou que você escreveu). Age **depois** da leitura: o canal é lido
+   inteiro e a maior parte é descartada. Serve para canal de bot, como o de code
+   review, onde chega uma mensagem por rodada de review de todo mundo.
+
+   ```toml
+   [slack]
+   so_com_mencao = ["dev-codereview"]
+   ```
+
+   Não use isto para privacidade: o canal **é lido**. Para privacidade, o que
+   vale é a blocklist do item 1, que impede a requisição.
+
 ## Passo 1 — Criar a app interna no seu workspace
 
 Em <https://api.slack.com/apps>, **Create New App → From scratch**.

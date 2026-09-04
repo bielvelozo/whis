@@ -192,6 +192,7 @@ class FonteSlack:
         user_token: str,
         *,
         conversas_excluidas: Sequence[str] = (),
+        so_com_mencao: Sequence[str] = (),
         base: str = BASE,
         conversas_por_pagina: int = CONVERSAS_POR_PAGINA,
         mensagens_por_pagina: int = MENSAGENS_POR_PAGINA,
@@ -208,6 +209,11 @@ class FonteSlack:
         # padrão que não é um id — que é o caso de "@joana".
         self._blocklist_por_nome = any(
             not _ID_DE_SLACK.fullmatch(padrao) for padrao in brutos
+        )
+        self._so_com_mencao = tuple(
+            padrao.strip().lstrip("#@").casefold()
+            for padrao in so_com_mencao
+            if padrao.strip()
         )
         self._base = base.rstrip("/")
         self._conversas_por_pagina = conversas_por_pagina
@@ -234,6 +240,7 @@ class FonteSlack:
 
         eventos: list[Evento] = []
         bloqueadas = 0
+        descartados = 0
         with self._sessao() as cliente:
             chamar = _Chamador(
                 cliente, self._token, self._base, self._tempo_limite, self._dormir
@@ -241,22 +248,35 @@ class FonteSlack:
             # `auth.test` não lê conversa nenhuma e serve a dois propósitos: dá
             # o endereço do workspace, de onde saem os permalinks, e recusa um
             # token inválido antes de percorrer o workspace inteiro.
-            workspace = str(chamar("auth.test", verbo="POST").get("url") or "")
+            sou_eu = chamar("auth.test", verbo="POST")
+            workspace = str(sou_eu.get("url") or "")
             nomes = _Nomes(chamar)
+            meus_nomes = self._meus_nomes(sou_eu, nomes)
 
             for conversa in self._conversas(chamar):
                 if self._bloqueada(conversa, nomes):
                     bloqueadas += 1
                     continue
-                eventos.extend(
-                    self._da_conversa(chamar, nomes, conversa, janela, workspace)
+                colhidos = self._da_conversa(
+                    chamar, nomes, conversa, janela, workspace
                 )
+                if self._so_o_que_me_cita(conversa, nomes):
+                    antes = len(colhidos)
+                    colhidos = [e for e in colhidos if _me_cita(e, meus_nomes)]
+                    descartados += antes - len(colhidos)
+                eventos.extend(colhidos)
 
         if bloqueadas:
             # Só a contagem: o nome de uma conversa que o usuário mandou nunca
             # ler não deve acabar no arquivo de log por causa do diagnóstico.
             _log.info(
                 "Slack: %d conversa(s) da blocklist não foram consultadas.", bloqueadas
+            )
+        if descartados:
+            _log.info(
+                "Slack: %d mensagem(ns) fora de [slack].so_com_mencao descartadas "
+                "por não citarem você.",
+                descartados,
             )
         _log.info(
             "Slack: %d eventos entre %s e %s.",
@@ -314,6 +334,38 @@ class FonteSlack:
         # não teria como bloquear nada. `users.info` fala sobre a pessoa, não
         # sobre a conversa — nenhuma mensagem é lida aqui.
         return self._casa("\n".join(nomes.apelidos(conversa.get("user"))))
+
+    def _meus_nomes(self, sou_eu: dict[str, Any], nomes: _Nomes) -> tuple[str, ...]:
+        """Como o meu nome aparece em `Evento.pessoas`, para reconhecê-lo lá.
+
+        Vem do `auth.test` que já foi feito, e não da configuração: quem sou eu
+        naquele workspace é fato do token, e pedir isso ao usuário seria um
+        cadastro a mais para ele errar.
+        """
+        if not self._so_com_mencao:
+            return ()
+        identificador = str(sou_eu.get("user_id") or "").strip()
+        apelidos = list(nomes.apelidos(identificador)) if identificador else []
+        for bruto in (sou_eu.get("user"), identificador):
+            texto = str(bruto or "").strip()
+            if texto and texto not in apelidos:
+                apelidos.append(texto)
+        return tuple(apelidos)
+
+    def _so_o_que_me_cita(self, conversa: dict[str, Any], nomes: _Nomes) -> bool:
+        """Nesta conversa, só entra o que cita o usuário?
+
+        Diferente da blocklist, isto age **depois** da leitura: o canal é lido
+        inteiro e a maior parte é descartada. É a única forma de saber quem uma
+        mensagem cita, e o custo em requisição é o mesmo de ler o canal todo.
+        """
+        if not self._so_com_mencao:
+            return False
+        candidatos = [str(conversa.get("id") or ""), str(conversa.get("name") or "")]
+        if conversa.get("user"):
+            candidatos.extend(nomes.apelidos(conversa.get("user")))
+        alvo = "\n".join(candidatos).casefold()
+        return any(padrao in alvo for padrao in self._so_com_mencao)
 
     def _casa(self, alvo: str) -> bool:
         dobrado = alvo.casefold()
@@ -441,6 +493,7 @@ def de_configuracao(configuracao: Configuracao, **extras: Any) -> FonteSlack:
     return FonteSlack(
         configuracao.slack_user_token,
         conversas_excluidas=configuracao.slack_conversas_excluidas,
+        so_com_mencao=configuracao.slack_so_com_mencao,
         **extras,
     )
 
@@ -756,6 +809,16 @@ def _momento(bruto: Any) -> datetime | None:
 def _epoch(momento: datetime) -> str:
     """O limite da janela como `oldest`/`latest` esperam: epoch com fração."""
     return f"{momento.timestamp():.6f}"
+
+
+def _me_cita(evento: Evento, meus_nomes: Sequence[str]) -> bool:
+    """O usuário aparece nesta mensagem — citado nela ou como autor dela?
+
+    O autor entra de propósito: o que ele mesmo escreveu num canal é trabalho
+    dele, e descartá-lo por não se auto-citar tiraria da daily justamente o que
+    é mais dele.
+    """
+    return any(nome in evento.pessoas for nome in meus_nomes)
 
 
 def _distintos(*nomes: str) -> tuple[str, ...]:

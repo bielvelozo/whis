@@ -579,6 +579,7 @@ api_key = ""                 # Personal API Key read-only; vazio = fonte desliga
 [slack]
 user_token = ""              # user token xoxp da app interna; vazio = fonte desligada
 conversas_excluidas = []     # canais e DMs que o coletor nunca lê
+so_com_mencao = []           # canais em que só entra o que cita você (ex.: code review)
 """
 
 

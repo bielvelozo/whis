@@ -72,6 +72,7 @@ class Configuracao:
     linear_api_key: str = ""
     slack_user_token: str = ""
     slack_conversas_excluidas: tuple[str, ...] = ()
+    slack_so_com_mencao: tuple[str, ...] = ()
     origem: Path | None = None
 
 
@@ -157,6 +158,7 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
         linear_api_key=str(linear.get("api_key", "")),
         slack_user_token=str(slack.get("user_token", "")),
         slack_conversas_excluidas=_textos(slack.get("conversas_excluidas")),
+        slack_so_com_mencao=_textos(slack.get("so_com_mencao")),
         origem=arquivo,
     )
 
