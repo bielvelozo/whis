@@ -82,3 +82,34 @@ Corrigido no DEFERRED junto com a mensagem de `montar_fontes`, que falava só em
 **Não provado: a prova humana.** Uma daily real com Claude gasta a assinatura (~US$ 0,30) e o
 ticket manda pedir antes. O que pode ser rodado sem custo foi rodado; a daily de verdade e o
 teste de rede do prompt esperam o sim do usuário.
+
+---
+
+**A daily real foi gerada em 2026-09-04 00:13**, autorizada pelo usuário. É a prova humana que
+faltava, e ela também é a **primeira execução do prompt da daily contra o Claude de verdade** —
+o texto das batidas nunca tinha sido visto por ninguém.
+
+- **Custo e volume:** US$ 0,4235, 38 segundos. 262 eventos (52 commits em 29 repositórios + 210
+  do Linear) + 2 reuniões, 69.211 caracteres de pergunta. Saída `0`, nota de 524 linhas em
+  `daily/2026-09-04.md`, uma só. Acima dos ~US$ 0,29 do diário; o smoke foi corrigido.
+- **A regra que mais importa segurou.** Duas pessoas comentaram na janela: Gabriel Velozo (14
+  comentários, 13 issues) e Gabriel Ribeiro (35 comentários, 8 issues). As 15 issues citadas em
+  `Entreguei` e `Sigo em` são **todas** do usuário; **nenhuma** das 8 da outra pessoa (FN-1509,
+  1558, 1587, 1592, 1593, 1634, 1635, 1636) aparece ali. As duas issues que o roteiro cita sem
+  serem dele (FN-1602, FN-1603) estão em `Dúvidas`, que é exatamente o lugar previsto.
+- **`preciso_de` veio com o que espera outra pessoa**: cinco PRs aguardando revisão humana e
+  merge, todas rastreáveis nas listas cruas (`#1636`, `#1639`, `#1650`, `#1657`, `#1660`).
+- **Toda afirmação do roteiro é rastreável** até uma linha das listas cruas — conferi item a
+  item pelos identificadores.
+- **Frontmatter completo** (`desde`, `ate`, `fontes`, `fontes_com_falha: []`, `temas`,
+  `reunioes`), linha "Cobre de..." dizendo que foi a primeira daily, e as duas reuniões do
+  período linkadas.
+- **`notas/` continua vazia**: o usuário ainda não criou `daily.md`, e a nota corretamente
+  omitiu `Meus pontos`.
+
+Achado da execução real, anotado no DEFERRED: a linha de custo do log mostra `2 tokens de
+entrada` para uma pergunta de 69 mil caracteres — o volume cai em `cache_creation_input_tokens`,
+que ela não lê. O `total_cost_usd` está correto.
+
+**Falta só o usuário ler o roteiro antes de uma daily de verdade e dizer se ele serve para
+falar.** O passo 6 do smoke (marcar o checkbox e conferir que sumiu) depende da daily de amanhã.

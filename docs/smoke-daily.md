@@ -105,7 +105,7 @@ Um minuto antes de falar:
 python -m second_brain daily
 ```
 
-Este passo **chama o Claude** (a conta da sua assinatura, ~US$ 0,30 num dia
+Este passo **chama o Claude** (a conta da sua assinatura, ~US$ 0,42 num dia
 cheio) e **escreve** `daily/YYYY-MM-DD.md`. O terminal imprime o roteiro
 pronto para ler em voz alta.
 
@@ -188,5 +188,11 @@ texto que iria para o aviso da nota.
 
 ## Custo
 
-Uma chamada ao Claude por daily, pela assinatura — ~US$ 0,30 medidos num dia
-com 200 eventos do Linear e 30 commits. `--simular` e `--anotar` custam zero.
+Uma chamada ao Claude por daily, pela assinatura — **US$ 0,4235 medidos** em
+2026-09-04, num período de 262 eventos (52 commits em 29 repositórios + 210 do
+Linear), 69 mil caracteres de pergunta e 38 segundos. `--simular` e `--anotar`
+custam zero.
+
+A linha de custo no log traz `total_cost_usd`, que é o número confiável; os
+tokens de entrada que ela mostra vêm subnotificados (o volume real cai em
+`cache_creation_input_tokens`, que a linha não lê).
