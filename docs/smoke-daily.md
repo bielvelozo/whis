@@ -84,6 +84,57 @@ mensagem diz qual chave preencher), ou todas falharam (a mensagem traz o
 motivo de cada uma), ou não houve nada no período. Nos dois primeiros casos,
 `bandeja.log` tem o mesmo motivo.
 
+## Passo 1b — Calar os projetos pessoais
+
+Só se você tem projeto pessoal na mesma pasta que o trabalho. Na primeira daily
+real, **30 dos 52 commits eram de projeto pessoal** e o roteiro falou deles.
+
+Em `%APPDATA%\second-brain\config.toml`:
+
+```toml
+[daily]
+referencias_pessoais = ["second-brain", "renovo-hub"]
+```
+
+Lista-se o que é **pessoal**, não o que é do trabalho: assim um projeto novo do
+Linear entra na daily sozinho, sem você precisar cadastrá-lo. Casa por pedaço do
+nome, sem diferenciar maiúsculas, contra o repositório, o projeto ou o canal.
+
+```
+python -m second_brain daily --simular
+```
+
+**Sucesso:** as linhas dos seus projetos aparecem marcadas com `← só no vault`, e
+no fim vem `N evento(s) ficam só no vault, fora do roteiro`. Elas **continuam na
+lista**, e é isso que você quer: o roteiro cala, o vault guarda.
+
+```
+  03/09 22:20  [git] (renovo-hub) `591d652` Wayfinder: mapa do v1  ← só no vault
+  03/09 23:35  [git] (flavianasser-monorepo) `7507ba4` Fecha a validacao
+```
+
+**Falha:** se marcar de menos, o pedaço do nome não bate — confira como a
+referência aparece na própria linha. Se marcar demais, o padrão é curto demais e
+está pegando repositório do trabalho junto.
+
+## Passo 1c — Contar como o seu time funciona
+
+O roteiro deduz do nome do estado quando você não conta. Foi assim que a primeira
+daily real afirmou que cinco PRs esperavam "revisão humana", que não existe lá.
+
+```toml
+[daily]
+contexto_do_time = "A aprovação do Zeno já libera a PR: não há review humano. O merge é meu."
+```
+
+Escreva em texto corrido, como explicaria a alguém que entrou no time hoje. Vale
+para qualquer coisa que o roteiro não tem como saber: quem aprova, o que trava, o
+que um estado significa aí.
+
+**Sucesso:** na daily do passo 3, `Preciso de` para de listar o que depende só de
+você. Se o merge é seu e ninguém está esperando nada, `Preciso de` vem **vazio** —
+e isso é uma daily melhor do que um bloqueio inventado.
+
 ## Passo 2 — Anotar um ponto seu
 
 ```
@@ -117,8 +168,11 @@ pronto para ler em voz alta.
 - `Entreguei` e `Sigo em` são **o seu trabalho** — os commits são seus por
   construção, mas o Linear traz o time inteiro, e a movimentação dos outros
   não pode aparecer como se fosse sua;
-- `Preciso de` só tem o que **espera outra pessoa** (review parado, PR sem
-  merge). Nota para si mesmo não é daily. Lista vazia é resposta válida;
+- `Preciso de` só tem o que **espera outra pessoa**, segundo o que você contou
+  no passo 1c. Nota para si mesmo não é daily. Lista vazia é resposta válida;
+- o que a daily cobra vem **com link clicável** quando o material tinha um: a PR
+  aparece como `[#1636](https://github.com/...)`, que você lê em voz alta como
+  "#1636" e clica depois;
 - o código de saída é `0`.
 
 **Falha — o Claude não respondeu:** a daily nasce mesmo assim, com o aviso

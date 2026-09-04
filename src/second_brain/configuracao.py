@@ -44,6 +44,13 @@ class Configuracao:
     As chaves das fontes passivas seguem a mesma regra: **vazia é fonte
     desligada**. É o que permite o diário nascer só com git e Linear enquanto o
     Slack espera aprovação do admin.
+
+    `daily_referencias_pessoais` vazia significa **"tudo é trabalho"** — o
+    comportamento de quem nunca mexeu no arquivo. Preencher é para quem tem
+    projeto pessoal na mesma pasta de desenvolvimento e não quer falar dele na
+    daily do time. Lista-se o que é **pessoal**, e não o que é do trabalho,
+    porque trabalho novo aparece toda semana e sumir da daily em silêncio é pior
+    do que aparecer demais.
     """
 
     vault: Path
@@ -55,6 +62,8 @@ class Configuracao:
     dispositivo_sistema: str = ""
     diario_inicio_do_dia: str = INICIO_DO_DIA_PADRAO
     diario_hora_da_tarefa: str = "19:00"
+    daily_referencias_pessoais: tuple[str, ...] = ()
+    daily_contexto_do_time: str = ""
     privacidade_excluir: tuple[str, ...] = ()
     git_raiz: Path | None = None
     git_profundidade: int = 3
@@ -116,6 +125,7 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
     claude = dados.get("claude") or {}
     audio = dados.get("audio") or {}
     diario = dados.get("diario") or {}
+    daily = dados.get("daily") or {}
     privacidade = dados.get("privacidade") or {}
     git = dados.get("git") or {}
     linear = dados.get("linear") or {}
@@ -137,6 +147,8 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
         diario_hora_da_tarefa=_hora(
             diario.get("hora_da_tarefa", "19:00"), "[diario].hora_da_tarefa", arquivo
         ),
+        daily_referencias_pessoais=_textos(daily.get("referencias_pessoais")),
+        daily_contexto_do_time=str(daily.get("contexto_do_time", "")).strip(),
         privacidade_excluir=_textos(privacidade.get("excluir")),
         git_raiz=Path(raiz_do_git) if raiz_do_git else None,
         git_profundidade=_profundidade(git.get("profundidade", 3), arquivo),

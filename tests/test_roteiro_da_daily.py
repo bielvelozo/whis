@@ -138,7 +138,10 @@ def test_prompt_separa_o_trabalho_dele_do_contexto_do_time():
 
 def test_prompt_restringe_preciso_de_ao_que_espera_outra_pessoa():
     assert "SÓ o que depende de OUTRA PESSOA" in PROMPT_DA_DAILY
-    assert "aguardando merge" in PROMPT_DA_DAILY
+    # O exemplo era "os PRs #1623 e #1628 estão aguardando merge... porque quem
+    # faz o merge é outra pessoa". A camada 08 o trocou: no time deste usuário o
+    # merge é dele, e o exemplo empurrava o modelo a inventar um bloqueio.
+    assert "esperando o review da Ana" in PROMPT_DA_DAILY
     assert "estado expirado" in PROMPT_DA_DAILY
     assert "dependem só dele" in PROMPT_DA_DAILY
 

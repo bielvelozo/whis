@@ -214,14 +214,21 @@ def montar_fontes_da_daily(
 def montar_roteiro_da_daily(
     configuracao: Configuracao, *, fakes: bool = False
 ) -> PortaDaily:
-    """O roteiro da daily: o Claude da conta do usuário, ou o fake."""
+    """O roteiro da daily: o Claude da conta do usuário, ou o fake.
+
+    O processo do time entra pelo construtor, como o modelo: a porta é a mesma
+    para todo adaptador, e o que muda de máquina para máquina é configuração.
+    """
     if fakes:
         _log.warning("Usando roteiro da daily FAKE — nada é enviado ao Claude.")
         return DailyFake()
 
     from .resumo_dia_claude import ResumoDoDiaClaude
 
-    return ResumoDoDiaClaude(modelo=configuracao.claude_modelo or None)
+    return ResumoDoDiaClaude(
+        modelo=configuracao.claude_modelo or None,
+        contexto_do_time=configuracao.daily_contexto_do_time,
+    )
 
 
 # -- processar --------------------------------------------------------------
@@ -480,11 +487,13 @@ def _relatar_daily(resultado: ResultadoDaDaily) -> None:
 
     if resultado.simulado:
         print("Simulação — o Claude não foi chamado e nada foi escrito.")
+        calados = {id(evento) for evento in resultado.calados}
         for evento in resultado.eventos:
             referencia = f" ({evento.referencia})" if evento.referencia else ""
+            marca = "  ← só no vault" if id(evento) in calados else ""
             print(
                 f"  {evento.momento:%d/%m %H:%M}  [{evento.fonte}]{referencia} "
-                f"{evento.titulo}"
+                f"{evento.titulo}{marca}"
             )
         if not resultado.eventos:
             print("  (nenhum evento)")
@@ -495,6 +504,11 @@ def _relatar_daily(resultado: ResultadoDaDaily) -> None:
         print(f"  reunião: {reuniao}")
     if resultado.excluidos:
         print(f"O filtro de exclusão removeu {resultado.excluidos} evento(s).")
+    if resultado.calados:
+        print(
+            f"{len(resultado.calados)} evento(s) ficam só no vault, fora do roteiro "
+            f"— são de [daily].referencias_pessoais."
+        )
     for falha in resultado.fontes_com_falha:
         print(f"Fonte '{falha.fonte}' não entrou: {falha.motivo}")
     if resultado.falha_do_roteiro:
@@ -544,6 +558,10 @@ dispositivo_sistema = ""     # vazio = loopback da saída padrão do Windows
 [diario]
 inicio_do_dia = "04:00"      # o diário de um dia vai desta hora à mesma hora do dia seguinte
 hora_da_tarefa = "19:00"     # quando a tarefa agendada gera o diário
+
+[daily]
+referencias_pessoais = []     # repositórios e canais que são seus, não do trabalho: ficam no vault mas fora do roteiro
+contexto_do_time = ""         # como o seu processo funciona, para o roteiro não inventar bloqueio
 
 [privacidade]
 excluir = []                 # trechos que nunca saem da máquina (substring, sem diferenciar maiúsculas)

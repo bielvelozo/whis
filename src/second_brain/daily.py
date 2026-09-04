@@ -61,6 +61,8 @@ class ResultadoDaDaily:
     reunioes: tuple[str, ...]
     roteiro: Daily | None
     pontos: _vault.PontosDaDaily
+    #: Eventos que ficam só no vault: casaram com `[daily].referencias_pessoais`.
+    calados: tuple[Evento, ...] = ()
     vazio: bool = False
     simulado: bool = False
     falha_do_roteiro: str | None = None
@@ -96,6 +98,38 @@ def janela_da_daily(agora: datetime, vault: Path) -> JanelaDaDaily:
     )
 
 
+def do_trabalho(
+    eventos: Sequence[Evento], pessoais: Sequence[str]
+) -> tuple[tuple[Evento, ...], tuple[Evento, ...]]:
+    """Separa o que se fala na daily do que só fica guardado no vault.
+
+    Um evento é **pessoal** se algum padrão aparecer na `referencia` dele —
+    substring, `casefold()` dos dois lados, como o filtro de exclusão. Todo o
+    resto é do trabalho, inclusive evento **sem referência**.
+
+    Lista-se o pessoal, e não o trabalho, porque o que é do trabalho cresce
+    toda semana — projeto novo no Linear, repositório novo — e o que é pessoal
+    é um punhado de coisas que o usuário conhece. Assim a régua erra para o
+    lado de **falar demais**, que ele vê ao reler o roteiro antes de falar;
+    errar para o silêncio esconderia trabalho de verdade, e ausência é mais
+    difícil de notar que excesso.
+
+    Lista vazia devolve tudo como do trabalho: o comportamento de quem nunca
+    configurou nada.
+    """
+    padroes = [padrao.casefold() for padrao in pessoais if padrao.strip()]
+    if not padroes:
+        return tuple(eventos), ()
+
+    falados: list[Evento] = []
+    calados: list[Evento] = []
+    for evento in eventos:
+        referencia = (evento.referencia or "").casefold()
+        pessoal = bool(referencia) and any(p in referencia for p in padroes)
+        (calados if pessoal else falados).append(evento)
+    return tuple(falados), tuple(calados)
+
+
 def gerar_daily(
     agora: datetime,
     *,
@@ -123,6 +157,18 @@ def gerar_daily(
     colhido = coletar(fontes, janela.como_janela(), configuracao=configuracao)
     pontos = _vault.pontos_da_daily(configuracao.vault)
 
+    # O corte trabalho/pessoal acontece antes da simulação de propósito: é pelo
+    # `--simular` que o usuário confere a configuração sem pagar uma chamada.
+    para_falar, calados = do_trabalho(
+        colhido.eventos, configuracao.daily_referencias_pessoais
+    )
+    if calados:
+        _log.info(
+            "%d evento(s) de [daily].referencias_pessoais não vão ao roteiro; "
+            "continuam nas listas cruas da nota.",
+            len(calados),
+        )
+
     parcial = ResultadoDaDaily(
         janela=janela,
         nota=None,
@@ -133,6 +179,7 @@ def gerar_daily(
         reunioes=colhido.reunioes,
         roteiro=None,
         pontos=pontos,
+        calados=calados,
     )
 
     # Um ponto escrito à mão é motivo suficiente para a daily existir: ele é a
@@ -145,7 +192,20 @@ def gerar_daily(
         _log.info("Simulação — o Claude não foi chamado e nada foi escrito.")
         return replace(parcial, simulado=True)
 
-    falado, falha = _montar_roteiro(roteiro, colhido.eventos, colhido.reunioes)
+    # Só o que é do trabalho é FALADO; `montar_daily` abaixo recebe todos os
+    # eventos, porque a daily é o registro durável do vault e a memória é do
+    # usuário — o time só ouve o roteiro.
+    if not para_falar and not colhido.reunioes:
+        # Um fim de semana inteiro de projeto pessoal é isto: pedir um roteiro
+        # sobre nada gastaria a assinatura para receber quatro listas vazias, que
+        # o adaptador trata como falha. A nota nasce dizendo a verdade.
+        _log.info("Nada do trabalho no período — o Claude não foi chamado.")
+        falado, falha = None, (
+            "não houve nada do trabalho neste período — só o que está em "
+            "[daily].referencias_pessoais, que fica fora do roteiro."
+        )
+    else:
+        falado, falha = _montar_roteiro(roteiro, para_falar, colhido.reunioes)
 
     raiz = _vault.preparar(configuracao.vault)
     caminho = _vault.caminho_da_daily(janela.data)

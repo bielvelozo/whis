@@ -149,10 +149,12 @@ link coringa e fechei a FN-1610".
 - "sigo_em": o que ficou pela metade e continua agora — issue que terminou o \
 período em In Progress, branch sem PR, refatoração começada. De um a três itens, \
 no presente: "sigo nas FN-1617, FN-1618 e FN-1619, que ficaram em In Progress".
-- "preciso_de": SÓ o que depende de OUTRA PESSOA para andar — review parado, PR \
-sem merge, aprovação, acesso, resposta que não veio —, dizendo de quem ou de quê \
-é a dependência. "os PRs #1623 e #1628 estão aguardando merge" entra, porque quem \
-faz o merge é outra pessoa. Nota para si mesmo NÃO entra: "faltou exercitar o \
+- "preciso_de": SÓ o que depende de OUTRA PESSOA para andar — review parado, \
+aprovação, acesso, resposta que não veio —, dizendo de quem ou de quê é a \
+dependência. "a FN-1623 está parada esperando o review da Ana" entra, porque quem \
+revisa é outra pessoa. NÃO deduza de quem é uma etapa pelo nome do estado nem \
+pela convenção de outros times: uma issue em "In Review" ou um PR aberto podem \
+depender só dele, e cada time combina isso de um jeito. Nota para si mesmo NÃO entra: "faltou exercitar o \
 estado expirado na validação" e "não fiz a comparação visual" dependem só dele e \
 ficam de fora da daily inteira. Se nada estiver esperando outra pessoa, devolva \
 lista vazia — dizer que não está bloqueado é uma daily melhor do que inventar um \
@@ -163,11 +165,19 @@ pergunta para preencher.
 
 Regras gerais:
 - Cada item é uma frase curta, dita em voz alta: o roteiro inteiro cabe em \
-sessenta segundos. Sem título, sem parágrafo e sem markdown dentro do item.
+sessenta segundos. Sem título e sem parágrafo dentro do item.
+- Quando o item cobrar uma ação sobre algo que tem link no material — PR, issue, \
+documento —, traga o link em markdown com rótulo curto: "[#1636](https://...)". \
+É a única marcação permitida dentro de um item: ela existe para ele clicar depois \
+de falar, e em voz alta ele lê só o rótulo. Nunca cole a URL crua e nunca invente \
+um link que não esteja no material.
 - Registre apenas o que está nos eventos e nas reuniões listadas. Não invente, \
 não deduza o que não foi dito e não preencha uma batida só para ela não ficar \
 vazia.
-- Uma lista vazia é uma resposta válida e melhor do que um item inventado.\
+- Uma lista vazia é uma resposta válida e melhor do que um item inventado.
+- Quando o material trouxer um bloco "Como este time funciona", ele descreve o \
+processo real dele e vale mais que qualquer dedução sua a partir de nome de \
+estado ou de costume de outros times: siga-o.\
 """
 
 
@@ -189,10 +199,15 @@ class ResumoDoDiaClaude:
         modelo: str | None = MODELO_PADRAO,
         limite_de_caracteres: int = LIMITE_DE_CARACTERES,
         timeout_s: float = TIMEOUT_PADRAO_S,
+        contexto_do_time: str = "",
     ) -> None:
         self.modelo = modelo or None
         self.limite_de_caracteres = limite_de_caracteres
         self.timeout_s = timeout_s
+        # Entra pelo construtor, e não pela porta: `PortaDaily.resumir_daily`
+        # tem a mesma assinatura para todo adaptador, e o processo do time é
+        # configuração desta máquina, como o modelo.
+        self.contexto_do_time = contexto_do_time.strip()
 
     def resumir_dia(
         self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...]
@@ -225,7 +240,9 @@ class ResumoDoDiaClaude:
         self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...]
     ) -> Daily:
         """Manda a janela ao Claude e devolve as quatro batidas do roteiro."""
-        pergunta = montar_pergunta_da_daily(eventos, reunioes)
+        pergunta = montar_pergunta_da_daily(
+            eventos, reunioes, contexto_do_time=self.contexto_do_time
+        )
         self._recusar_periodo_longo(pergunta)
 
         _log.info(
@@ -345,13 +362,18 @@ def montar_pergunta(eventos: Sequence[Evento], reunioes: Sequence[str]) -> str:
 
 
 def montar_pergunta_da_daily(
-    eventos: Sequence[Evento], reunioes: Sequence[str]
+    eventos: Sequence[Evento], reunioes: Sequence[str], *, contexto_do_time: str = ""
 ) -> str:
     """O turno do usuário: a janela inteira desde a última daily.
 
     Mesma lista cronológica do diário, com outra moldura: aqui o período pode
     ter vários dias, e dizer isso é o que impede o Claude de escrever "hoje"
     numa daily de segunda-feira que cobre o fim de semana.
+
+    `contexto_do_time` é o que o usuário escreveu sobre o próprio processo. Sem
+    ele o modelo deduz pelo nome do estado — foi assim que a primeira daily real
+    afirmou que cinco PRs esperavam uma revisão humana que não existe no time
+    dele.
     """
     linhas = [
         "Tudo que aconteceu desde a última daily, em ordem cronológica, no "
@@ -369,6 +391,9 @@ def montar_pergunta_da_daily(
         linhas.extend(f"- {_reuniao_legivel(reuniao)}" for reuniao in reunioes)
     else:
         linhas.append("(nenhuma reunião gravada neste período)")
+
+    if contexto_do_time:
+        linhas.extend(["", "Como este time funciona:", "", contexto_do_time])
 
     return "\n".join(linhas) + "\n"
 

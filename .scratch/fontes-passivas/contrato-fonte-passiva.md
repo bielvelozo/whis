@@ -542,20 +542,25 @@ a editá-lo**, com exatamente estas duas chaves e nenhuma outra:
 
 ```toml
 [daily]
-referencias_do_trabalho = []   # repositórios, projetos e canais do trabalho; vazio = tudo é trabalho
+referencias_pessoais = []      # repositórios e canais que são seus, não do trabalho
 contexto_do_time = ""          # como o seu processo funciona, em texto livre, para o roteiro não inventar
 ```
 
 Campos achatados em `Configuracao`, no padrão já existente:
-`daily_referencias_do_trabalho: tuple[str, ...] = ()` e `daily_contexto_do_time: str = ""`.
+`daily_referencias_pessoais: tuple[str, ...] = ()` e `daily_contexto_do_time: str = ""`.
 `MODELO_DE_CONFIGURACAO` ganha a seção com estes comentários. Configuração antiga continua
 carregando, e **lista vazia significa "tudo é trabalho"** — o comportamento de hoje, preservado
 para quem não configurar nada.
 
 A comparação é **substring com `casefold()`** contra `Evento.referencia`, como o filtro de
-exclusão já faz. Falhar para o lado de **falar demais** é o certo aqui: trabalho que sumiu do
-roteiro o usuário vê ao reler antes de falar, e nada se perde do vault; projeto pessoal que
-vaza, ele só descobre na frente do time.
+exclusão já faz. Evento **sem referência** é do trabalho.
+
+**Lista-se o pessoal, não o trabalho** — e o motivo é a direção do erro. O que é do trabalho
+cresce toda semana (projeto novo no Linear, repositório novo); o que é pessoal é um punhado de
+coisas que o usuário conhece. Listar o trabalho faria todo projeto novo nascer **mudo** na
+daily, e **ausência é mais difícil de notar que excesso**: projeto pessoal que sobrou ele vê ao
+reler o roteiro antes de falar, e conserta em dez segundos; trabalho que sumiu, ele pode não
+perceber. Nada se perde do vault em nenhum dos dois casos.
 
 ### Onde cada coisa age
 
