@@ -8,7 +8,7 @@ Contrato: **[contrato-busca.md](../contrato-busca.md)**, seções 1, 2 e 6.
 
 **Blocked by:** 01
 
-**Status:** blocked
+**Status:** ready-for-agent
 
 - [ ] Implementa `PortaBusca` pela conta do usuário (OAuth), recusando API key paga como
       `resumo_dia_claude` já faz
@@ -18,6 +18,8 @@ Contrato: **[contrato-busca.md](../contrato-busca.md)**, seções 1, 2 e 6.
 - [ ] O prompt manda: procurar no vault antes de tudo, **citar o arquivo** de cada afirmação, e
       responder "não achei" em vez de deduzir
 - [ ] `ForaDaFronteira` é traduzido para o modelo como "esse arquivo não existe"
+- [ ] `LimiteDeNotas` é traduzido para o modelo como "responda com o que já leu" — é o freio
+      de `[busca].maximo_de_notas`, não um erro (contrato, seção 8)
 - [ ] Resposta ilegível vira `ErroDeBusca`, com o texto cru no log
 - [ ] `custo_usd` a partir do `ResultMessage`, no formato da entrega anterior
 - [ ] Teste de tradução sem rede e um `@pytest.mark.rede` opcional, que **gasta a assinatura**

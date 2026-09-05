@@ -5,9 +5,10 @@ adaptadores que os testes (e o `--fakes` da CLI) injetam no lugar da Deepgram,
 do Claude, do git, do Linear e do Slack. Os testes verificam só o que aparece
 no vault.
 
-As exceções são `ResumoDoDiaFake` e `DailyFake`, que guardam os eventos que
-receberam: o filtro de exclusão promete que o conteúdo excluído **não sai da
-máquina**, e a única forma de provar isso é olhar o que chegou ao resumo.
+As exceções são `ResumoDoDiaFake`, `DailyFake` e `BuscaFake`, que guardam o
+que receberam: o filtro de exclusão e a pasta privada prometem que o conteúdo
+excluído **não sai da máquina**, e a única forma de provar isso é olhar o que
+chegou à porta.
 """
 
 from __future__ import annotations
@@ -15,6 +16,9 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import date, datetime, time
 
+from .busca import Citacao, Resposta
+from .conversa import Turno
+from .ferramentas import Ferramentas
 from .fontes import Evento, Janela
 from .portas import (
     EU,
@@ -286,6 +290,47 @@ class DailyFake:
         if self._erro is not None:
             raise self._erro
         return self._roteiro
+
+
+#: Resposta de exemplo, citando uma nota como o adaptador real citaria.
+RESPOSTA_PADRAO = Resposta(
+    texto="A retenção ficou em 180 dias, decidida na reunião de 3 de setembro.",
+    citacoes=(
+        Citacao("reunioes/2026-09-03-1403-reuniao.md", "retenção de 180 dias"),
+    ),
+)
+
+
+class BuscaFake:
+    """Porta de busca que devolve sempre a mesma resposta.
+
+    Guarda a pergunta, as ferramentas e o histórico que recebeu: é assim que a
+    costura prova o que **não** chegou ao Claude — a pergunta vazia, o fio
+    expirado — e, pelas próprias ferramentas recebidas, que a pasta privada
+    está fora do alcance de quem responde.
+    """
+
+    def __init__(
+        self, resposta: Resposta = RESPOSTA_PADRAO, erro: Exception | None = None
+    ) -> None:
+        self._resposta = resposta
+        self._erro = erro
+        self.perguntas_recebidas: list[str] = []
+        self.ferramentas_recebidas: Ferramentas | None = None
+        self.historico_recebido: tuple[Turno, ...] = ()
+
+    def perguntar(
+        self,
+        pergunta: str,
+        ferramentas: Ferramentas,
+        historico: tuple[Turno, ...] = (),
+    ) -> Resposta:
+        self.perguntas_recebidas.append(pergunta)
+        self.ferramentas_recebidas = ferramentas
+        self.historico_recebido = tuple(historico)
+        if self._erro is not None:
+            raise self._erro
+        return self._resposta
 
 
 def _transportar(evento: Evento, dia: date) -> Evento:

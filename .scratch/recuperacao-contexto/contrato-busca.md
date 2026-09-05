@@ -179,3 +179,40 @@ O gesto que fecha a entrega, na máquina do usuário, com o vault real:
 acompanhamento (*"e quem levantou isso?"*) e o agente responde **sem ele repetir o assunto** —
 que é a prova do fio de 24 horas. Se a decisão não estiver no vault, a resposta diz que não
 achou, e isso também é sucesso.
+
+## 8. Adendos da camada 01 (2026-09-04)
+
+O que a camada 01 acrescentou ao contrato ao construí-lo. As camadas seguintes constroem
+contra isto, não contra as seções 1 a 4 sozinhas.
+
+- **`ferramentas.LimiteDeNotas`** — `ler_nota` levanta quando a pergunta já abriu
+  `[busca].maximo_de_notas` notas distintas; reler uma nota aberta não conta, e leitura
+  recusada também não. Sem isto a chave seria letra morta: `Ferramentas` nasce por pergunta e
+  é o único ponto que sabe quantas notas foram lidas. **A camada 02 traduz para o modelo como
+  "responda com o que já leu"** — não é erro, é o freio.
+- **`Ferramentas.notas_lidas`** — o contador, para o log da costura.
+- **Semântica da busca**: todas as palavras do termo na mesma linha, sem acento nem caixa
+  (`retencao` acha `retenção`); dentro de cada pasta a nota mais recente vem primeiro; só `.md`;
+  pastas que começam com `.` (`.obsidian/`, `.trash/`) ficam de fora. `listar` devolve caminhos
+  relativos ao vault, com `/` no fim das subpastas.
+- **A recusa é idêntica para o privado e para o inexistente**: `Não existe no vault: '<caminho>'`
+  nos dois casos, testado pela igualdade da mensagem. Arquivo que não existe, pasta pedida como
+  nota, caminho absoluto, `..` para fora e link para dentro da pasta privada caem na mesma frase.
+- **`conversa.Conversas`** — o arquivo `conversas.json`, com `de_configuracao(configuracao)`,
+  `abrir(chave, agora=...)` e `guardar(chave, conversa)`. **Abra o fio a cada mensagem, com
+  `agora`**: é assim que a expiração é aplicada. A chave é a DM (camada 04) ou `"terminal"`
+  (diagnóstico). Gravar um fio vazio remove a chave; gravar poda os outros fios já expirados;
+  a escrita é em dois passos (`.tmp` + `os.replace`) porque o atendente fica no ar o dia todo.
+- **`Conversa.expirar(agora)`** e **`Conversa.expirada(agora)`** — para quem segura o fio em
+  memória. `responder` chama `expirar` antes de ler o histórico, então um fio parado há 25h
+  nunca chega à busca mesmo sem reabrir do disco. Momento sem fuso ganha o fuso local.
+- **`responder(..., agora=None)`** — o relógio do fio, injetado nos testes; `None` é o relógio
+  da máquina. Levanta **`pergunta.PerguntaVazia`** (`ValueError`) para pergunta em branco.
+  Quando a busca devolve texto vazio, o fio guarda `pergunta.SEM_RESPOSTA` ("Não achei.") no
+  turno do agente, porque o fio guarda falas e uma fala em branco não serve à camada 02.
+- **`conversa.USUARIO` / `conversa.AGENTE`** — os dois valores de `Turno.quem`.
+- **`fakes.BuscaFake`** guarda `perguntas_recebidas`, `ferramentas_recebidas` e
+  `historico_recebido`, e devolve `fakes.RESPOSTA_PADRAO`.
+- **`[privacidade].pastas_privadas`** é validada: cada item precisa ser relativo e sem `..`
+  (barra invertida e barra final são normalizadas). `[busca].maximo_de_notas` precisa ser
+  inteiro ≥ 1.

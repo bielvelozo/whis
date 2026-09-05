@@ -65,6 +65,8 @@ class Configuracao:
     daily_referencias_pessoais: tuple[str, ...] = ()
     daily_contexto_do_time: str = ""
     privacidade_excluir: tuple[str, ...] = ()
+    privacidade_pastas_privadas: tuple[str, ...] = ()
+    busca_maximo_de_notas: int = 40
     git_raiz: Path | None = None
     git_profundidade: int = 3
     git_excluir: tuple[str, ...] = ()
@@ -128,6 +130,7 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
     diario = dados.get("diario") or {}
     daily = dados.get("daily") or {}
     privacidade = dados.get("privacidade") or {}
+    busca = dados.get("busca") or {}
     git = dados.get("git") or {}
     linear = dados.get("linear") or {}
     slack = dados.get("slack") or {}
@@ -151,6 +154,10 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
         daily_referencias_pessoais=_textos(daily.get("referencias_pessoais")),
         daily_contexto_do_time=str(daily.get("contexto_do_time", "")).strip(),
         privacidade_excluir=_textos(privacidade.get("excluir")),
+        privacidade_pastas_privadas=_pastas_privadas(
+            privacidade.get("pastas_privadas"), arquivo
+        ),
+        busca_maximo_de_notas=_maximo_de_notas(busca.get("maximo_de_notas", 40), arquivo),
         git_raiz=Path(raiz_do_git) if raiz_do_git else None,
         git_profundidade=_profundidade(git.get("profundidade", 3), arquivo),
         git_excluir=_textos(git.get("excluir")),
@@ -183,6 +190,49 @@ def _textos(valor: object) -> tuple[str, ...]:
     if isinstance(valor, str):
         return (valor,)
     return tuple(str(item) for item in valor)
+
+
+def _pastas_privadas(valor: object, arquivo: Path) -> tuple[str, ...]:
+    """Valida e normaliza as pastas que a busca nunca abre.
+
+    Cada uma precisa apontar para **dentro** do vault: caminho absoluto ou com
+    `..` não protege pasta nenhuma, e uma pasta privada que não protege nada é
+    pior do que nenhuma — o usuário acharia que está coberto. Barras invertidas
+    e a barra final são aceitas, porque é assim que o Explorer mostra o caminho.
+    """
+    pastas: list[str] = []
+    for item in _textos(valor):
+        texto = item.strip().replace("\\", "/")
+        partes = [parte for parte in texto.split("/") if parte and parte != "."]
+        if not partes or _absoluto(texto) or ".." in partes:
+            raise ConfiguracaoInvalida(
+                f"Configuração em {arquivo}: cada item de '[privacidade].pastas_privadas' "
+                f"precisa ser uma pasta dentro do vault, relativa a ele (por exemplo "
+                f'"notas/pessoal"), e veio {item!r}.'
+            )
+        pastas.append("/".join(partes))
+    return tuple(pastas)
+
+
+def _absoluto(texto: str) -> bool:
+    """`/fora` também é absoluto: no Windows `Path` só reconhece com a letra do drive."""
+    return Path(texto).is_absolute() or texto.startswith("/")
+
+
+def _maximo_de_notas(valor: object, arquivo: Path) -> int:
+    try:
+        maximo = int(valor)
+    except (TypeError, ValueError):
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '[busca].maximo_de_notas' precisa ser um número "
+            f"inteiro de notas, e veio {valor!r}."
+        ) from None
+    if maximo < 1:
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '[busca].maximo_de_notas' precisa ser pelo menos 1 "
+            f"(veio {maximo}) — abaixo disso o agente não conseguiria ler nota nenhuma."
+        )
+    return maximo
 
 
 def _profundidade(valor: object, arquivo: Path) -> int:

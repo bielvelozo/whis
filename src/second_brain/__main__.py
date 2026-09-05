@@ -565,6 +565,10 @@ contexto_do_time = ""         # como o seu processo funciona, para o roteiro nã
 
 [privacidade]
 excluir = []                 # trechos que nunca saem da máquina (substring, sem diferenciar maiúsculas)
+pastas_privadas = []         # pastas do vault que a busca nunca abre, relativas a ele (ex.: "notas/pessoal")
+
+[busca]
+maximo_de_notas = 40         # teto de notas lidas numa pergunta, para uma pergunta não varrer o vault
 
 [git]
 raiz = ""                    # pasta onde varrer repositórios; vazio = fonte desligada
