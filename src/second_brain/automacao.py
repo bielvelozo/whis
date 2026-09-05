@@ -33,6 +33,7 @@ from pathlib import Path
 _log = logging.getLogger("second_brain.automacao")
 
 NOME_DO_ATALHO = "Second Brain.lnk"
+NOME_DO_ATALHO_DO_ATENDENTE = "Second Brain Atendente.lnk"
 NOME_DA_TAREFA = "SecondBrain-Limpeza"
 
 #: Assinatura de quem executa um processo externo (injetável em teste).
@@ -61,6 +62,10 @@ def caminho_do_atalho() -> Path:
     return pasta_de_inicializacao() / NOME_DO_ATALHO
 
 
+def caminho_do_atalho_do_atendente() -> Path:
+    return pasta_de_inicializacao() / NOME_DO_ATALHO_DO_ATENDENTE
+
+
 def interpretador_sem_console() -> Path:
     """`pythonw.exe` do ambiente atual — o que não abre janela preta no logon.
 
@@ -73,13 +78,36 @@ def interpretador_sem_console() -> Path:
 
 
 def instalar_inicializacao(*, executar: Executor = _rodar) -> Path:
-    """Cria o atalho de inicialização e devolve onde ele ficou.
+    """Cria o atalho de inicialização da bandeja e devolve onde ele ficou."""
+    return _criar_atalho(
+        caminho_do_atalho(),
+        argumentos="-m second_brain bandeja",
+        descricao="Second Brain — coletor de reunião na bandeja",
+        executar=executar,
+    )
+
+
+def instalar_atendente(*, executar: Executor = _rodar) -> Path:
+    """Cria o atalho de inicialização do atendente, ao lado do da bandeja.
+
+    É um atalho separado, e não um argumento a mais no da bandeja, porque são
+    dois processos: o atendente tem trava própria e não sabe gravar reunião.
+    """
+    return _criar_atalho(
+        caminho_do_atalho_do_atendente(),
+        argumentos="-m second_brain atender",
+        descricao="Second Brain — o agente na DM do Slack",
+        executar=executar,
+    )
+
+
+def _criar_atalho(destino: Path, *, argumentos: str, descricao: str, executar: Executor) -> Path:
+    """Escreve um `.lnk` na pasta de Inicialização apontando para o pacote.
 
     O `.lnk` é escrito pelo `WScript.Shell` via PowerShell: é a forma de criar
     atalho no Windows sem dependência nova (o ADR 0001 pede projeto fino), e o
     resultado é um atalho de verdade — o usuário vê, move e apaga pelo Explorer.
     """
-    destino = caminho_do_atalho()
     destino.parent.mkdir(parents=True, exist_ok=True)
     interpretador = interpretador_sem_console()
     diretorio = Path(__file__).resolve().parents[2]
@@ -88,9 +116,9 @@ def instalar_inicializacao(*, executar: Executor = _rodar) -> Path:
         "$atalho = (New-Object -ComObject WScript.Shell)."
         f"CreateShortcut('{destino}'); "
         f"$atalho.TargetPath = '{interpretador}'; "
-        "$atalho.Arguments = '-m second_brain bandeja'; "
+        f"$atalho.Arguments = '{argumentos}'; "
         f"$atalho.WorkingDirectory = '{diretorio}'; "
-        "$atalho.Description = 'Second Brain — coletor de reunião na bandeja'; "
+        f"$atalho.Description = '{descricao}'; "
         "$atalho.Save()"
     )
     resultado = executar(
@@ -106,8 +134,16 @@ def instalar_inicializacao(*, executar: Executor = _rodar) -> Path:
 
 
 def remover_inicializacao() -> Path | None:
-    """Tira o atalho da inicialização. Devolve o caminho removido, ou `None`."""
-    destino = caminho_do_atalho()
+    """Tira o atalho da bandeja da inicialização. Devolve o caminho removido, ou `None`."""
+    return _remover_atalho(caminho_do_atalho())
+
+
+def remover_atendente() -> Path | None:
+    """Tira o atalho do atendente da inicialização. Devolve o caminho removido, ou `None`."""
+    return _remover_atalho(caminho_do_atalho_do_atendente())
+
+
+def _remover_atalho(destino: Path) -> Path | None:
     if not destino.exists():
         return None
     destino.unlink()
@@ -117,6 +153,10 @@ def remover_inicializacao() -> Path | None:
 
 def inicializacao_instalada() -> bool:
     return caminho_do_atalho().exists()
+
+
+def atendente_instalado() -> bool:
+    return caminho_do_atalho_do_atendente().exists()
 
 
 # -- limpeza agendada -------------------------------------------------------

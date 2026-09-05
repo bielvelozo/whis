@@ -1,221 +1,112 @@
 # Handoff: recuperação de contexto — o agente no Slack
 
-Documento de continuação. Escrito em 2026-09-04, no fim da sessão que fechou a entrega de fontes
-passivas e **abriu** esta. Assume **zero contexto**: leia isto inteiro antes de tocar em qualquer
-coisa.
+Documento de continuação. Reescrito em 2026-09-04, no fim da sessão que **construiu as cinco
+camadas** desta entrega. Assume **zero contexto**: leia isto inteiro antes de tocar em
+qualquer coisa.
 
-Seu trabalho: **construir esta entrega**, camada por camada. Nada dela existe ainda — só a spec,
-o contrato e os cinco tickets.
+Seu trabalho: **fechar a entrega com o usuário** — o passo humano do bot, a demo-mestra pela
+DM, e o que o uso real revelar. Nenhuma linha de código está faltando para isso.
 
 ---
 
 ## 1. Onde as coisas estão
 
-**A entrega anterior está fechada e em uso real.** Fontes passivas + daily: onze camadas, dez
-resolvidas e uma revertida. A daily foi lida numa reunião de verdade em 2026-09-04 e funcionou.
-
-**Esta entrega está planejada e não construída.** Spec, contrato e cinco tickets escritos e
-commitados; zero linha de código.
+**As cinco camadas estão construídas e provadas sem rede.** Nenhuma foi provada com o Claude
+de verdade nem com o Slack de verdade: a regra da casa é pedir antes de gastar a assinatura, e
+o usuário não estava na sessão.
 
 | | |
 |---|---|
-| suíte | **610 verdes**, 7 desselecionados (todos `@pytest.mark.rede`) |
-| pacote | ~9.500 linhas em `src/second_brain/` |
-| último commit | `dbc808e` — a reescrita desta entrega |
+| suíte | **859 verdes**, 8 desselecionados (7 antigos + o teste de rede da busca) |
+| último commit | a camada 05 (`git log --oneline -6` mostra as cinco) |
+| tickets | 01, 02, 03 `resolved`; 04 e 05 `ready-for-human` |
+| contrato | `contrato-busca.md`, seções 8 a 12 são os adendos de cada camada — **leia-as**, é a API real |
 
 ### Verifique antes de começar
 
 ```bash
 .venv/Scripts/python.exe -m pytest
-.venv/Scripts/python.exe -m second_brain --help
-git log --oneline -12
+.venv/Scripts/python.exe -m second_brain perguntar --fakes --sem-fio "teste"
+git log --oneline -8
 ```
 
-610 passam, 7 desselecionados. **Se a suíte não estiver verde, pare e descubra por quê.**
-
----
+859 passam, 8 desselecionados. O `perguntar --fakes` imprime a resposta de exemplo e sai `0`.
 
 ## 2. O que ler, nesta ordem
 
-1. `CONTEXT.md` — o glossário. **Daily** e **Diário** são termos distintos, com significado fixo.
-2. `.scratch/recuperacao-contexto/spec.md` — a spec desta entrega, com 12 user stories. Leia
-   também o aviso no topo: ela foi **reescrita** depois de o usuário recusar a primeira versão.
-3. `.scratch/recuperacao-contexto/contrato-busca.md` — o contrato entre camadas. É ele que fixa
-   os tipos, a fronteira e o fio de 24 horas.
-4. `.scratch/recuperacao-contexto/issues/01-*.md` — o seu primeiro ticket.
-5. `AGENTS.md` e `docs/agents/` — como issues, labels e docs de domínio funcionam neste repo.
-6. `.scratch/fontes-passivas/DEFERRED.md` — **45 itens**. Vale ler antes de começar; vários
-   tocam o que você vai construir.
+1. `CONTEXT.md`, depois `spec.md` e `contrato-busca.md` (seções 1–7 são o desenho, 8–12 o
+   que foi construído por cima).
+2. Os cinco tickets em `issues/`, **do fim para o começo**: cada `## Comments` tem as provas
+   executadas, as decisões surfaceadas e o que **não** foi provado.
+3. `docs/smoke-atendente.md` — o roteiro do passo humano e da demo-mestra. É o que o usuário
+   vai seguir.
+4. `.scratch/fontes-passivas/DEFERRED.md` — os achados desta entrega estão marcados
+   "Recuperação de contexto, camada NN".
 
----
+## 3. As decisões do usuário — herde, não reabra
 
-## 3. As decisões do usuário, e o porquê
+As da versão anterior deste handoff continuam valendo (DM do Slack, fio de 24h por silêncio,
+pasta privada, ferramentas em vez de vault cru, recusa "não existe", fontes ao vivo pelos
+coletores, bot e não user token, processo separado da bandeja, toda resposta cita). Ele
+**ainda não escolheu a pasta privada**: `[privacidade].pastas_privadas` continua vazia na
+máquina dele.
 
-Herde, não reabra. Tudo abaixo foi decidido por ele, e a razão importa mais que a regra.
+## 4. As decisões desta sessão, tomadas sem o usuário
 
-- **A interface é uma DM do Slack, não o terminal.** Ele recusou a primeira spec com todas as
-  letras: *"muito complexo e nada prático — eu abrir um terminal, digitar o comando e mandar
-  minha pergunta"*. Um comando por pergunta é formulário, não conversa. **Não reintroduza o
-  terminal como caminho principal**; `second-brain perguntar` existe só para teste e diagnóstico.
-- **Fio de conversa de 24 horas, por silêncio.** Ele perguntou de manhã, volta à tarde, o fio
-  continua. 24h desde o último turno, não meia-noite.
-- **Pasta privada no vault.** Ele escolheu "tudo, menos uma pasta privada" quando perguntei o que
-  a busca podia ler. Ele **ainda não disse qual pasta** — a lista nasce vazia, que significa vault
-  inteiro visível, e ele configura quando quiser.
-- **O agente não recebe o vault cru.** Isto **refina o ticket 08** do mapa, que dizia "agente com
-  `cwd` no vault, grep/leitura". Com acesso livre ao disco a pasta privada dependeria de o modelo
-  obedecer — a garantia fraca que já foi recusada nas DMs do Slack. Todo acesso passa por
-  `Ferramentas`, e a fronteira é verificada em um ponto só.
-- **A recusa diz "não existe", nunca "é privado".** Dizer que há algo escondido já vaza metade do
-  que a pasta promete.
-- **Fontes ao vivo incluindo o Slack**, escolhidas por ele sabendo que reabre a questão das DMs. A
-  resposta de projeto: passar pelos coletores existentes, para blocklist, `so_com_mencao` e filtro
-  de exclusão continuarem valendo sem ninguém lembrar deles.
-- **Bot, e não o user token postando como ele.** A alternativa exigia `chat:write` no token de
-  usuário, que permite postar como ele em qualquer conversa do workspace — pior de usar e mais
-  difícil de o admin aprovar que um bot que só fala na própria DM.
-- **Processo separado da bandeja.** Ela tem trava de instância e máquina de estados de gravação,
-  e o pipeline de reunião está em uso real.
-- **Toda resposta cita a fonte**, e "não achei" é resposta válida.
+Tudo está nos comentários dos tickets; o resumo do que ele pode querer reabrir:
 
----
+- **`slack_sdk` virou dependência** (camada 04). O ambiente não tinha websocket nenhum.
+- **`anotar <texto>` na DM** é a única escrita em `notas/` — prefixo explícito, sem passar
+  pelo modelo, pelo mesmo `vault.anotar_ponto` do `daily --anotar`.
+- **`LimiteDeNotas`** em `Ferramentas.ler_nota`: o freio de `[busca].maximo_de_notas`, que
+  senão seria letra morta.
+- **A resposta do modelo é JSON obrigatório**; prosa vira `ErroDeBusca`.
+- **`--fakes` no `atender` troca só a busca**: a DM é sempre o Slack real. É o ensaio barato.
+- **A camada 04 editou `configuracao.py`** (os dois tokens), contra a regra do contrato; está
+  registrado na seção 11.
 
-## 4. O passo humano que bloqueia a camada 04
+## 5. O passo humano, e o que ele destrava
 
-**Só a camada 04 depende disso. As três primeiras não.**
+Está inteiro em `docs/smoke-atendente.md`, passos 1 a 6: bot na app existente, scopes
+`im:history`, `im:read`, `chat:write`, `reactions:write`, Socket Mode, app-level token
+`xapp-` com `connections:write`, evento `message.im`, **pedido novo ao admin** (texto pronto no
+passo 5), reinstalar, colar `bot_token` e `app_token` no `config.toml`.
 
-Socket Mode exige um **app-level token** (`xapp-`) e um **bot token** (`xoxb-`) — conferido na
-documentação do Slack em 2026-09-04. O user token `xoxp` que ele já tem **não recebe mensagem**.
+**Atenção**: reinstalar a app **troca o user token** do coletor. O roteiro avisa.
 
-Então a app interna existente precisa ganhar um bot, com `im:history`, `im:read`, `chat:write` e
-`reactions:write`, mais Socket Mode ligado e o evento `message.im` assinado.
+## 6. A ordem para provar, quando ele autorizar
 
-**O incômodo**: `docs/smoke-slack.md` promete ao admin que a app **não** pediria bot token. Esse
-roteiro precisa ser atualizado antes de o usuário voltar a falar com o admin, senão ele se
-contradiz. Está no ticket da camada 05.
+1. `second-brain atender --fakes` + uma mensagem na DM → reação 👀 e resposta de exemplo.
+   Prova o Slack sem gastar nada.
+2. `second-brain perguntar --sem-fio "..."` → prova o Claude sem o Slack. **Gasta a
+   assinatura.** É aqui que se confirma a única coisa que o sem-rede não alcança: que
+   `mcp__vault__<ferramenta>` em `allowed_tools` casa com o que o CLI espera (DEFERRED,
+   camada 02). Se toda resposta vier "não achei" com `0 notas lidas` no log, é isso.
+3. `.venv/Scripts/python.exe -m pytest tests/test_busca_claude.py -m rede -o addopts="" -q`
+   — o teste de rede, com vault de fixture e pasta privada.
+4. `second-brain atender` e a demo-mestra do passo 8 do roteiro, pelo celular.
+5. Passo 9: a pasta privada, com um fato plantado.
 
----
+## 7. Armadilhas já pagas — não redescubra
 
-## 5. O mapa do código que já existe
+As dos handoffs anteriores continuam (python do venv, nada de heredoc Python com acento,
+logger `second_brain.fonte_slack`, `total_cost_usd` não é cobrança, Socket Mode exige
+app-level + bot). Acrescente:
 
-`src/second_brain/`, e o que desta entrega vai encostar em cada um:
+- **`startswith(pasta_privada)` é armadilha de prefixo**: `notas/pessoal-trabalho.md` não está
+  sob `notas/pessoal/`. O cenário de teste planta a vizinha de propósito; compare com `/`.
+- **`Path("/fora").is_absolute()` é falso no Windows.** A validação confere o `/` inicial.
+- **Link simbólico exige privilégio; junção não.** `_winapi.CreateJunction` é o que faz o
+  teste de link rodar nesta máquina.
+- **`create_sdk_mcp_server` valida os argumentos com `jsonschema`** antes do handler: um
+  parâmetro opcional precisa de `"required": []` em esquema JSON, não de dict-style.
+- **O `caplog` não vê o que foi logado antes de o handler de arquivo entrar**: no `atender`,
+  o arquivo de log é ligado antes de `montar_busca`, para o aviso de FAKE ficar no rastro.
 
-| módulo | papel | você vai... |
-|---|---|---|
-| `vault.py` | escrita no vault, zonas de propriedade, notas de reunião/diário/daily | **ler muito**: `escrever` tem o padrão de checagem de caminho resolvido que a fronteira deve copiar |
-| `fonte_git.py` `fonte_linear.py` `fonte_slack.py` | os três coletores | **chamar pelas fábricas `de_configuracao`**, nunca reimplementar |
-| `resumo_dia_claude.py` | o Claude por OAuth: resumo do dia e roteiro da daily | **copiar o padrão**: recusa de API key paga, registro de custo, parse tolerante |
-| `configuracao.py` | o `config.toml` e sua validação | acrescentar 2 chaves na camada 01, e **mais ninguém toca** |
-| `portas.py` `fakes.py` | protocolos e fakes | acrescentar `BuscaFake` |
-| `registro.py` | log em arquivo, para o que roda sem console | usar no atendente, que roda o dia todo sem ninguém olhando |
-| `automacao.py` | atalho de logon e tarefa agendada | camada 05, para o atendente subir no logon |
-| `bandeja.py` `coletor.py` `instancia.py` | a bandeja e a máquina de estados | **não toque** |
+## 8. O padrão de trabalho desta casa
 
----
-
-## 6. Estado da máquina do usuário
-
-`config.toml` em `%APPDATA%\second-brain\`, com backups de cada mudança desta sessão
-(`.antes-da-camada-08`, `.antes-do-slack`, `.antes-da-blocklist`, `.antes-do-so-com-mencao`).
-
-| chave | valor |
-|---|---|
-| `vault` | `C:\Users\gabri\second-brain-vault` |
-| `[git].raiz` | `C:\Users\gabri\development`, profundidade 3 |
-| `[deepgram]`, `[linear]`, `[slack].user_token` | preenchidos e funcionando |
-| `[slack].conversas_excluidas` | `slackbot, uslack, notifier, sentry, zeno-agent` |
-| `[slack].so_com_mencao` | `dev-codereview` |
-| `[daily].referencias_pessoais` | `second-brain, renovo-hub` |
-| `[daily].contexto_do_time` | preenchido (Zeno aprova, o merge é dele) |
-| `[privacidade].excluir` | **vazio — nunca exercitado com padrão real** |
-
-**Vault real**: `daily/2026-09-04.md`, `diario/2026-09-03.md`, duas reuniões em `reunioes/`, e
-`notas/daily.md` com as quatro seções e um ponto do usuário. O Obsidian já está configurado
-apontando para o vault, com "Local padrão para novas notas" em `notas/`.
-
-**Há material de verdade para a busca achar.** A daily de 2026-09-04 tem 677 eventos nas listas
-cruas, incluindo Slack.
-
----
-
-## 7. O que foi provado, e o que não foi
-
-**Provado com dado real**: os três coletores contra as APIs de verdade; a daily inteira de ponta a
-ponta, lida numa reunião real; o corte trabalho/pessoal (32 eventos calados, zero falso positivo);
-o filtro de menção do code review (121 → 37 eventos, todos citando o usuário); a blocklist do
-Slack (8 conversas nunca consultadas).
-
-**Não provado**: nada desta entrega — ela não existe. E o filtro `[privacidade].excluir` continua
-sem nunca ter rodado com um padrão real, o que passa a importar mais com a consulta ao vivo.
-
----
-
-## 8. Armadilhas já pagas — não redescubra
-
-As dos handoffs anteriores continuam valendo (barra invertida no TOML, cp1252 no console, limites
-da bandeja, `pythonw.exe` sem console, `git log --since` escondendo commit do dia, header do
-Linear sem `Bearer`, fim de janela exclusivo). Acrescente estas, todas pagas nesta sessão:
-
-- **Use `.venv/Scripts/python.exe`, nunca `python`.** O `python` do PATH não enxerga o pacote.
-- **Não passe script Python por heredoc** (`python - <<'EOF'`) **com acento ou travessão.** O
-  interpretador decodifica o stdin com a codepage errada e o arquivo chega mastigado — houve um
-  commit inteiro só para consertar isso (`ee49ea5`). Escreva o script num arquivo `.py` em UTF-8 e
-  rode-o.
-- **O logger do Slack é `second_brain.fonte_slack`**, não `second_brain.fonte.slack`. Um
-  `caplog.at_level` com o nome errado passa vazio e o teste falha sem dizer por quê.
-- **`total_cost_usd` não é cobrança.** A conta é por assinatura via OAuth; o número é o
-  equivalente da tabela da API e serve como medida relativa de cota. Os tokens de entrada que o
-  log mostra vêm subnotificados (o volume real cai em `cache_creation_input_tokens`).
-- **Socket Mode não funciona com user token.** Conferido na documentação; exige app-level + bot.
-- **Uma daily real custa o equivalente a US$ 0,66–0,84** e leva ~40s. Teste de rede gasta a
-  assinatura: rode de propósito, nunca por hábito, e **peça antes**.
-- **`pytest` com `addopts` do projeto engole o resumo** em algumas invocações; use
-  `-o addopts="-m \"not rede\""` quando quiser ver a contagem.
-
----
-
-## 9. O padrão de trabalho desta casa
-
-Foi ele que pegou todos os achados das duas entregas anteriores:
-
-1. O **orquestrador** escreve a spec, quebra em camadas e **fixa os contratos por escrito antes**
-   de abrir qualquer uma. Isto já está feito para esta entrega.
-2. Cada camada é entregue por um **executor** e depois **revisada pelo orquestrador, que executa
-   as provas ele mesmo** em vez de aceitar o relato. Isso pegou, nesta sessão: um furo de
-   cobertura na janela, um relatório que afirmava faltar um teste que existia, o bug do
-   `git log --since`, e uma linha que dizia "as últimas 24 horas" cobrindo 34.
-3. **Mutação é a prova de que o teste morde.** Quebre a linha de propósito e conte quantos testes
-   caem; se nenhum cair, o teste não vale nada. Está nos comentários de entrega de várias camadas.
-4. Achado fora do escopo vai para `.scratch/fontes-passivas/DEFERRED.md` — uma linha: o quê, onde,
-   por que ficou de fora, de qual camada veio.
-5. Camada fechada recebe comentário de entrega no ticket, **com as provas executadas**, não com
-   adjetivos. E o `Status:` muda para `resolved`.
-6. **Comentários no código só quando explicam o PORQUÊ não óbvio.** Nunca o quê.
-7. **Não edite teste existente.** Quando for inevitável — porque o formato mudou a pedido do
-   usuário — diga isso no comentário de entrega e explique.
-
----
-
-## 10. Uma coisa que esta sessão errou, e vale como aviso
-
-A primeira spec desta entrega foi escrita para o terminal, e o usuário a recusou inteira. O sinal
-já estava na mesa: a bandeja fica ligada o dia todo, ele vive no Slack, e o agente anterior dele
-(o Whis) morava no WhatsApp. **A entrega certa não é a que cabe na arquitetura existente, é a que
-cabe no dia do usuário.** Quando a próxima decisão de interface aparecer, pergunte antes de
-escrever.
-
-O mesmo se aplica à página HTML da daily, construída e revertida no mesmo dia: veja o ticket
-`.scratch/fontes-passivas/issues/09-a-daily-como-pagina.md`, que registra por que ela deixou de
-fazer sentido assim que o Obsidian entrou.
-
----
-
-## 11. Por onde começar
-
-**Camada 01** (`.scratch/recuperacao-contexto/issues/01-a-costura-a-fronteira-e-o-fio.md`) — não
-depende de nada externo, nem de rede, nem do admin do Slack. Entrega a costura, as ferramentas
-com a fronteira da pasta privada, o fio de 24 horas e o fake.
-
-O teste que mais importa dela: **um arquivo sob a pasta privada não aparece na busca, não é lido,
-não é listado, e não chega ao fake** — sondado nos dois sentidos, como a zona de propriedade já é
-em `tests/test_zona_de_propriedade.py`.
+Continua o da versão anterior: contrato antes, executor por camada, orquestrador executa as
+provas, **mutação em cada linha que importa** (as contagens estão nos tickets), achados no
+DEFERRED, comentário de entrega com provas, `Status` no ticket, teste existente não se edita.
+Os quatro cenários de teste desta entrega vivem em `tests/fixtures/busca.py`; o harness HTTP
+do Slack é importado de `tests/test_fonte_slack.py`.

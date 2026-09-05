@@ -10,6 +10,13 @@ na nota. Não é preciso esperar a aprovação para usar as outras fontes.
 Rode tudo de dentro do repositório, com o interpretador do ambiente virtual. Nos
 exemplos abaixo, `python` significa `.venv\Scripts\python.exe`.
 
+> **Atualizado em 2026-09-04.** Este roteiro dizia que a app **não** pediria bot
+> token. Isso valia para o coletor e continua valendo para ele — mas o agente
+> da DM ([smoke do atendente](smoke-atendente.md)) precisa de um **bot** na
+> mesma app, com quatro scopes de bot e Socket Mode. Se você vai instalar os
+> dois, peça ao admin de uma vez, com o texto do passo 5 daquele roteiro; se
+> já pediu só o coletor, o pedido precisa ser refeito.
+
 ## O que este coletor lê
 
 As conversas de que **você é membro**, dentro da janela do dia: canais públicos,
@@ -78,8 +85,11 @@ exatamente estes nove:
 **Não peça `search:read`.** A busca não é usada por este coletor, e é dos
 scopes que mais levantam bandeira na revisão do admin.
 
-**Não peça nenhum *Bot Token Scope*.** O coletor precisa ver o que **você** vê,
-inclusive DMs; um bot só vê os canais em que foi convidado.
+**O coletor não precisa de nenhum *Bot Token Scope*.** Ele precisa ver o que
+**você** vê, inclusive DMs; um bot só vê os canais em que foi convidado. Os
+quatro scopes de bot do [atendente](smoke-atendente.md) são outra coisa: servem
+para o agente responder na DM dele, e são pedidos junto quando você instala os
+dois.
 
 **Sucesso:** a lista de *User Token Scopes* tem esses nove e mais nada.
 
@@ -101,6 +111,11 @@ saber para decidir):
 > Slack**, e as conversas que eu marcar como excluídas não chegam a ser lidas.
 > O token fica só na minha máquina e pode ser revogado por você a qualquer
 > momento em Manage apps.
+
+Se você também vai instalar o agente da DM, **não mande este texto sozinho**:
+ele afirma que não há scope de escrita, e o bot pede `chat:write` (na própria
+DM). Use o texto do passo 5 do [smoke do atendente](smoke-atendente.md), que
+cobre os dois de uma vez.
 
 **Sucesso:** a app aparece aprovada em *Manage apps* do workspace.
 

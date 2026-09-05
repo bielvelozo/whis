@@ -289,3 +289,13 @@ contra isto, não contra as seções 1 a 4 sozinhas.
   Trava própria em `atendente.lock`. Sai `0` no Ctrl+C, `1` sem tokens, sem Socket Mode ou com
   outra instância no ar.
 - **Dependência nova**: `slack_sdk>=3.27`.
+
+## 12. Adendos da camada 05 (2026-09-04)
+
+- **`automacao.instalar_atendente()` / `remover_atendente()` / `atendente_instalado()`**, com o
+  atalho `Second Brain Atendente.lnk` ao lado do da bandeja; `second-brain windows --atendente`
+  instala os dois, `--atendente --remover` tira os dois.
+- **`__main__.CODIGOS_DA_PERGUNTA`** no `--help` de `perguntar`: `0` respondeu, `3` sem achar,
+  `1` não conseguiu, `2` uso.
+- **`docs/smoke-atendente.md`** é o roteiro do passo humano e da demo-mestra; o
+  `docs/smoke-slack.md` aponta para ele nos três lugares em que prometia "sem bot token".

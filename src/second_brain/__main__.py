@@ -98,6 +98,15 @@ códigos de saída:
   2  erro de uso (argumento inválido)
 o rastro de toda execução fica em bandeja.log, ao lado do config.toml"""
 
+CODIGOS_DA_PERGUNTA = f"""\
+códigos de saída:
+  {SAIDA_COMPLETA}  respondeu, citando o vault ou uma fonte
+  {SAIDA_PARCIAL}  respondeu sem achar: nenhuma nota sustenta uma resposta, e ele disse isso
+  {SAIDA_NAO_NASCEU}  não conseguiu: sem conta Claude, API key paga no ambiente, pergunta vazia
+     ou configuração inválida
+  2  erro de uso (argumento inválido)
+a pergunta, as citações e o custo equivalente ficam em bandeja.log, ao lado do config.toml"""
+
 
 def forcar_utf8_na_saida() -> None:
     """Faz `stdout`/`stderr` aguentarem o texto em português fora do console.
@@ -756,6 +765,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
                 if atalho
                 else "Não havia atalho de inicialização."
             )
+            if args.atendente:
+                removido = automacao.remover_atendente()
+                feitos.append(
+                    f"Atalho do atendente removido de {removido}"
+                    if removido
+                    else "Não havia atalho do atendente."
+                )
             if args.limpeza:
                 removida = automacao.desagendar_limpeza()
                 feitos.append(
@@ -767,6 +783,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
             atalho = automacao.instalar_inicializacao()
             feitos.append(f"Atalho de inicialização criado em {atalho}")
             feitos.append("A bandeja passa a subir sozinha no próximo logon.")
+            if args.atendente:
+                atalho_do_atendente = automacao.instalar_atendente()
+                feitos.append(f"Atalho do atendente criado em {atalho_do_atendente}")
+                feitos.append(
+                    "O agente da DM do Slack passa a subir sozinho no próximo logon, "
+                    "ao lado da bandeja."
+                )
             if args.limpeza:
                 automacao.agendar_limpeza(hora=args.hora, config=origem)
                 feitos.append(
@@ -959,6 +982,8 @@ def construir_parser() -> argparse.ArgumentParser:
     perguntar_cmd = subcomandos.add_parser(
         "perguntar",
         help="pergunta ao vault pelo terminal, citando as notas (para teste e diagnóstico)",
+        epilog=CODIGOS_DA_PERGUNTA,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _acrescentar_config(perguntar_cmd)
     perguntar_cmd.add_argument("pergunta", help="a pergunta, entre aspas")
@@ -1014,9 +1039,14 @@ def construir_parser() -> argparse.ArgumentParser:
 
     windows_cmd = subcomandos.add_parser(
         "windows",
-        help="faz a bandeja subir com o logon (e, opcionalmente, agenda a limpeza)",
+        help="faz a bandeja subir com o logon (e, opcionalmente, o atendente e a limpeza)",
     )
     _acrescentar_config(windows_cmd)
+    windows_cmd.add_argument(
+        "--atendente",
+        action="store_true",
+        help="também faz o agente da DM do Slack (atender) subir com o logon",
+    )
     windows_cmd.add_argument(
         "--limpeza",
         action="store_true",
