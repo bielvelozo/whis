@@ -42,9 +42,11 @@ from claude_agent_sdk import (
     tool,
 )
 
+from . import fontes_ao_vivo as _ao_vivo
 from .busca import Citacao, ErroDeBusca, Resposta
 from .conversa import AGENTE, Turno
 from .ferramentas import Ferramentas, ForaDaFronteira, LimiteDeNotas
+from .fontes_ao_vivo import FontesAoVivo
 from .resumo_claude import VARIAVEIS_DE_API_PAGA
 
 _log = logging.getLogger("second_brain.busca")
@@ -131,6 +133,24 @@ cite um caminho que você não viu.
 conhecimento geral, dedução ou suposição: uma resposta inventada é pior do que "não \
 achei". Se achou só parte, diga o que achou e o que ficou faltando.
 - Não repita a lista crua inteira: responda à pergunta.\
+"""
+
+PROMPT_DAS_FONTES_AO_VIVO = """\
+Além do vault, você tem ferramentas que consultam as fontes AO VIVO — as que \
+estiverem disponíveis entre `consultar_git`, `consultar_linear` e `consultar_slack`. \
+Elas leem o que aconteceu nas últimas N horas direto do git, do Linear e do Slack.
+
+- Use-as só DEPOIS de procurar no vault: quando ele não tiver a resposta, ou quando a \
+pergunta for sobre agora ("o que aconteceu hoje", "há dez minutos", "a última mensagem \
+da Ana"). A nota é gratuita; a API não, e uma consulta pode virar várias chamadas.
+- Peça poucas horas e passe um `termo` quando souber o que procura. Sem termo, uma fonte \
+pode devolver centenas de eventos.
+- Cite o que veio delas com a origem que cada linha mostra (`linear:FN-1610`, \
+`slack:#dev-codereview`, `git:second-brain@a1b2c3d`), e nunca com um caminho de nota: é \
+assim que ele sabe que aquilo não veio do vault. Quando a linha trouxer `link:`, inclua-o \
+na resposta em markdown com rótulo curto.
+- Uma fonte que "não pôde ser lida agora" não é motivo para inventar: diga que ela não \
+respondeu e responda com o vault.\
 """
 
 
@@ -245,10 +265,15 @@ class BuscaClaude:
         modelo: str | None = MODELO_PADRAO,
         timeout_s: float = TIMEOUT_PADRAO_S,
         maximo_de_turnos: int = MAXIMO_DE_TURNOS,
+        fontes_ao_vivo: FontesAoVivo | None = None,
     ) -> None:
         self.modelo = modelo or None
         self.timeout_s = timeout_s
         self.maximo_de_turnos = maximo_de_turnos
+        # Entra pelo construtor, e não pela porta: `PortaBusca.perguntar` é a
+        # mesma para todo adaptador, e quais fontes estão ligadas é
+        # configuração desta máquina, como o modelo.
+        self.fontes_ao_vivo = fontes_ao_vivo
 
     def perguntar(
         self,
@@ -277,12 +302,14 @@ class BuscaClaude:
         método e exercitam todo o resto do caminho.
         """
         vault = FerramentasDoVault(ferramentas)
+        fontes = self.fontes_ao_vivo
         try:
             return asyncio.run(
                 asyncio.wait_for(
                     _conversar_async(
                         prompt,
                         vault,
+                        fontes,
                         modelo=self.modelo,
                         maximo_de_turnos=self.maximo_de_turnos,
                     ),
@@ -292,7 +319,7 @@ class BuscaClaude:
         except TimeoutError as erro:
             raise ErroDeBusca(
                 f"O Claude não respondeu em {self.timeout_s:.0f}s "
-                f"({vault.chamadas} chamada(s) de ferramenta até aqui)."
+                f"({_chamadas(vault, fontes)} chamada(s) de ferramenta até aqui)."
             ) from erro
         except ClaudeSDKError as erro:
             raise ErroDeBusca(
@@ -392,28 +419,56 @@ def registrar_custo(resultado: ResultMessage | None, chamadas: int) -> None:
     )
 
 
-async def _conversar_async(
-    prompt: str,
+def montar_opcoes(
     vault: FerramentasDoVault,
+    fontes: FontesAoVivo | None,
     *,
     modelo: str | None,
     maximo_de_turnos: int,
-) -> tuple[str, ResultMessage | None]:
-    """Uma pergunta ao Claude com as ferramentas do vault, e nada mais."""
-    opcoes = ClaudeAgentOptions(
-        system_prompt=PROMPT_DA_BUSCA,
+) -> ClaudeAgentOptions:
+    """As opções da chamada: o vault sempre, as fontes ao vivo quando ligadas.
+
+    O adendo do prompt sobre as fontes só entra quando há fonte: um modelo
+    instruído a usar uma ferramenta que não existe tende a fingir que usou.
+    """
+    servidores = {NOME_DO_SERVIDOR: vault.servidor()}
+    permitidas = ferramentas_permitidas()
+    sistema = PROMPT_DA_BUSCA
+    servidor_das_fontes = fontes.servidor() if fontes is not None else None
+    if fontes is not None and servidor_das_fontes is not None:
+        servidores[_ao_vivo.NOME_DO_SERVIDOR] = servidor_das_fontes
+        permitidas += fontes.nomes_permitidos()
+        sistema += "\n\n" + PROMPT_DAS_FONTES_AO_VIVO
+    return ClaudeAgentOptions(
+        system_prompt=sistema,
         model=modelo,
         # Nenhuma ferramenta nativa: sem Bash, sem Read, sem Glob. O modelo só
-        # enxerga o vault pelo servidor abaixo, que é onde a fronteira mora.
+        # enxerga o disco pelos servidores abaixo, que é onde a fronteira mora.
         tools=[],
-        allowed_tools=ferramentas_permitidas(),
-        mcp_servers={NOME_DO_SERVIDOR: vault.servidor()},
+        allowed_tools=permitidas,
+        mcp_servers=servidores,
         skills=[],
         setting_sources=[],
         strict_mcp_config=True,
         permission_mode="dontAsk",
         max_turns=maximo_de_turnos,
     )
+
+
+def _chamadas(vault: FerramentasDoVault, fontes: FontesAoVivo | None) -> int:
+    return vault.chamadas + (fontes.chamadas if fontes is not None else 0)
+
+
+async def _conversar_async(
+    prompt: str,
+    vault: FerramentasDoVault,
+    fontes: FontesAoVivo | None,
+    *,
+    modelo: str | None,
+    maximo_de_turnos: int,
+) -> tuple[str, ResultMessage | None]:
+    """Uma pergunta ao Claude com as ferramentas do vault e das fontes, e nada mais."""
+    opcoes = montar_opcoes(vault, fontes, modelo=modelo, maximo_de_turnos=maximo_de_turnos)
 
     ultimo_texto = ""
     resultado: ResultMessage | None = None
@@ -431,7 +486,7 @@ async def _conversar_async(
             resultado = mensagem
 
     # Antes do `is_error`: um turno que terminou mal também consumiu.
-    registrar_custo(resultado, vault.chamadas)
+    registrar_custo(resultado, _chamadas(vault, fontes))
 
     if resultado is not None and resultado.is_error:
         raise ErroDeBusca(

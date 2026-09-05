@@ -242,14 +242,29 @@ def montar_roteiro_da_daily(
 
 
 def montar_busca(configuracao: Configuracao, *, fakes: bool = False) -> PortaBusca:
-    """A busca: o Claude da conta do usuário com as ferramentas do vault, ou o fake."""
+    """A busca: o Claude da conta do usuário com o vault e as fontes ao vivo, ou o fake.
+
+    As fontes ao vivo são os mesmos coletores da daily, pelas mesmas fábricas
+    — é o que mantém a blocklist do Slack e o `so_com_mencao` valendo numa
+    consulta ao vivo. Nenhuma fonte ligada não é erro aqui: a busca responde
+    só com o vault.
+    """
     if fakes:
         _log.warning("Usando busca FAKE — nada é enviado ao Claude.")
         return BuscaFake()
 
     from .busca_claude import BuscaClaude
+    from .fontes_ao_vivo import FontesAoVivo
 
-    return BuscaClaude(modelo=configuracao.claude_modelo or None)
+    try:
+        fontes = montar_fontes(configuracao)
+    except NenhumaFonteConfigurada:
+        fontes = []
+        _log.info("Nenhuma fonte ao vivo ligada: a busca responde só com o vault.")
+    return BuscaClaude(
+        modelo=configuracao.claude_modelo or None,
+        fontes_ao_vivo=FontesAoVivo(fontes, excluir=configuracao.privacidade_excluir),
+    )
 
 
 # -- processar --------------------------------------------------------------

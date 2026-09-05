@@ -246,3 +246,23 @@ contra isto, não contra as seções 1 a 4 sozinhas.
   no `--help` e o log já sai em `bandeja.log`.
 - **`BuscaClaude(modelo=, timeout_s=240, maximo_de_turnos=40)`** — cada chamada de
   ferramenta é um turno; `max_turns` estourado vem como `ErroDeBusca` com o `subtype`.
+
+## 10. Adendos da camada 03 (2026-09-04)
+
+- **`fontes_ao_vivo.FontesAoVivo(fontes, *, excluir=(), relogio=None)`** — os coletores já
+  construídos (`PortaFonte`) como tools `consultar_<fonte>` de um segundo servidor MCP,
+  `fontes`. `tools()`, `servidor()` (`None` sem fonte), `nomes_permitidos()`, `chamadas`,
+  `excluir`. Fonte desligada não está na lista, e por isso não vira ferramenta.
+- **Cada tool aceita `horas` (1–336, padrão 24), `termo` e `limite` (padrão 40)** e devolve
+  texto com uma linha por evento, **mais recente primeiro**, no formato
+  `- <origem>  DD/MM HH:MM  título` + detalhe + `pessoas:` + `link:`. Origem: `git:<repo>@<hash>`,
+  `linear:<FN-1234>`, `slack:<referência>`. Falha da fonte é resultado com `is_error` e
+  "responda com o que o vault tem".
+- **O filtro de exclusão age em `FontesAoVivo.consultar`**, num ponto só, sobre o que o
+  coletor devolveu; blocklist e `so_com_mencao` vêm dentro do coletor do Slack.
+- **`BuscaClaude(..., fontes_ao_vivo=)`** e **`busca_claude.montar_opcoes(vault, fontes, ...)`**:
+  o segundo servidor e o adendo `PROMPT_DAS_FONTES_AO_VIVO` só entram quando há fonte.
+- **`__main__.montar_busca`** reusa `montar_fontes`; `NenhumaFonteConfigurada` vira lista vazia
+  (a busca responde só com o vault), não erro.
+- **A camada 04 não precisa saber de nada disto**: o atendente chama `responder` com a busca
+  que `montar_busca` devolve.
