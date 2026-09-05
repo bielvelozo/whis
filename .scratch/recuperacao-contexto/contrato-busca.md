@@ -266,3 +266,26 @@ contra isto, não contra as seções 1 a 4 sozinhas.
   (a busca responde só com o vault), não erro.
 - **A camada 04 não precisa saber de nada disto**: o atendente chama `responder` com a busca
   que `montar_busca` devolve.
+
+## 11. Adendos da camada 04 (2026-09-04)
+
+- **`atendente.PortaDM`**: `iniciar() -> id do bot`, `proxima(timeout_s) -> Mensagem | None`,
+  `reagir(mensagem, emoji)`, `responder(mensagem, texto)`, `encerrar()`. Erros da DM são
+  `atendente.ErroDeDM`. `fakes.DMFake` entrega mensagens de fixture e, ao esvaziar, sinaliza
+  `parar` ou levanta `KeyboardInterrupt` (o encerramento real).
+- **`atendente.Mensagem(canal, usuario, texto, ts, tipo_de_canal, subtipo, do_bot)`**; só
+  `tipo_de_canal == "im"`, sem `subtipo`, sem `do_bot`, de usuário diferente do bot e com texto
+  é atendida.
+- **O fio por DM**: chave = id do canal em `conversas.json`, aberto com `agora` a cada mensagem.
+- **A única escrita**: `anotar <texto>` (prefixo, sem passar pelo modelo) → `vault.anotar_ponto`
+  em `notas/daily.md`. Nenhuma outra mensagem escreve nada.
+- **`dm_slack.DMSlack(app_token, bot_token, web=, socket=)`**, `mensagem_do_evento(evento)`,
+  `de_configuracao(configuracao)`. Scopes de bot: `im:history`, `im:read`, `chat:write`,
+  `reactions:write`; app-level token com `connections:write`; evento `message.im`.
+- **Chaves novas**: `[slack].bot_token` (`xoxb-`) e `[slack].app_token` (`xapp-`), conferidas
+  pelo prefixo. **Exceção registrada** à regra da seção 6: a camada 04 editou `configuracao.py`
+  porque as chaves estavam no ticket dela e não na 01.
+- **`second-brain atender [--fakes]`**: `--fakes` troca só a busca; a DM é sempre o Slack real.
+  Trava própria em `atendente.lock`. Sai `0` no Ctrl+C, `1` sem tokens, sem Socket Mode ou com
+  outra instância no ar.
+- **Dependência nova**: `slack_sdk>=3.27`.

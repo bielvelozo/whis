@@ -14,10 +14,12 @@ para a busca no vault::
     python -m second_brain diario [YYYY-MM-DD] [--simular]
     python -m second_brain daily [--anotar TEXTO] [--simular]
     python -m second_brain perguntar "<pergunta>" [--sem-fio]
+    python -m second_brain atender
 
-`perguntar` existe **para teste e diagnóstico**: o caminho principal do agente é
-a DM do Slack. Ele responde no terminal, citando as notas, e continua o mesmo
-fio de 24 horas entre uma chamada e outra.
+`atender` é o agente de verdade: fica no ar escutando a DM do bot no Slack por
+Socket Mode e responde ali, com o fio de 24 horas por conversa. `perguntar`
+existe **para teste e diagnóstico**: responde no terminal, citando as notas, e
+continua o fio do terminal entre uma chamada e outra.
 
 Por padrão o comando usa os **adaptadores reais** — Deepgram para o STT, Claude
 (conta do usuário, OAuth) para os resumos, git/Linear/Slack para as fontes.
@@ -44,6 +46,7 @@ from pathlib import Path
 from . import registro as _registro
 from . import retencao as _retencao
 from . import vault as _vault
+from .atendente import ErroDeDM, PortaDM
 from .busca import ErroDeBusca, PortaBusca, Resposta
 from .coleta import TodasAsFontesFalharam
 from .configuracao import (
@@ -265,6 +268,13 @@ def montar_busca(configuracao: Configuracao, *, fakes: bool = False) -> PortaBus
         modelo=configuracao.claude_modelo or None,
         fontes_ao_vivo=FontesAoVivo(fontes, excluir=configuracao.privacidade_excluir),
     )
+
+
+def montar_dm(configuracao: Configuracao) -> PortaDM:
+    """A DM do bot no Slack, por Socket Mode. Levanta `ErroDeDM` sem os tokens."""
+    from .dm_slack import de_configuracao
+
+    return de_configuracao(configuracao)
 
 
 # -- processar --------------------------------------------------------------
@@ -593,6 +603,28 @@ def _relatar_resposta(resposta: Resposta) -> None:
         print("(não achou: nenhuma nota do vault sustenta uma resposta)")
 
 
+# -- atender ----------------------------------------------------------------
+
+
+def _comando_atender(args: argparse.Namespace) -> int:
+    """Sobe o atendente: a DM do Slack escutando por Socket Mode até o Ctrl+C.
+
+    `--fakes` troca só a busca pelo fake: a DM continua sendo o Slack de
+    verdade, que é como se ensaia a app aprovada sem gastar a assinatura.
+    """
+    from . import atendente as _atendente
+
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    busca = montar_busca(configuracao, fakes=args.fakes)
+    try:
+        dm = montar_dm(configuracao)
+    except ErroDeDM as erro:
+        _log.error("%s", erro)
+        return 1
+    return _atendente.executar(configuracao, dm=dm, busca=busca, verboso=args.verboso)
+
+
 # -- bandeja ----------------------------------------------------------------
 
 
@@ -661,6 +693,8 @@ api_key = ""                 # Personal API Key read-only; vazio = fonte desliga
 user_token = ""              # user token xoxp da app interna; vazio = fonte desligada
 conversas_excluidas = []     # canais e DMs que o coletor nunca lê
 so_com_mencao = []           # canais em que só entra o que cita você (ex.: code review)
+bot_token = ""               # Bot User OAuth Token xoxb da mesma app: o atendente responde na DM com ele
+app_token = ""               # App-Level Token xapp com connections:write: a conexão do Socket Mode
 """
 
 
@@ -939,6 +973,23 @@ def construir_parser() -> argparse.ArgumentParser:
         help="pergunta sem ler nem gravar o fio de conversa do terminal",
     )
     perguntar_cmd.set_defaults(funcao=_comando_perguntar)
+
+    atender_cmd = subcomandos.add_parser(
+        "atender",
+        help="fica no ar respondendo na DM do bot no Slack (Socket Mode, sem porta aberta)",
+        description=(
+            "Fica no ar escutando a DM do bot no Slack por Socket Mode — conexão de dentro "
+            "para fora, sem porta aberta — e responde ali, citando as notas do vault. "
+            "Ctrl+C encerra. Precisa de [slack].bot_token e [slack].app_token."
+        ),
+    )
+    _acrescentar_config(atender_cmd)
+    atender_cmd.add_argument(
+        "--fakes",
+        action="store_true",
+        help="responde na DM de verdade com a busca fake (ensaia o Slack sem gastar a assinatura)",
+    )
+    atender_cmd.set_defaults(funcao=_comando_atender)
 
     bandeja_cmd = subcomandos.add_parser(
         "bandeja",

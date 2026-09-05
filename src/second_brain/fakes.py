@@ -13,9 +13,13 @@ chegou à porta.
 
 from __future__ import annotations
 
+import threading
+from collections import deque
+from collections.abc import Iterable
 from dataclasses import replace
 from datetime import date, datetime, time
 
+from .atendente import Mensagem
 from .busca import Citacao, Resposta
 from .conversa import Turno
 from .ferramentas import Ferramentas
@@ -331,6 +335,63 @@ class BuscaFake:
         if self._erro is not None:
             raise self._erro
         return self._resposta
+
+
+class DMFake:
+    """A DM do bot sem Slack: entrega as mensagens de fixture e guarda o que saiu.
+
+    Quando a fila esvazia, sinaliza `parar` — ou, sem ele, levanta
+    `KeyboardInterrupt`, que é como o atendente de verdade é encerrado. Os
+    erros injetáveis existem para provar que nenhum deles derruba o laço.
+    """
+
+    def __init__(
+        self,
+        mensagens: Iterable[Mensagem] = (),
+        *,
+        eu: str = "U0BOT",
+        parar: threading.Event | None = None,
+        erro_ao_iniciar: Exception | None = None,
+        erro_ao_reagir: Exception | None = None,
+        erro_ao_responder: Exception | None = None,
+    ) -> None:
+        self._fila = deque(mensagens)
+        self.eu = eu
+        self.parar = parar
+        self._erro_ao_iniciar = erro_ao_iniciar
+        self._erro_ao_reagir = erro_ao_reagir
+        self._erro_ao_responder = erro_ao_responder
+        self.iniciada = False
+        self.encerrada = False
+        self.reacoes: list[tuple[Mensagem, str]] = []
+        self.respostas: list[tuple[Mensagem, str]] = []
+
+    def iniciar(self) -> str:
+        if self._erro_ao_iniciar is not None:
+            raise self._erro_ao_iniciar
+        self.iniciada = True
+        return self.eu
+
+    def proxima(self, timeout_s: float) -> Mensagem | None:
+        if self._fila:
+            return self._fila.popleft()
+        if self.parar is not None:
+            self.parar.set()
+            return None
+        raise KeyboardInterrupt
+
+    def reagir(self, mensagem: Mensagem, emoji: str) -> None:
+        if self._erro_ao_reagir is not None:
+            raise self._erro_ao_reagir
+        self.reacoes.append((mensagem, emoji))
+
+    def responder(self, mensagem: Mensagem, texto: str) -> None:
+        if self._erro_ao_responder is not None:
+            raise self._erro_ao_responder
+        self.respostas.append((mensagem, texto))
+
+    def encerrar(self) -> None:
+        self.encerrada = True
 
 
 def _transportar(evento: Evento, dia: date) -> Evento:

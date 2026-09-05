@@ -75,6 +75,8 @@ class Configuracao:
     slack_user_token: str = ""
     slack_conversas_excluidas: tuple[str, ...] = ()
     slack_so_com_mencao: tuple[str, ...] = ()
+    slack_bot_token: str = ""
+    slack_app_token: str = ""
     origem: Path | None = None
 
 
@@ -166,6 +168,8 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
         slack_user_token=str(slack.get("user_token", "")),
         slack_conversas_excluidas=_textos(slack.get("conversas_excluidas")),
         slack_so_com_mencao=_textos(slack.get("so_com_mencao")),
+        slack_bot_token=_token_do_slack(slack.get("bot_token", ""), "bot_token", "xoxb-", arquivo),
+        slack_app_token=_token_do_slack(slack.get("app_token", ""), "app_token", "xapp-", arquivo),
         origem=arquivo,
     )
 
@@ -212,6 +216,33 @@ def _pastas_privadas(valor: object, arquivo: Path) -> tuple[str, ...]:
             )
         pastas.append("/".join(partes))
     return tuple(pastas)
+
+
+_NOMES_DOS_TOKENS = {
+    "xoxb-": "o Bot User OAuth Token",
+    "xapp-": "o App-Level Token",
+    "xoxp-": "o User OAuth Token, que vai em [slack].user_token",
+}
+
+
+def _token_do_slack(valor: object, chave: str, prefixo: str, arquivo: Path) -> str:
+    """Um token do atendente, conferido pelo prefixo.
+
+    A página da app mostra três tokens parecidos, e colar o errado só se
+    revelaria na primeira mensagem, com o atendente já no ar sem console.
+    O prefixo diz qual é qual, e a mensagem diz onde cada um vai.
+    """
+    token = str(valor or "").strip()
+    if not token or token.startswith(prefixo):
+        return token
+    veio = next(
+        (nome for inicio, nome in _NOMES_DOS_TOKENS.items() if token.startswith(inicio)),
+        "um token de outro tipo",
+    )
+    raise ConfiguracaoInvalida(
+        f"Configuração em {arquivo}: '[slack].{chave}' precisa ser "
+        f"{_NOMES_DOS_TOKENS[prefixo]} (começa com {prefixo}), e veio {veio}."
+    )
 
 
 def _absoluto(texto: str) -> bool:
