@@ -63,27 +63,32 @@ Toda pergunta — pelo terminal ou pela DM — deixa rastro em
 quantas notas foram lidas, e o custo equivalente na tabela da API (a
 assinatura **não** cobra por token; o número é medida relativa de cota).
 
-## Passo 1 — Dar um bot à app
+## Passo 1 — Os quatro scopes de bot
 
-Em <https://api.slack.com/apps>, abra a app `Second Brain (diário)`.
+Em <https://api.slack.com/apps>, abra a app `Second Brain (diário)`. Em
+**OAuth & Permissions → Scopes → Bot Token Scopes**, acrescente exatamente:
+`im:history`, `im:read`, `chat:write`, `reactions:write`.
 
-1. **App Home → App Display Name → Edit**: nome `Second Brain`, username
-   `second-brain`. Isso cria o bot user.
-2. Ainda em **App Home → Show Tabs**: ligue **Messages Tab** e marque *Allow
+Os scopes vêm **antes** do bot: o Slack só libera as abas do App Home depois
+que o bot token tem pelo menos um scope (a página diz *"First, assign a scope to
+your bot token"*, com o botão *Review Scopes to Add*, que leva a esta tela).
+
+**Não** mexa nos *User Token Scopes*: os nove do coletor continuam como estão.
+
+**Sucesso:** *Bot Token Scopes* tem esses quatro e mais nada.
+
+## Passo 2 — Dar um bot à app
+
+De volta em **App Home**:
+
+1. **App Display Name → Edit**: nome `Second Brain`, username `second-brain`.
+   Isso cria o bot user.
+2. **Show Tabs**, agora destravado: ligue **Messages Tab** e marque *Allow
    users to send Slash commands and messages from the messages tab*. Sem isso a
    DM com o bot existe, mas não aceita mensagem.
 
 **Sucesso:** a app aparece na sua lista de apps do Slack com uma aba
 *Messages*.
-
-## Passo 2 — Os quatro scopes de bot
-
-Em **OAuth & Permissions → Scopes → Bot Token Scopes**, acrescente exatamente:
-`im:history`, `im:read`, `chat:write`, `reactions:write`.
-
-**Não** mexa nos *User Token Scopes*: os nove do coletor continuam como estão.
-
-**Sucesso:** *Bot Token Scopes* tem esses quatro e mais nada.
 
 ## Passo 3 — Ligar o Socket Mode e gerar o app-level token
 
@@ -196,10 +201,10 @@ e se [slack].app_token tem o scope connections:write.
 Volte ao passo 3.
 
 **Falha — sobe, mas não responde:** o evento não está chegando. Confira o
-passo 4 (`message.im` assinado) e o passo 1 (*Messages Tab* ligada), e
+passo 4 (`message.im` assinado) e o passo 2 (*Messages Tab* ligada), e
 reinstale a app depois de qualquer mudança.
 
-**Falha — responde, mas sem o 👀:** falta `reactions:write` (passo 2). A resposta
+**Falha — responde, mas sem o 👀:** falta `reactions:write` (passo 1). A resposta
 sai mesmo assim, e o log registra o aviso.
 
 **Falha — `já existe um atendente ... rodando`:** outra instância está no ar
