@@ -7,7 +7,7 @@ Contrato: **[contrato-busca.md](../contrato-busca.md)**, seções 2 e 6.
 
 **Blocked by:** 01, 02
 
-**Status:** blocked
+**Status:** ready-for-agent
 
 - [ ] As três entram como ferramentas, pelas fábricas `de_configuracao` dos coletores existentes
       — **nenhum coletor é reimplementado**

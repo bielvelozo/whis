@@ -1,8 +1,9 @@
 r"""Entrada de linha de comando do Second Brain.
 
-Oito subcomandos sobre a mesma configuração local e sobre as três costuras do
-projeto — `pipeline.processar` para a reunião, `diario.gerar_diario` para o dia
-civil, `daily.gerar_daily` para o roteiro falado::
+Nove subcomandos sobre a mesma configuração local e sobre as quatro costuras
+do projeto — `pipeline.processar` para a reunião, `diario.gerar_diario` para o
+dia civil, `daily.gerar_daily` para o roteiro falado, `pergunta.responder`
+para a busca no vault::
 
     python -m second_brain init
     python -m second_brain bandeja
@@ -12,6 +13,11 @@ civil, `daily.gerar_daily` para o roteiro falado::
     python -m second_brain limpar [--simular]
     python -m second_brain diario [YYYY-MM-DD] [--simular]
     python -m second_brain daily [--anotar TEXTO] [--simular]
+    python -m second_brain perguntar "<pergunta>" [--sem-fio]
+
+`perguntar` existe **para teste e diagnóstico**: o caminho principal do agente é
+a DM do Slack. Ele responde no terminal, citando as notas, e continua o mesmo
+fio de 24 horas entre uma chamada e outra.
 
 Por padrão o comando usa os **adaptadores reais** — Deepgram para o STT, Claude
 (conta do usuário, OAuth) para os resumos, git/Linear/Slack para as fontes.
@@ -38,6 +44,7 @@ from pathlib import Path
 from . import registro as _registro
 from . import retencao as _retencao
 from . import vault as _vault
+from .busca import ErroDeBusca, PortaBusca, Resposta
 from .coleta import TodasAsFontesFalharam
 from .configuracao import (
     Configuracao,
@@ -45,9 +52,11 @@ from .configuracao import (
     caminho_padrao,
     carregar,
 )
+from .conversa import Conversas
 from .daily import ResultadoDaDaily, gerar_daily
 from .diario import NenhumaFonteConfigurada, ResultadoDoDiario, gerar_diario
 from .fakes import (
+    BuscaFake,
     DailyFake,
     ResumoDoDiaFake,
     ResumoFake,
@@ -57,6 +66,7 @@ from .fakes import (
 )
 from .fontes import PortaFonte, data_do_diario
 from .gravacao import GravacaoInvalida
+from .pergunta import PerguntaVazia, responder
 from .pipeline import processar
 from .portas import (
     ErroDeResumo,
@@ -229,6 +239,17 @@ def montar_roteiro_da_daily(
         modelo=configuracao.claude_modelo or None,
         contexto_do_time=configuracao.daily_contexto_do_time,
     )
+
+
+def montar_busca(configuracao: Configuracao, *, fakes: bool = False) -> PortaBusca:
+    """A busca: o Claude da conta do usuário com as ferramentas do vault, ou o fake."""
+    if fakes:
+        _log.warning("Usando busca FAKE — nada é enviado ao Claude.")
+        return BuscaFake()
+
+    from .busca_claude import BuscaClaude
+
+    return BuscaClaude(modelo=configuracao.claude_modelo or None)
 
 
 # -- processar --------------------------------------------------------------
@@ -513,6 +534,48 @@ def _relatar_daily(resultado: ResultadoDaDaily) -> None:
         print(f"Fonte '{falha.fonte}' não entrou: {falha.motivo}")
     if resultado.falha_do_roteiro:
         print(f"Sem roteiro nesta daily: {resultado.falha_do_roteiro}")
+
+
+# -- perguntar --------------------------------------------------------------
+
+#: A chave do fio do terminal em `conversas.json`. A DM do Slack tem a sua.
+FIO_DO_TERMINAL = "terminal"
+
+
+def _comando_perguntar(args: argparse.Namespace) -> int:
+    """Pergunta ao vault pelo terminal — a mesma costura que a DM do Slack usa.
+
+    O fio de 24 horas vale aqui também: duas chamadas seguidas continuam a
+    mesma conversa, e `--sem-fio` pergunta sem ler nem gravar o fio.
+    """
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    busca = montar_busca(configuracao, fakes=args.fakes)
+    agora = datetime.now().astimezone()
+
+    conversas = None if args.sem_fio else Conversas.de_configuracao(configuracao)
+    conversa = conversas.abrir(FIO_DO_TERMINAL, agora=agora) if conversas else None
+    resposta = responder(
+        args.pergunta, configuracao=configuracao, busca=busca, conversa=conversa, agora=agora
+    )
+    if conversas is not None and conversa is not None:
+        conversas.guardar(FIO_DO_TERMINAL, conversa)
+
+    _relatar_resposta(resposta)
+    return SAIDA_COMPLETA if resposta.achou else SAIDA_PARCIAL
+
+
+def _relatar_resposta(resposta: Resposta) -> None:
+    print(resposta.texto or "Não achei.")
+    if resposta.citacoes:
+        print()
+        print("Fontes:")
+        for citacao in resposta.citacoes:
+            trecho = f" — {citacao.trecho}" if citacao.trecho else ""
+            print(f"  {citacao.origem}{trecho}")
+    if not resposta.achou:
+        print()
+        print("(não achou: nenhuma nota do vault sustenta uma resposta)")
 
 
 # -- bandeja ----------------------------------------------------------------
@@ -844,6 +907,24 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     daily_cmd.set_defaults(funcao=_comando_daily)
 
+    perguntar_cmd = subcomandos.add_parser(
+        "perguntar",
+        help="pergunta ao vault pelo terminal, citando as notas (para teste e diagnóstico)",
+    )
+    _acrescentar_config(perguntar_cmd)
+    perguntar_cmd.add_argument("pergunta", help="a pergunta, entre aspas")
+    perguntar_cmd.add_argument(
+        "--fakes",
+        action="store_true",
+        help="usa a busca fake em vez do Claude (sem rede, sem gastar a assinatura)",
+    )
+    perguntar_cmd.add_argument(
+        "--sem-fio",
+        action="store_true",
+        help="pergunta sem ler nem gravar o fio de conversa do terminal",
+    )
+    perguntar_cmd.set_defaults(funcao=_comando_perguntar)
+
     bandeja_cmd = subcomandos.add_parser(
         "bandeja",
         help="ícone na bandeja do Windows: um clique grava, outro vira nota no vault",
@@ -899,6 +980,8 @@ def main(argv: list[str] | None = None) -> int:
         GravacaoInvalida,
         ErroDeSTT,
         ErroDeResumo,
+        ErroDeBusca,
+        PerguntaVazia,
         TodasAsFontesFalharam,
         NenhumaFonteConfigurada,
     ) as erro:

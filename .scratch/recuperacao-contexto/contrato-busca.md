@@ -216,3 +216,33 @@ contra isto, não contra as seções 1 a 4 sozinhas.
 - **`[privacidade].pastas_privadas`** é validada: cada item precisa ser relativo e sem `..`
   (barra invertida e barra final são normalizadas). `[busca].maximo_de_notas` precisa ser
   inteiro ≥ 1.
+
+## 9. Adendos da camada 02 (2026-09-04)
+
+- **`busca_claude.FerramentasDoVault(ferramentas)`** — as três ferramentas como tools de um
+  servidor MCP em processo chamado `vault`; `.tools()` devolve as `SdkMcpTool`, `.servidor()`
+  o `McpSdkServerConfig`. **A camada 03 acrescenta as fontes ao vivo aqui**, como tools do
+  mesmo servidor ou de um segundo, e as lista em `ferramentas_permitidas()` — é a única lista
+  que o modelo enxerga (`mcp__<servidor>__<ferramenta>`). O modelo nasce com `tools=[]`: sem
+  Bash, Read, Glob ou qualquer ferramenta nativa.
+- **Tradução das recusas**, fixada nos handlers: `ForaDaFronteira` e `LimiteDeNotas` voltam
+  como resultado com `is_error` e a mensagem da própria exceção; a leitura recusada, a
+  inexistente e a privada produzem exatamente o mesmo texto. Um handler que levante outra
+  exceção tem a mensagem devolvida ao modelo pelo SDK, não derruba a pergunta.
+- **`FerramentasDoVault.chamadas`** e **`.vistos`** — o contador para o log e os caminhos que
+  a busca ou a leitura mostraram ao modelo. `perguntar` não filtra citação; só o log aponta
+  uma citação a caminho nunca visto.
+- **Formato da resposta do modelo**: `{"resposta", "citacoes": [{"origem", "trecho"}], "achou"}`.
+  `achou` ausente é deduzido das citações; citação como texto simples vira `origem`;
+  `arquivo`/`caminho`/`fonte` valem como `origem`. **A camada 03 usa `origem` com prefixo de
+  fonte** (`linear:FN-1610`, `slack:#canal`, `git:repositorio@hash`) — `interpretar_resposta`
+  já deixa passar qualquer texto em `origem`.
+- **O fio vai como texto no turno** (`montar_pergunta`), os últimos `TURNOS_NO_FIO = 20`
+  turnos — não como sessão retomada do SDK, para a expiração de 24h ficar no nosso código.
+- **`second-brain perguntar "<pergunta>" [--fakes] [--sem-fio]`** — o comando de diagnóstico.
+  Fio na chave `"terminal"` de `conversas.json`; `0` respondeu, `3` respondeu sem achar,
+  `1` não conseguiu (`ErroDeBusca`, `PerguntaVazia`, configuração), `2` erro de uso. A
+  fábrica é `__main__.montar_busca(configuracao, fakes=)`; a camada 05 documenta os códigos
+  no `--help` e o log já sai em `bandeja.log`.
+- **`BuscaClaude(modelo=, timeout_s=240, maximo_de_turnos=40)`** — cada chamada de
+  ferramenta é um turno; `max_turns` estourado vem como `ErroDeBusca` com o `subtype`.
