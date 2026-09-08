@@ -57,6 +57,12 @@ MODELO_PADRAO: str | None = None
 #: Acima disso o dia não é enviado — ver `_recusar_dia_longo`.
 LIMITE_DE_CARACTERES = 400_000
 
+#: Quantos caracteres do `detalhe` de um evento vão ao Claude. A nota guarda o
+#: detalhe inteiro; o roteiro precisa do gist. A primeira segunda-feira real
+#: (2026-09-08) trouxe 878 eventos do Linear em quatro dias, com um comentário
+#: de 7.500 caracteres, e o período inteiro estourou o teto de uma chamada.
+DETALHE_MAXIMO = 500
+
 #: Teto de tempo para a chamada inteira, em segundos.
 TIMEOUT_PADRAO_S = 300.0
 
@@ -553,12 +559,18 @@ def _linhas_do_evento(evento: Evento) -> list[str]:
     linhas = [f"{cabeca} {evento.titulo}".strip()]
     linhas.extend(
         f"    {trecho.strip()}"
-        for trecho in evento.detalhe.splitlines()
+        for trecho in _detalhe_curto(evento.detalhe).splitlines()
         if trecho.strip()
     )
     if evento.pessoas:
         linhas.append(f"    pessoas: {', '.join(evento.pessoas)}")
     return linhas
+
+
+def _detalhe_curto(detalhe: str) -> str:
+    if len(detalhe) <= DETALHE_MAXIMO:
+        return detalhe
+    return detalhe[:DETALHE_MAXIMO].rstrip() + "…"
 
 
 def _reuniao_legivel(caminho: str) -> str:
