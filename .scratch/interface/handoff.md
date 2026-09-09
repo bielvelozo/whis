@@ -59,8 +59,19 @@ depois; commit `7f35147`).
 
 ### Onde ele parou
 
-Passo 1 do `docs/smoke-atendente.md` (os quatro scopes de bot). Pergunte a ele em que passo
-está antes de assumir qualquer coisa. Os passos que faltam, na ordem: scopes → App Home
+Passo 1 do `docs/smoke-atendente.md` (os quatro scopes de bot) — confirmado com ele em
+2026-09-09: o App Home ainda mostrava *"First, assign a scope to your bot token"*, ou seja
+os quatro scopes de bot **não** estavam salvos. Pergunte a ele em que passo
+está antes de assumir qualquer coisa.
+
+**A app do Slack ainda se chama `Second Brain (diário)`.** O projeto foi rebatizado para
+**Whis** em 2026-09-09 (commit do rename) e o roteiro já fala em `Whis`: renomear a app e o
+bot é parte do passo 2, e o momento certo é **antes** do pedido do passo 5 — depois de o admin
+aprovar, ele passa a ver um nome que não foi o que aprovou.
+
+Ele também perguntou se falta scope para o bot **ver imagem e áudio** na DM. Falta, e mais que
+scope: hoje um anexo é ignorado em silêncio. Está no DEFERRED, e "mandar áudio em vez de
+digitar no celular" é candidato de peso da frente 2. Os passos que faltam, na ordem: scopes → App Home
 (bot user + Messages Tab) → Socket Mode + app-level token → `message.im` → **pedido novo ao
 admin** (texto pronto no passo 5) → reinstalar e colar os dois tokens.
 
