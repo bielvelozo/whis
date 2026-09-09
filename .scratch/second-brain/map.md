@@ -43,12 +43,13 @@ Todas as decisões arquiteturais centrais fechadas — estender-Whis-vs-separado
 
 - **Entrega 2 — fontes passivas + daily** (2026-09-03/04): fechada e em uso real. Diário, daily com janela da última fala, coletores de git/Linear/Slack, e a daily lida numa reunião de verdade em 2026-09-04. Spec em [.scratch/fontes-passivas/spec.md](../fontes-passivas/spec.md); onze camadas, dez resolvidas e uma revertida.
 - **Entrega 3 — recuperação de contexto** (aberta em 2026-09-04): spec em [.scratch/recuperacao-contexto/spec.md](../recuperacao-contexto/spec.md), com contrato fixado e cinco camadas. O ticket 08 foi **refinado**: o agente não recebe `cwd` cru no vault, e sim ferramentas nossas — foi o que a pasta privada escolhida pelo usuário exigiu.
+- **Entrega 4 — a interface** (levantamento aberto em 2026-09-09): o usuário percebeu que acionar o Second Brain por comando "vai ser muito ruim". Handoff com as duas frentes — fechar o Slack da entrega 3 e levantar as superfícies (agendador + toast, bandeja, DM do Slack como painel, Obsidian, janela local) — em [.scratch/interface/handoff.md](../interface/handoff.md). **É levantamento antes de spec**, pela lição da entrega 3.
 - [Escrever a spec do tracer bullet](issues/09-spec-tracer-bullet.md) — **destino alcançado**: spec publicada em [.scratch/tracer-bullet/spec.md](../tracer-bullet/spec.md) (`ready-for-agent`), consolidando todas as decisões; nenhum ticket aberto resta no mapa.
 
 ## Not yet specified
 
 - Busca de vagas e freelance usando o perfil acumulado — em escopo, mas só especificável depois que o observador rodar e o perfil existir.
-- Lembretes e comportamento proativo do agente (avisar sem ser perguntado) — a interface reativa já foi decidida (chat + one-shot); a proativa depende de uso real.
+- Lembretes e comportamento proativo do agente (avisar sem ser perguntado) — a interface reativa já foi decidida (chat + one-shot); a proativa depende de uso real. **O uso real chegou** (2026-09-09): a daily cinco minutos antes da reunião, pedida na demo de 04/09, é o primeiro caso — vai pela entrega 4.
 - Backup/versionamento do vault (git próprio? sync na nuvem?) — relevante quando o vault tiver dados que doeria perder.
 - Conforto do liga/desliga além da bandeja (atalho global de teclado).
 ## Out of scope
