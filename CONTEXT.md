@@ -1,4 +1,4 @@
-# Second Brain
+# Whis
 
 Agente pessoal local que observa o trabalho do usuário no PC, transcreve reuniões e recupera contexto, com um vault Obsidian como memória durável.
 
@@ -9,11 +9,11 @@ Componente que captura um tipo de sinal (áudio de reunião, fontes passivas de 
 _Avoid_: watcher, observador, collector
 
 **Fonte passiva**:
-Dado de trabalho que já existe sem o Second Brain rodando — git local, Linear, Slack, histórico de navegador — lido retroativamente por um coletor.
+Dado de trabalho que já existe sem o Whis rodando — git local, Linear, Slack, histórico de navegador — lido retroativamente por um coletor.
 _Avoid_: monitoramento, tracking
 
 **Vault**:
-O vault Obsidian local no PC do usuário — a memória durável do Second Brain, novo e sem legado de outros projetos.
+O vault Obsidian local no PC do usuário — a memória durável do Whis, novo e sem legado de outros projetos.
 _Avoid_: workspace, base de conhecimento, context/
 
 **Sob demanda**:
@@ -36,4 +36,9 @@ A primeira fatia construível de ponta a ponta: "aperto um botão durante a reun
 _Avoid_: MVP, PoC
 
 **Whis**:
-Agente pessoal anterior do usuário (chat via Telegram, EC2), aposentado; doador de ideias para o Second Brain, nunca dependência.
+Este projeto. Nasceu chamado *Second Brain* e foi rebatizado em 2026-09-09, herdando o nome do agente anterior do usuário, que morreu de vez. Os documentos de entregas fechadas em `.scratch/` guardam o nome antigo: são registro do que aconteceu, não foram reescritos.
+_Avoid_: Second Brain, second-brain, SB
+
+**Whis da EC2**:
+O agente pessoal anterior do usuário — chat por mensageiro, hospedado numa EC2 —, aposentado e desligado. Doador de ideias para o Whis atual, nunca dependência. O qualificador existe para o nome não ficar ambíguo nos documentos antigos.
+_Avoid_: Whis (sem qualificador, quando se fala do antigo)

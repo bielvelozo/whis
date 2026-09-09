@@ -12,8 +12,8 @@ from pathlib import Path
 
 import pytest
 
-from second_brain.__main__ import MODELO_DE_CONFIGURACAO
-from second_brain.configuracao import ConfiguracaoInvalida, carregar
+from whis.__main__ import MODELO_DE_CONFIGURACAO
+from whis.configuracao import ConfiguracaoInvalida, carregar
 
 
 def escrever(tmp_path: Path, corpo: str) -> Path:

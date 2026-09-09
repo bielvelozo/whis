@@ -14,7 +14,7 @@ import wave
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from second_brain.gravacao import ARQUIVO_DE_ESTADO, Estado, gravar_estado
+from whis.gravacao import ARQUIVO_DE_ESTADO, Estado, gravar_estado
 
 NOME_PADRAO = "2026-08-20-1430-daily-do-time"
 TITULO_PADRAO = "daily do time"

@@ -1,6 +1,6 @@
 # Smoke manual: a daily, do filtro ao checkbox
 
-Roteiro curto de ponta a ponta para `second-brain daily`: conferir o filtro de
+Roteiro curto de ponta a ponta para `whis daily`: conferir o filtro de
 exclusão sem gastar nada, anotar um ponto seu, gerar a daily de verdade, ler no
 Obsidian, falar, marcar o checkbox e ver o ponto sumir da daily seguinte. É a
 validação do que fica fora da costura de teste automatizada: git, Linear e
@@ -36,8 +36,8 @@ terminal fechando:
 | `1` | **não nasceu**: todas as fontes falharam, nenhuma está configurada, ou não havia nada no período |
 | `2` | erro de uso (argumento inválido) |
 
-`python -m second_brain daily --help` mostra a mesma tabela. Toda execução
-deixa rastro em `%APPDATA%\second-brain\bandeja.log`, ao lado do
+`python -m whis daily --help` mostra a mesma tabela. Toda execução
+deixa rastro em `%APPDATA%\whis\bandeja.log`, ao lado do
 `config.toml`; a última linha de cada execução diz como ela terminou.
 
 ## Passo 1 — Conferir o filtro, sem enviar nem escrever nada
@@ -46,7 +46,7 @@ Se você tem padrões em `[privacidade].excluir`, este é o passo que prova que
 eles funcionam. Se não tem, ele só mostra o que entraria.
 
 ```
-python -m second_brain daily --simular
+python -m whis daily --simular
 ```
 
 `--simular` coleta, aplica o filtro e **imprime**: não chama o Claude e não
@@ -61,7 +61,7 @@ Daily — 2026-09-04
 Cobre de quinta, 03/09 09:12, até agora.
 
 Simulação — o Claude não foi chamado e nada foi escrito.
-  03/09 14:02  [git] (second-brain) `62b55ce` Abre a proxima entrega
+  03/09 14:02  [git] (whis) `62b55ce` Abre a proxima entrega
   03/09 15:12  [linear] (Plataforma) FN-124 Escrever o roteiro de smoke — criada
   reunião: reunioes/2026-09-03-1430-daily-do-time.md
 O filtro de exclusão removeu 2 evento(s).
@@ -89,11 +89,11 @@ motivo de cada uma), ou não houve nada no período. Nos dois primeiros casos,
 Só se você tem projeto pessoal na mesma pasta que o trabalho. Na primeira daily
 real, **30 dos 52 commits eram de projeto pessoal** e o roteiro falou deles.
 
-Em `%APPDATA%\second-brain\config.toml`:
+Em `%APPDATA%\whis\config.toml`:
 
 ```toml
 [daily]
-referencias_pessoais = ["second-brain", "renovo-hub"]
+referencias_pessoais = ["whis", "renovo-hub"]
 ```
 
 Lista-se o que é **pessoal**, não o que é do trabalho: assim um projeto novo do
@@ -101,7 +101,7 @@ Linear entra na daily sozinho, sem você precisar cadastrá-lo. Casa por pedaço
 nome, sem diferenciar maiúsculas, contra o repositório, o projeto ou o canal.
 
 ```
-python -m second_brain daily --simular
+python -m whis daily --simular
 ```
 
 **Sucesso:** as linhas dos seus projetos aparecem marcadas com `← só no vault`, e
@@ -138,7 +138,7 @@ e isso é uma daily melhor do que um bloqueio inventado.
 ## Passo 2 — Anotar um ponto seu
 
 ```
-python -m second_brain daily --anotar "quero puxar a conversa sobre a retenção de 180 dias"
+python -m whis daily --anotar "quero puxar a conversa sobre a retenção de 180 dias"
 ```
 
 **Sucesso:** o comando diz `Anotado em ...notas/daily.md` e sai **sem coletar
@@ -156,7 +156,7 @@ rastro em commit nem em issue, então só existe na daily se você escrever.
 Um minuto antes de falar:
 
 ```
-python -m second_brain daily
+python -m whis daily
 ```
 
 Este passo **chama o Claude** pela sua assinatura e escreve
@@ -227,7 +227,7 @@ Depois de falar, abra `notas/daily.md` no Obsidian e marque o ponto:
 No dia seguinte, um minuto antes da próxima daily:
 
 ```
-python -m second_brain daily
+python -m whis daily
 ```
 
 **Sucesso, e este é o critério que fecha o smoke:**
@@ -244,7 +244,7 @@ o agente reconhece (`## Pontos`, `## Dúvidas`, `## Off-topic`).
 
 ## Se a daily não nasceu e você não viu o terminal
 
-Abra `%APPDATA%\second-brain\bandeja.log`. Procure a última linha
+Abra `%APPDATA%\whis\bandeja.log`. Procure a última linha
 `Daily de YYYY-MM-DD:` — ela diz se a nota nasceu inteira, parcial ou não
 nasceu, e as linhas acima dela dizem qual fonte falhou e por quê, com o mesmo
 texto que iria para o aviso da nota.

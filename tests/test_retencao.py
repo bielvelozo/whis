@@ -16,9 +16,9 @@ from pathlib import Path
 import pytest
 
 from fixtures.gravacao import criar_pasta_de_gravacao, criar_wav, datar_processamento
-from second_brain import retencao
-from second_brain.configuracao import Configuracao
-from second_brain.gravacao import STATUS_FALHOU, STATUS_PENDENTE, STATUS_TRANSCRITO
+from whis import retencao
+from whis.configuracao import Configuracao
+from whis.gravacao import STATUS_FALHOU, STATUS_PENDENTE, STATUS_TRANSCRITO
 
 
 def gravacao_datada(
@@ -263,7 +263,7 @@ def test_simulacao_diz_no_log_o_que_apagaria_e_por_que(
         dias_atras=19,
     )
 
-    with caplog.at_level("INFO", logger="second_brain.retencao"):
+    with caplog.at_level("INFO", logger="whis.retencao"):
         retencao.limpar_da_configuracao(configuracao, simular=True)
 
     assert "[simulação]" in caplog.text
@@ -282,7 +282,7 @@ def test_limpeza_registra_no_log_o_que_apagou_e_por_que(
         dias_atras=19,
     )
 
-    with caplog.at_level("INFO", logger="second_brain.retencao"):
+    with caplog.at_level("INFO", logger="whis.retencao"):
         retencao.limpar_da_configuracao(configuracao)
 
     assert "Apagada 2026-08-01-0900-daily-antiga" in caplog.text

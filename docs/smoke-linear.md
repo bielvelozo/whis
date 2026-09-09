@@ -14,14 +14,14 @@ Tudo que a chave enxergar, dentro da janela do dia: **issues que andaram**,
 **comentários escritos** e **mudanças de estado** — do time inteiro, não só o
 que é seu. Quem limita o alcance é a própria chave, no passo 1.
 
-Ele **só lê**. Nada é criado, editado ou comentado no Linear pelo Second Brain.
+Ele **só lê**. Nada é criado, editado ou comentado no Linear pelo Whis.
 
 ## Passo 1 — Criar a Personal API Key read-only
 
 No Linear, abra **Settings → Account → Security & Access** e crie uma nova
 *Personal API key*.
 
-1. Dê um nome que você reconheça depois: `second-brain (diário, read-only)`.
+1. Dê um nome que você reconheça depois: `whis (diário, read-only)`.
 2. Em permissões, marque **apenas `Read`**. Deixe `Write`, `Admin`,
    `Create issues` e `Create comments` **desmarcados** — o diário nunca escreve
    no Linear, e uma chave que só lê não tem como estragar nada se vazar.
@@ -39,7 +39,7 @@ a criação de chaves pessoais — peça a liberação antes de continuar.
 
 ## Passo 2 — Colar a chave na configuração local
 
-Abra `%APPDATA%\second-brain\config.toml` e preencha a seção `[linear]`:
+Abra `%APPDATA%\whis\config.toml` e preencha a seção `[linear]`:
 
 ```toml
 [linear]
@@ -52,7 +52,7 @@ coloque em variável de ambiente, em teste, em fixture nem em issue.
 **Sucesso:** o arquivo continua carregando:
 
 ```
-python -m second_brain diario --simular
+python -m whis diario --simular
 ```
 
 **Falha:** se aparecer `Configuração inválida`, confira aspas e barras — use
@@ -61,7 +61,7 @@ barras normais (`/`) em qualquer caminho.
 ## Passo 3 — Ver o que seria coletado, sem escrever nada
 
 ```
-python -m second_brain diario --simular
+python -m whis diario --simular
 ```
 
 `--simular` coleta, aplica o filtro de exclusão e **imprime**: não chama o
@@ -107,7 +107,7 @@ estão marcados na chave.
 Escolha um dia em que você sabe que mexeu no Linear (pode ser uma data passada):
 
 ```
-python -m second_brain diario 2026-09-03
+python -m whis diario 2026-09-03
 ```
 
 Este passo **chama o Claude** para o resumo e **escreve no vault**.

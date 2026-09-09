@@ -5,7 +5,7 @@ transcrita e resumida aparece no vault*. Valida o que nenhum teste automatizado
 alcança — a bandeja de verdade no Windows, a captura do Meet, a Deepgram e o
 Claude falando com as contas do usuário.
 
-Rode na **máquina de destino** (o PC onde o Second Brain vai morar), com fone
+Rode na **máquina de destino** (o PC onde o Whis vai morar), com fone
 conectado. Tempo: ~15 minutos, sendo ~5 minutos de reunião real.
 
 Nos exemplos, `python` significa `.venv\Scripts\python.exe`.
@@ -17,7 +17,7 @@ dada como resolvida.
 ## Passo 0 — Configuração
 
 ```
-python -m second_brain init
+python -m whis init
 ```
 
 **Sucesso:** o comando diz onde criou o `config.toml` e lista os próximos
@@ -37,7 +37,7 @@ explica isso.
 Antes de depender da rede, faça o ciclo inteiro com as portas fake:
 
 ```
-python -m second_brain bandeja --fakes
+python -m whis bandeja --fakes
 ```
 
 Grave 30 segundos de qualquer coisa: clique no ícone, fale, clique de novo.
@@ -60,13 +60,13 @@ Feche pelo menu do ícone → **Sair**.
 ## Passo 2 — Subir a bandeja para valer
 
 ```
-python -m second_brain bandeja
+python -m whis bandeja
 ```
 
 Deixe o terminal aberto (ele só imprime onde está o log). O ícone fica na
 bandeja até você escolher **Sair**.
 
-**Sucesso:** a primeira linha diz `Second Brain na bandeja. Log em ...`. Guarde
+**Sucesso:** a primeira linha diz `Whis na bandeja. Log em ...`. Guarde
 esse caminho: é onde qualquer problema desta sessão vai estar escrito.
 
 ## Passo 3 — A reunião
@@ -96,7 +96,7 @@ nome do arquivo.
 nota`. Leia a mensagem — ela diz o que falhou. A gravação **não se perdeu**:
 
 ```
-python -m second_brain reprocessar
+python -m whis reprocessar
 ```
 
 completa a reunião depois que o problema (rede, chave, cota) estiver resolvido,
@@ -126,13 +126,13 @@ da Deepgram (camada 03), não de configuração.
 O áudio bruto fica 7 dias fora do vault e some depois. Confira sem apagar nada:
 
 ```
-python -m second_brain limpar --simular
+python -m whis limpar --simular
 ```
 
 **Sucesso:** a reunião de hoje aparece como **preservada**, com o motivo
 "transcrita há 0 h, dentro dos 7 dias de retenção".
 
-Rode `python -m second_brain limpar` (sem `--simular`) de tempos em tempos, ou
+Rode `python -m whis limpar` (sem `--simular`) de tempos em tempos, ou
 agende a tarefa no Windows. Gravações que falharam nunca são apagadas.
 
 ## Se a bandeja não aparecer

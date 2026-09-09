@@ -30,7 +30,7 @@ from fixtures.busca import (
     habitar_vault,
 )
 from fixtures.leitura import arquivos_do_vault
-from second_brain.ferramentas import Ferramentas, ForaDaFronteira, LimiteDeNotas
+from whis.ferramentas import Ferramentas, ForaDaFronteira, LimiteDeNotas
 
 TERMO = "retenção 180"
 

@@ -1,4 +1,4 @@
-"""O subcomando `second-brain perguntar` — a costura da busca, pela linha de comando.
+"""O subcomando `whis perguntar` — a costura da busca, pela linha de comando.
 
 Existe para teste e diagnóstico: o caminho principal é a DM do Slack. O que
 importa aqui é o que sobra depois que o terminal fechou — a saída, o código, o
@@ -13,12 +13,12 @@ from pathlib import Path
 import pytest
 
 from fixtures.busca import PASTA_PRIVADA, configuracao_da_busca, habitar_vault
-from second_brain import __main__ as cli
-from second_brain.__main__ import FIO_DO_TERMINAL, SAIDA_COMPLETA, SAIDA_NAO_NASCEU, SAIDA_PARCIAL, main
-from second_brain.busca import ErroDeBusca, Resposta
-from second_brain.configuracao import VARIAVEL_DE_AMBIENTE
-from second_brain.conversa import NOME_DO_ARQUIVO
-from second_brain.fakes import RESPOSTA_PADRAO, BuscaFake
+from whis import __main__ as cli
+from whis.__main__ import FIO_DO_TERMINAL, SAIDA_COMPLETA, SAIDA_NAO_NASCEU, SAIDA_PARCIAL, main
+from whis.busca import ErroDeBusca, Resposta
+from whis.configuracao import VARIAVEL_DE_AMBIENTE
+from whis.conversa import NOME_DO_ARQUIVO
+from whis.fakes import RESPOSTA_PADRAO, BuscaFake
 
 PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 

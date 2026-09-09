@@ -27,11 +27,11 @@ import httpx
 import pytest
 
 from fixtures.gravacao import criar_wav
-from second_brain import pipeline
-from second_brain.configuracao import Configuracao, ConfiguracaoInvalida, carregar
-from second_brain.fakes import ResumoFake
-from second_brain.portas import EU, OUTROS, CanaisDaGravacao, ErroDeSTT
-from second_brain.stt_deepgram import (
+from whis import pipeline
+from whis.configuracao import Configuracao, ConfiguracaoInvalida, carregar
+from whis.fakes import ResumoFake
+from whis.portas import EU, OUTROS, CanaisDaGravacao, ErroDeSTT
+from whis.stt_deepgram import (
     ENDPOINT,
     IDIOMA_PADRAO,
     MODELO_PADRAO,
@@ -43,7 +43,7 @@ CHAVE_FALSA = "chave-de-teste-nao-e-segredo"
 FIXTURES = Path(__file__).parent / "fixtures"
 
 #: Variável que aponta uma pasta de gravação real para o teste marcado `rede`.
-VARIAVEL_DA_GRAVACAO_REAL = "SECOND_BRAIN_GRAVACAO_DE_TESTE"
+VARIAVEL_DA_GRAVACAO_REAL = "WHIS_GRAVACAO_DE_TESTE"
 
 
 def carregar_fixture(nome: str) -> dict:
@@ -433,11 +433,11 @@ def test_rede_transcreve_o_audio_de_exemplo_da_deepgram(tmp_path: Path):
 def test_rede_gravacao_real_em_pt_br_vira_nota_no_vault(tmp_path: Path):
     """O critério de aceite completo, contra uma gravação de verdade.
 
-    Aponte `SECOND_BRAIN_GRAVACAO_DE_TESTE` para uma pasta de gravação no
+    Aponte `WHIS_GRAVACAO_DE_TESTE` para uma pasta de gravação no
     formato do contrato (pt-BR com termos em inglês, os dois canais) e rode
     `pytest -m rede`. Escreve num vault temporário, nunca no vault real — e de
     propósito não usa a fixture `configuracao` da costura, que aponta
-    `SECOND_BRAIN_CONFIG` para um arquivo de teste sem chave.
+    `WHIS_CONFIG` para um arquivo de teste sem chave.
     """
     chave = chave_configurada()
     if not chave:

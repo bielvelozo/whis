@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from second_brain.configuracao import (
+from whis.configuracao import (
     VARIAVEL_DE_AMBIENTE,
     ConfiguracaoInvalida,
     carregar,

@@ -13,11 +13,11 @@ from pathlib import Path
 
 import pytest
 
-from second_brain import automacao, janelas
-from second_brain.coletor import Coletor
-from second_brain.configuracao import Configuracao
-from second_brain.fakes import ResumoFake, STTFake
-from second_brain.instancia import OutraInstancia, Trava, caminho_da_trava
+from whis import automacao, janelas
+from whis.coletor import Coletor
+from whis.configuracao import Configuracao
+from whis.fakes import ResumoFake, STTFake
+from whis.instancia import OutraInstancia, Trava, caminho_da_trava
 from test_coletor import GravadorDublê
 
 
@@ -78,7 +78,7 @@ def test_o_titulo_sai_da_janela_da_reuniao(janela: str, esperado: str):
     "janela",
     [
         "Meet - abc-defg-hij",  # código de sala não é nome de reunião
-        "second-brain - Visual Studio Code",
+        "whis - Visual Studio Code",
         "Caixa de entrada - Outlook",
         "",
     ],
@@ -90,7 +90,7 @@ def test_janela_sem_nome_de_reuniao_nao_vira_titulo(janela: str):
 def test_a_primeira_reuniao_encontrada_ganha():
     """Com várias janelas abertas, a de reunião é a que importa."""
     abertas = [
-        "second-brain - Visual Studio Code",
+        "whis - Visual Studio Code",
         "Kickoff do projeto - Google Meet",
         "WhatsApp",
     ]
@@ -179,7 +179,7 @@ def test_o_atalho_aponta_para_a_bandeja_sem_console(
     script = " ".join(espiao.comandos[0])
     assert destino.name == automacao.NOME_DO_ATALHO
     assert "Startup" in str(destino)
-    assert "-m second_brain bandeja" in script
+    assert "-m whis bandeja" in script
     assert "pythonw" in script.lower() or "python" in script.lower()
 
 
@@ -211,7 +211,7 @@ def test_a_limpeza_agendada_roda_o_comando_limpar_diariamente(tmp_path: Path):
     assert automacao.NOME_DA_TAREFA in comando
     assert "DAILY" in comando and "12:00" in comando
     tarefa = comando[comando.index("/TR") + 1]
-    assert "second_brain" in tarefa and "limpar" in tarefa
+    assert "whis" in tarefa and "limpar" in tarefa
     assert "c.toml" in tarefa  # a tarefa aponta a mesma configuração
 
 

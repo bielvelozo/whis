@@ -27,10 +27,10 @@ from pathlib import Path
 import httpx
 import pytest
 
-from second_brain.__main__ import montar_fontes
-from second_brain.configuracao import Configuracao, ConfiguracaoInvalida, carregar
-from second_brain.fontes import ErroDeFonte, Evento, Janela, janela_do_dia
-from second_brain.fonte_linear import (
+from whis.__main__ import montar_fontes
+from whis.configuracao import Configuracao, ConfiguracaoInvalida, carregar
+from whis.fontes import ErroDeFonte, Evento, Janela, janela_do_dia
+from whis.fonte_linear import (
     CONSULTA_DE_COMENTARIOS,
     CONSULTA_DE_ISSUES,
     ENDPOINT,

@@ -1,4 +1,4 @@
-"""O subcomando `second-brain atender` — a casca da CLI sobre o atendente.
+"""O subcomando `whis atender` — a casca da CLI sobre o atendente.
 
 A DM entra pela fábrica `montar_dm`, trocada aqui por `DMFake`; a busca entra
 por `--fakes`. O que se prova é o que sobra: o código de saída, a resposta que
@@ -12,11 +12,11 @@ from pathlib import Path
 import pytest
 
 from fixtures.busca import configuracao_da_busca, habitar_vault
-from second_brain import __main__ as cli
-from second_brain.__main__ import main
-from second_brain.atendente import Mensagem
-from second_brain.configuracao import VARIAVEL_DE_AMBIENTE
-from second_brain.fakes import RESPOSTA_PADRAO, DMFake
+from whis import __main__ as cli
+from whis.__main__ import main
+from whis.atendente import Mensagem
+from whis.configuracao import VARIAVEL_DE_AMBIENTE
+from whis.fakes import RESPOSTA_PADRAO, DMFake
 
 
 @pytest.fixture

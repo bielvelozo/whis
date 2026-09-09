@@ -26,8 +26,8 @@ from fixtures.busca import (
     configuracao_da_busca,
     habitar_vault,
 )
-from second_brain.busca import Citacao, ErroDeBusca, PortaBusca
-from second_brain.busca_claude import (
+from whis.busca import Citacao, ErroDeBusca, PortaBusca
+from whis.busca_claude import (
     BUSCAR,
     LER,
     LISTAR,
@@ -40,9 +40,9 @@ from second_brain.busca_claude import (
     registrar_custo,
     verificar_credencial,
 )
-from second_brain.conversa import AGENTE, USUARIO, Turno
-from second_brain.ferramentas import Ferramentas
-from second_brain.resumo_claude import VARIAVEIS_DE_API_PAGA
+from whis.conversa import AGENTE, USUARIO, Turno
+from whis.ferramentas import Ferramentas
+from whis.resumo_claude import VARIAVEIS_DE_API_PAGA
 
 FUSO = timezone(timedelta(hours=-3))
 MANHA = datetime(2026, 9, 4, 9, 0, tzinfo=FUSO)
@@ -346,7 +346,7 @@ def test_achou_ausente_e_deduzido_das_citacoes():
 
 
 def test_resposta_sem_citacao_e_registrada_como_suspeita(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("WARNING", logger="second_brain.busca"):
+    with caplog.at_level("WARNING", logger="whis.busca"):
         resposta = interpretar_resposta('{"resposta": "foi decidido", "achou": true}')
 
     assert resposta.citacoes == ()
@@ -365,7 +365,7 @@ def test_resposta_sem_citacao_e_registrada_como_suspeita(caplog: pytest.LogCaptu
 def test_resposta_ilegivel_vira_erro_de_busca_com_o_texto_no_log(
     bruto: str, motivo: str, caplog: pytest.LogCaptureFixture
 ):
-    with caplog.at_level("ERROR", logger="second_brain.busca"):
+    with caplog.at_level("ERROR", logger="whis.busca"):
         with pytest.raises(ErroDeBusca) as erro:
             interpretar_resposta(bruto)
 
@@ -474,7 +474,7 @@ def test_ambiente_limpo_deixa_a_busca_seguir(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_custo_da_pergunta_fica_no_log_com_as_chamadas(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("INFO", logger="second_brain.busca"):
+    with caplog.at_level("INFO", logger="whis.busca"):
         registrar_custo(_resultado(), chamadas=4)
 
     assert "US$ 0.0912" in caplog.text
@@ -483,7 +483,7 @@ def test_custo_da_pergunta_fica_no_log_com_as_chamadas(caplog: pytest.LogCapture
 
 
 def test_turno_sem_resultado_nao_registra_custo(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("INFO", logger="second_brain.busca"):
+    with caplog.at_level("INFO", logger="whis.busca"):
         registrar_custo(None, chamadas=0)
 
     assert caplog.text == ""

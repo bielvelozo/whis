@@ -16,13 +16,13 @@ from pathlib import Path
 
 import pytest
 
-from second_brain import bandeja as _bandeja
-from second_brain import registro
-from second_brain.bandeja import Bandeja, desenhar_icone
-from second_brain.coletor import Coletor, Estado, Situacao
-from second_brain.configuracao import Configuracao
-from second_brain.fakes import ResumoFake, STTFake
-from second_brain.portas import ErroDeSTT
+from whis import bandeja as _bandeja
+from whis import registro
+from whis.bandeja import Bandeja, desenhar_icone
+from whis.coletor import Coletor, Estado, Situacao
+from whis.configuracao import Configuracao
+from whis.fakes import ResumoFake, STTFake
+from whis.portas import ErroDeSTT
 from test_coletor import GravadorDublê, STTQuebrado
 
 

@@ -1,4 +1,4 @@
-# Second Brain
+# Whis
 
 ## Agent skills
 

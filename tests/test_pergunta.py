@@ -21,11 +21,11 @@ from fixtures.busca import (
     configuracao_da_busca,
     habitar_vault,
 )
-from second_brain.busca import Citacao, ErroDeBusca, PortaBusca, Resposta
-from second_brain.conversa import AGENTE, USUARIO, Conversa
-from second_brain.fakes import RESPOSTA_PADRAO, BuscaFake
-from second_brain.ferramentas import Ferramentas, ForaDaFronteira
-from second_brain.pergunta import SEM_RESPOSTA, PerguntaVazia, responder
+from whis.busca import Citacao, ErroDeBusca, PortaBusca, Resposta
+from whis.conversa import AGENTE, USUARIO, Conversa
+from whis.fakes import RESPOSTA_PADRAO, BuscaFake
+from whis.ferramentas import Ferramentas, ForaDaFronteira
+from whis.pergunta import SEM_RESPOSTA, PerguntaVazia, responder
 
 FUSO = timezone(timedelta(hours=-3))
 MANHA = datetime(2026, 9, 4, 9, 0, tzinfo=FUSO)
@@ -237,7 +237,7 @@ def test_o_log_registra_a_pergunta_as_citacoes_e_o_custo(perguntar, caplog):
         custo_usd=0.0123,
     )
 
-    with caplog.at_level(logging.INFO, logger="second_brain.pergunta"):
+    with caplog.at_level(logging.INFO, logger="whis.pergunta"):
         perguntar(busca=BuscaFake(resposta))
 
     mensagens = "\n".join(registro.message for registro in caplog.records)
@@ -248,7 +248,7 @@ def test_o_log_registra_a_pergunta_as_citacoes_e_o_custo(perguntar, caplog):
 
 
 def test_o_log_diz_quando_nao_achou_e_quando_o_custo_nao_veio(perguntar, caplog):
-    with caplog.at_level(logging.INFO, logger="second_brain.pergunta"):
+    with caplog.at_level(logging.INFO, logger="whis.pergunta"):
         perguntar(busca=BuscaFake(Resposta(texto="", achou=False)))
 
     mensagens = "\n".join(registro.message for registro in caplog.records)

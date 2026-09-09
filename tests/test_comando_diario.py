@@ -1,4 +1,4 @@
-"""O subcomando `second-brain diario` — a mesma costura, pela linha de comando.
+"""O subcomando `whis diario` — a mesma costura, pela linha de comando.
 
 Como no `processar`, o padrão é o real: sem `--fakes` o comando vai ao git, ao
 Linear, ao Slack e ao Claude. Os testes usam `--fakes`, que é a forma explícita
@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 
 from fixtures.leitura import ler_frontmatter
-from second_brain.__main__ import main
-from second_brain.fontes import data_do_diario
+from whis.__main__ import main
+from whis.fontes import data_do_diario
 
 DIA = "2026-09-03"
 
@@ -49,7 +49,7 @@ def test_comando_diario_aceita_a_configuracao_por_argumento(
     configuracao_do_diario, caminho_do_vault: Path, monkeypatch: pytest.MonkeyPatch
 ):
     configuracao = configuracao_do_diario()
-    monkeypatch.delenv("SECOND_BRAIN_CONFIG", raising=False)
+    monkeypatch.delenv("WHIS_CONFIG", raising=False)
 
     codigo = main(["diario", DIA, "--fakes", "--config", str(configuracao.origem)])
 

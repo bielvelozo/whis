@@ -1,13 +1,13 @@
 # Smoke manual: o agente na DM do Slack
 
 Roteiro para pôr o agente no ar: a app do Slack ganha um bot, o admin aprova de
-novo, `second-brain atender` sobe e você pergunta ao seu vault pela DM — do PC
+novo, `whis atender` sobe e você pergunta ao seu vault pela DM — do PC
 ou do celular. É a validação do que fica fora da costura de teste automatizada:
 o Socket Mode de verdade, a conta Claude de verdade, o seu vault.
 
 Tempo: ~20 minutos seus, mais o tempo que o admin levar. **Nada disto bloqueia
 o resto**: a daily, o diário e o coletor do Slack continuam funcionando enquanto
-o bot espera aprovação, e `second-brain perguntar` já responde no terminal.
+o bot espera aprovação, e `whis perguntar` já responde no terminal.
 
 Rode tudo de dentro do repositório, com o interpretador do ambiente virtual. Nos
 exemplos abaixo, `python` significa `.venv\Scripts\python.exe`.
@@ -43,12 +43,12 @@ Ele não vê suas outras DMs. E nada é publicado fora da DM dele.
 
 ## Como o atendente termina
 
-`second-brain atender` fica no ar até o `Ctrl+C` (ou até o logoff, quando sobe
+`whis atender` fica no ar até o `Ctrl+C` (ou até o logoff, quando sobe
 com o Windows). Ele sai com `1` quando não consegue subir — sem os tokens, com
 o Socket Mode desligado, com outra instância já no ar — e diz por quê no
 terminal e em `bandeja.log`.
 
-`second-brain perguntar` é o comando de diagnóstico, e o código de saída dele
+`whis perguntar` é o comando de diagnóstico, e o código de saída dele
 diz o que aconteceu com a pergunta:
 
 | código | significado |
@@ -59,13 +59,13 @@ diz o que aconteceu com a pergunta:
 | `2` | erro de uso (argumento inválido) |
 
 Toda pergunta — pelo terminal ou pela DM — deixa rastro em
-`%APPDATA%\second-brain\bandeja.log`: a pergunta, quantas citações voltaram,
+`%APPDATA%\whis\bandeja.log`: a pergunta, quantas citações voltaram,
 quantas notas foram lidas, e o custo equivalente na tabela da API (a
 assinatura **não** cobra por token; o número é medida relativa de cota).
 
 ## Passo 1 — Os quatro scopes de bot
 
-Em <https://api.slack.com/apps>, abra a app `Second Brain (diário)`. Em
+Em <https://api.slack.com/apps>, abra a app `Whis (diário)`. Em
 **OAuth & Permissions → Scopes → Bot Token Scopes**, acrescente exatamente:
 `im:history`, `im:read`, `chat:write`, `reactions:write`.
 
@@ -81,7 +81,7 @@ your bot token"*, com o botão *Review Scopes to Add*, que leva a esta tela).
 
 De volta em **App Home**:
 
-1. **App Display Name → Edit**: nome `Second Brain`, username `second-brain`.
+1. **App Display Name → Edit**: nome `Whis`, username `whis`.
    Isso cria o bot user.
 2. **Show Tabs**, agora destravado: ligue **Messages Tab** e marque *Allow
    users to send Slash commands and messages from the messages tab*. Sem isso a
@@ -117,7 +117,7 @@ O pedido anterior dizia que a app não pediria bot token. Diga ao admin, com
 todas as letras, o que mudou — é tudo verdade e é o que ele precisa para
 decidir:
 
-> A app **interna** `Second Brain (diário)`, que você aprovou só com scopes de
+> A app **interna** `Whis (diário)`, que você aprovou só com scopes de
 > leitura no user token, precisa agora de um **bot** — para eu mandar mensagem
 > para ela e ela me responder, numa DM só entre mim e ela.
 >
@@ -137,7 +137,7 @@ decidir:
 
 **Falha:** se o admin recusar o bot, nada do resto quebra. Deixe
 `[slack].bot_token` e `[slack].app_token` vazios: o atendente não sobe, e
-`second-brain perguntar` continua respondendo no terminal.
+`whis perguntar` continua respondendo no terminal.
 
 ## Passo 6 — Reinstalar e colar os dois tokens
 
@@ -148,7 +148,7 @@ mostra **dois** tokens:
   cole o novo em `[slack].user_token`.
 - **Bot User OAuth Token** (`xoxb-`) — o do atendente.
 
-Em `%APPDATA%\second-brain\config.toml`:
+Em `%APPDATA%\whis\config.toml`:
 
 ```toml
 [slack]
@@ -164,7 +164,7 @@ primeira mensagem.
 **Sucesso:**
 
 ```
-python -m second_brain perguntar --fakes --sem-fio "teste"
+python -m whis perguntar --fakes --sem-fio "teste"
 ```
 
 imprime a resposta de exemplo e sai `0` — a configuração carrega.
@@ -172,11 +172,11 @@ imprime a resposta de exemplo e sai `0` — a configuração carrega.
 ## Passo 7 — Ensaiar a DM sem gastar a assinatura
 
 ```
-python -m second_brain atender --fakes
+python -m whis atender --fakes
 ```
 
 `--fakes` troca **só a busca** pelo fake; o Slack é o de verdade. No Slack, abra
-a DM com `Second Brain` (procure pelo nome em *Apps*) e mande qualquer coisa.
+a DM com `Whis` (procure pelo nome em *Apps*) e mande qualquer coisa.
 
 **Sucesso:** em um ou dois segundos sua mensagem ganha a reação 👀 e o bot
 responde com a resposta de exemplo (*"A retenção ficou em 180 dias..."*),
@@ -216,7 +216,7 @@ Antes, uma pergunta pelo terminal, para separar "o Claude não respondeu" de "o
 Slack não entregou":
 
 ```
-python -m second_brain perguntar --sem-fio "o que ficou decidido sobre a retenção de 180 dias?"
+python -m whis perguntar --sem-fio "o que ficou decidido sobre a retenção de 180 dias?"
 ```
 
 Este passo **gasta a assinatura**. **Sucesso:** a resposta cita um arquivo do
@@ -228,7 +228,7 @@ agente **não inventou**.
 Agora o agente de verdade:
 
 ```
-python -m second_brain atender
+python -m whis atender
 ```
 
 E, **do celular**, na DM do bot:
@@ -281,15 +281,15 @@ caminho, e ele não passa pelo Claude.
 ## Passo 11 — Subir com o Windows
 
 ```
-python -m second_brain windows --atendente
+python -m whis windows --atendente
 ```
 
-**Sucesso:** dois atalhos na pasta de Inicialização — `Second Brain.lnk` (a
-bandeja) e `Second Brain Atendente.lnk` — e o comando diz isso. No próximo logon
+**Sucesso:** dois atalhos na pasta de Inicialização — `Whis.lnk` (a
+bandeja) e `Whis Atendente.lnk` — e o comando diz isso. No próximo logon
 o atendente sobe sozinho, sem console, e o rastro dele fica só em
 `bandeja.log`.
 
-Para desfazer: `python -m second_brain windows --atendente --remover`.
+Para desfazer: `python -m whis windows --atendente --remover`.
 
 ## Se precisar revogar
 

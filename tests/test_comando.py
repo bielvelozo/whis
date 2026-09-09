@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 
 from fixtures.gravacao import criar_pasta_de_gravacao, datar_processamento
-from second_brain.__main__ import main
-from second_brain.configuracao import VARIAVEL_DE_AMBIENTE, carregar
-from second_brain.gravacao import STATUS_FALHOU, STATUS_TRANSCRITO, ler_estado
+from whis.__main__ import main
+from whis.configuracao import VARIAVEL_DE_AMBIENTE, carregar
+from whis.gravacao import STATUS_FALHOU, STATUS_TRANSCRITO, ler_estado
 
 BASENAME = "2026-08-20-1430-daily-do-time"
 

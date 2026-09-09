@@ -1,4 +1,4 @@
-"""O subcomando `second-brain daily` — a mesma costura, pela linha de comando.
+"""O subcomando `whis daily` — a mesma costura, pela linha de comando.
 
 O que o comando imprime é o que o usuário lê em voz alta um minuto depois, e
 por isso é comportamento: os testes leem a saída do terminal, não o objeto de
@@ -12,9 +12,9 @@ from pathlib import Path
 import pytest
 
 from fixtures.leitura import arquivos_do_vault, ler_frontmatter
-from second_brain import vault as modulo_vault
-from second_brain.__main__ import main
-from second_brain.fakes import DAILY_PADRAO
+from whis import vault as modulo_vault
+from whis.__main__ import main
+from whis.fakes import DAILY_PADRAO
 
 
 def nota_de_hoje(vault: Path) -> Path:

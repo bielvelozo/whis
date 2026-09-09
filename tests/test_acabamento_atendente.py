@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from second_brain import __main__ as cli
-from second_brain import automacao
-from second_brain.__main__ import SAIDA_COMPLETA, SAIDA_NAO_NASCEU, SAIDA_PARCIAL, main
+from whis import __main__ as cli
+from whis import automacao
+from whis.__main__ import SAIDA_COMPLETA, SAIDA_NAO_NASCEU, SAIDA_PARCIAL, main
 
 
 class ExecutorEspiao:
@@ -41,7 +41,7 @@ def test_o_atalho_do_atendente_aponta_para_o_atender_sem_console(tmp_path: Path,
     assert destino.name == automacao.NOME_DO_ATALHO_DO_ATENDENTE
     assert destino != automacao.caminho_do_atalho()
     assert "Startup" in str(destino)
-    assert "-m second_brain atender" in script
+    assert "-m whis atender" in script
     assert "bandeja" not in script
     assert "pythonw" in script.lower() or "python" in script.lower()
 
@@ -80,8 +80,8 @@ def test_remover_o_atalho_do_atendente(tmp_path: Path, monkeypatch):
 
 def test_windows_com_atendente_instala_os_dois_atalhos(monkeypatch, capsys):
     feitos: list[str] = []
-    monkeypatch.setattr(automacao, "instalar_inicializacao", lambda: feitos.append("bandeja") or Path("Second Brain.lnk"))
-    monkeypatch.setattr(automacao, "instalar_atendente", lambda: feitos.append("atendente") or Path("Second Brain Atendente.lnk"))
+    monkeypatch.setattr(automacao, "instalar_inicializacao", lambda: feitos.append("bandeja") or Path("Whis.lnk"))
+    monkeypatch.setattr(automacao, "instalar_atendente", lambda: feitos.append("atendente") or Path("Whis Atendente.lnk"))
 
     codigo = main(["windows", "--atendente"])
 
@@ -94,7 +94,7 @@ def test_windows_com_atendente_instala_os_dois_atalhos(monkeypatch, capsys):
 
 def test_windows_sem_a_opcao_nao_mexe_no_atendente(monkeypatch):
     chamado: list[str] = []
-    monkeypatch.setattr(automacao, "instalar_inicializacao", lambda: Path("Second Brain.lnk"))
+    monkeypatch.setattr(automacao, "instalar_inicializacao", lambda: Path("Whis.lnk"))
     monkeypatch.setattr(automacao, "instalar_atendente", lambda: chamado.append("atendente"))
 
     main(["windows"])
@@ -104,8 +104,8 @@ def test_windows_sem_a_opcao_nao_mexe_no_atendente(monkeypatch):
 
 def test_windows_remover_com_atendente_tira_os_dois(monkeypatch, capsys):
     removidos: list[str] = []
-    monkeypatch.setattr(automacao, "remover_inicializacao", lambda: removidos.append("bandeja") or Path("Second Brain.lnk"))
-    monkeypatch.setattr(automacao, "remover_atendente", lambda: removidos.append("atendente") or Path("Second Brain Atendente.lnk"))
+    monkeypatch.setattr(automacao, "remover_inicializacao", lambda: removidos.append("bandeja") or Path("Whis.lnk"))
+    monkeypatch.setattr(automacao, "remover_atendente", lambda: removidos.append("atendente") or Path("Whis Atendente.lnk"))
 
     codigo = main(["windows", "--atendente", "--remover"])
 

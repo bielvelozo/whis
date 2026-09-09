@@ -15,9 +15,9 @@ from pathlib import Path
 
 import pytest
 
-from second_brain.fontes import Evento
-from second_brain.portas import Daily, ErroDeDaily, PortaDaily
-from second_brain.resumo_dia_claude import (
+from whis.fontes import Evento
+from whis.portas import Daily, ErroDeDaily, PortaDaily
+from whis.resumo_dia_claude import (
     PROMPT_DA_DAILY,
     VARIAVEIS_DE_API_PAGA,
     ResumoDoDiaClaude,
@@ -38,7 +38,7 @@ EVENTOS = (
         fonte="git",
         momento=_momento(SEXTA, 17, 45),
         titulo="`a1b2c3d` Fecha a validacao do link coringa",
-        referencia="second-brain",
+        referencia="whis",
         pessoas=("Gabriel",),
     ),
     Evento(
@@ -110,7 +110,7 @@ def test_pergunta_diz_que_o_periodo_e_desde_a_ultima_daily():
 def test_pergunta_leva_referencia_detalhe_e_pessoas():
     pergunta = montar_pergunta_da_daily(EVENTOS, REUNIOES)
 
-    assert "second-brain" in pergunta
+    assert "whis" in pergunta
     assert "Subiu em produção." in pergunta
     assert "pessoas: Gabriel, Ana" in pergunta
 
@@ -233,7 +233,7 @@ def test_roteiro_inteiramente_vazio_e_tratado_como_falha():
 
 
 def test_resposta_crua_fica_no_log_para_diagnostico(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("ERROR", logger="second_brain.resumo_do_dia"):
+    with caplog.at_level("ERROR", logger="whis.resumo_do_dia"):
         with pytest.raises(ErroDeDaily):
             interpretar_daily("não é json nenhum, é papo")
 

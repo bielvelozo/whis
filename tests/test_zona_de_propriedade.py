@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from fixtures.leitura import arquivos_do_vault
-from second_brain import vault as modulo_vault
+from whis import vault as modulo_vault
 
 
 @pytest.fixture

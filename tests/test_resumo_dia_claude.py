@@ -17,9 +17,9 @@ from pathlib import Path
 import pytest
 from claude_agent_sdk import ResultMessage
 
-from second_brain.fontes import Evento
-from second_brain.portas import ErroDeResumoDoDia, PortaResumoDoDia, ResumoDoDia
-from second_brain.resumo_dia_claude import (
+from whis.fontes import Evento
+from whis.portas import ErroDeResumoDoDia, PortaResumoDoDia, ResumoDoDia
+from whis.resumo_dia_claude import (
     PROMPT_DO_SISTEMA,
     VARIAVEIS_DE_API_PAGA,
     ResumoDoDiaClaude,
@@ -42,7 +42,7 @@ EVENTOS = (
         fonte="git",
         momento=_momento(DIA, 9, 12),
         titulo="`a1b2c3d` Fecha a camada 01 do diario",
-        referencia="second-brain",
+        referencia="whis",
         pessoas=("Gabriel",),
     ),
     Evento(
@@ -108,7 +108,7 @@ def test_pergunta_leva_todos_os_eventos_com_hora_e_fonte():
 def test_pergunta_leva_referencia_detalhe_e_pessoas():
     pergunta = montar_pergunta(EVENTOS, REUNIOES)
 
-    assert "second-brain" in pergunta
+    assert "whis" in pergunta
     assert "Subiu em produção; falta acompanhar o gráfico de erros." in pergunta
     assert "pessoas: Gabriel, Ana" in pergunta
 
@@ -266,7 +266,7 @@ def test_resumo_inteiramente_vazio_e_tratado_como_falha():
 
 
 def test_resposta_crua_fica_no_log_para_diagnostico(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("ERROR", logger="second_brain.resumo_do_dia"):
+    with caplog.at_level("ERROR", logger="whis.resumo_do_dia"):
         with pytest.raises(ErroDeResumoDoDia):
             interpretar_resposta("não é json nenhum, é papo")
 
@@ -411,7 +411,7 @@ def _resultado(**extras) -> ResultMessage:
 
 
 def test_custo_do_dia_fica_no_log(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("INFO", logger="second_brain.resumo_do_dia"):
+    with caplog.at_level("INFO", logger="whis.resumo_do_dia"):
         registrar_custo(_resultado())
 
     assert "US$ 0.0731" in caplog.text
@@ -420,14 +420,14 @@ def test_custo_do_dia_fica_no_log(caplog: pytest.LogCaptureFixture):
 
 
 def test_custo_ausente_e_registrado_como_nao_informado(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("INFO", logger="second_brain.resumo_do_dia"):
+    with caplog.at_level("INFO", logger="whis.resumo_do_dia"):
         registrar_custo(_resultado(total_cost_usd=None, usage=None))
 
     assert "não informado" in caplog.text
 
 
 def test_turno_sem_resultado_nao_registra_custo(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("INFO", logger="second_brain.resumo_do_dia"):
+    with caplog.at_level("INFO", logger="whis.resumo_do_dia"):
         registrar_custo(None)
 
     assert caplog.text == ""

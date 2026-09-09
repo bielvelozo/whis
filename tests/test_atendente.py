@@ -18,8 +18,8 @@ import pytest
 
 from fixtures.busca import PASTA_PRIVADA, configuracao_da_busca, habitar_vault
 from fixtures.leitura import arquivos_do_vault
-from second_brain import atendente as modulo
-from second_brain.atendente import (
+from whis import atendente as modulo
+from whis.atendente import (
     EMOJI_RECEBIDA,
     Atendente,
     ErroDeDM,
@@ -27,10 +27,10 @@ from second_brain.atendente import (
     PortaDM,
     formatar_para_slack,
 )
-from second_brain.busca import Citacao, ErroDeBusca, Resposta
-from second_brain.conversa import NOME_DO_ARQUIVO, Conversas
-from second_brain.fakes import RESPOSTA_PADRAO, BuscaFake, DMFake
-from second_brain.instancia import Trava
+from whis.busca import Citacao, ErroDeBusca, Resposta
+from whis.conversa import NOME_DO_ARQUIVO, Conversas
+from whis.fakes import RESPOSTA_PADRAO, BuscaFake, DMFake
+from whis.instancia import Trava
 
 FUSO = timezone(timedelta(hours=-3))
 MANHA = datetime(2026, 9, 4, 9, 0, tzinfo=FUSO)
@@ -201,7 +201,7 @@ def test_erro_de_busca_vira_mensagem_em_portugues_e_o_atendimento_continua(atend
 
 
 def test_excecao_inesperada_nao_derruba_e_fica_no_log(atender, caplog):
-    with caplog.at_level(logging.ERROR, logger="second_brain.atendente"):
+    with caplog.at_level(logging.ERROR, logger="whis.atendente"):
         dm = atender(
             [mensagem("primeira"), mensagem("segunda", ts="2.0")],
             busca=BuscaFake(erro=RuntimeError("boom")),
@@ -222,7 +222,7 @@ def test_falha_ao_reagir_nao_impede_a_resposta(atender):
 
 def test_falha_ao_publicar_fica_no_log_e_a_proxima_e_atendida(atender, busca: BuscaFake, caplog):
     parar = threading.Event()
-    with caplog.at_level(logging.ERROR, logger="second_brain.atendente"):
+    with caplog.at_level(logging.ERROR, logger="whis.atendente"):
         atender(
             [],
             dm=DMFake(
@@ -318,7 +318,7 @@ def test_executar_sobe_atende_e_encerra_limpo_com_ctrl_c(configuracao, busca: Bu
     assert codigo == 0
     assert len(dm.respostas) == 1
     assert dm.encerrada
-    assert "Atendente do Second Brain subindo" in capsys.readouterr().out
+    assert "Atendente do Whis subindo" in capsys.readouterr().out
     log = (configuracao.origem.parent / "bandeja.log").read_text(encoding="utf-8")
     assert "Atendente no ar como U0BOT" in log
     assert "encerrado pelo usuário" in log

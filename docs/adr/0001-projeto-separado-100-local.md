@@ -1,5 +1,7 @@
 # Projeto separado, fino e 100% local
 
+> Registro de 2026-09-04, mantido como foi escrito. O projeto chamava-se **Second Brain** e foi rebatizado para **Whis** em 2026-09-09; o *Whis* citado abaixo como agente aposentado é o **Whis da EC2**. Ver `CONTEXT.md`.
+
 O Second Brain é um projeto novo, não uma extensão do Whis nem uma instalação de agente pronto: coletores Windows custom + Claude via Agent SDK (OAuth da conta Pro/Max do usuário) + vault Obsidian novo criado localmente no PC (Windows 11, Ryzen 5600G). Tudo roda na máquina do usuário; nenhum componente em servidor.
 
 ## Considered Options

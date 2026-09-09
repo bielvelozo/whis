@@ -1,6 +1,6 @@
 # Smoke manual: gravação de reunião
 
-Roteiro curto para validar o gravador (`python -m second_brain.gravador`) numa
+Roteiro curto para validar o gravador (`python -m whis.gravador`) numa
 máquina Windows 11 nativa, com fone conectado e um Google Meet real. É a
 validação do que fica fora da costura de teste automatizada: a captura WASAPI.
 
@@ -12,10 +12,10 @@ exemplos abaixo, `python` significa `.venv\Scripts\python.exe`.
 ## Passo 0 — Pré-requisitos
 
 1. Fone **conectado** e sendo usado como saída de áudio do Windows.
-2. Um `config.toml` em `%APPDATA%\second-brain\` com, no mínimo:
+2. Um `config.toml` em `%APPDATA%\whis\` com, no mínimo:
 
    ```toml
-   gravacoes = "C:/Users/<seu-usuario>/second-brain-gravacoes"
+   gravacoes = "C:/Users/<seu-usuario>/whis-gravacoes"
 
    [audio]
    dispositivo_microfone = ""   # vazio = microfone padrão do Windows
@@ -29,7 +29,7 @@ exemplos abaixo, `python` significa `.venv\Scripts\python.exe`.
 ## Passo 1 — Conferir qual dispositivo cada canal vai usar
 
 ```
-python -m second_brain.gravador dispositivos
+python -m whis.gravador dispositivos
 ```
 
 Lê a lista e olhe o bloco **"Seleção atual"** no final.
@@ -51,7 +51,7 @@ colchetes: o índice muda entre reinícios e entre máquinas.
 Deixe **um vídeo ou música tocando no fone** e rode:
 
 ```
-python -m second_brain.gravador testar --segundos 10
+python -m whis.gravador testar --segundos 10
 ```
 
 Fale alguma coisa durante os 10 segundos.
@@ -73,7 +73,7 @@ sair `MUDO`, confira se o microfone não está no mudo/desconectado e se a linha
 Entre na reunião, confira que você ouve o outro lado, e rode:
 
 ```
-python -m second_brain.gravador gravar --titulo "smoke do gravador"
+python -m whis.gravador gravar --titulo "smoke do gravador"
 ```
 
 **Sucesso:** aparece `GRAVANDO em <pasta>` com a pasta datada
@@ -128,7 +128,7 @@ máquina tem um roteamento de áudio devolvendo o microfone para a saída.
 ## Passo 7 — Conferir os metadados
 
 ```
-python -m second_brain.gravador conferir "<caminho da pasta>"
+python -m whis.gravador conferir "<caminho da pasta>"
 ```
 
 **Sucesso:** código de saída 0 e o `gravacao.json` com `versao`, `titulo`,
@@ -149,7 +149,7 @@ um dispositivo virtual em vez do fone.
 2. Liste os dispositivos:
 
    ```
-   python -m second_brain.gravador dispositivos
+   python -m whis.gravador dispositivos
    ```
 
 3. Ache na lista a entrada marcada como `loopback` cujo nome corresponde à saída
@@ -165,5 +165,5 @@ um dispositivo virtual em vez do fone.
 
 Se não estiver claro qual é o dispositivo certo, teste os candidatos um a um:
 troque `dispositivo_sistema`, deixe um áudio tocando e rode
-`python -m second_brain.gravador testar --segundos 5`. O certo é o que dá `OK` com
+`python -m whis.gravador testar --segundos 5`. O certo é o que dá `OK` com
 RMS bem acima de zero.

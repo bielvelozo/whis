@@ -1,5 +1,7 @@
 # Second Brain — agente de IA observador
 
+> Documento de origem, mantido como foi escrito. O projeto foi rebatizado para **Whis** em 2026-09-09; o *Whis* citado abaixo é o **Whis da EC2**, o agente anterior. Ver `CONTEXT.md`.
+
 ## A ideia
 
 Um "segundo cérebro": agente de IA rodando no PC (Windows 11) que:

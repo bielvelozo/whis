@@ -18,20 +18,20 @@ import httpx
 import pytest
 
 from fixtures.busca import configuracao_da_busca, habitar_vault
-from second_brain import __main__ as cli
-from second_brain import fonte_slack
-from second_brain.busca_claude import (
+from whis import __main__ as cli
+from whis import fonte_slack
+from whis.busca_claude import (
     PROMPT_DAS_FONTES_AO_VIVO,
     BuscaClaude,
     FerramentasDoVault,
     ferramentas_permitidas,
     montar_opcoes,
 )
-from second_brain.configuracao import VARIAVEL_DE_AMBIENTE, carregar
-from second_brain.fakes import FonteFake
-from second_brain.ferramentas import Ferramentas
-from second_brain.fontes import ErroDeFonte, Evento
-from second_brain.fontes_ao_vivo import (
+from whis.configuracao import VARIAVEL_DE_AMBIENTE, carregar
+from whis.fakes import FonteFake
+from whis.ferramentas import Ferramentas
+from whis.fontes import ErroDeFonte, Evento
+from whis.fontes_ao_vivo import (
     HORAS_MAXIMAS,
     NOME_DO_SERVIDOR,
     FontesAoVivo,
@@ -59,7 +59,7 @@ COMMIT_DE_ONTEM = Evento(
     fonte="git",
     momento=ha(30),
     titulo="`0ff1ce0` Fecha a camada 01 do diario",
-    referencia="second-brain",
+    referencia="whis",
     pessoas=("Gabriel",),
 )
 ISSUE = Evento(
@@ -242,7 +242,7 @@ def test_o_filtro_de_exclusao_conta_no_log(caplog: pytest.LogCaptureFixture):
         relogio=lambda: AGORA,
     )
 
-    with caplog.at_level("INFO", logger="second_brain.fontes_ao_vivo"):
+    with caplog.at_level("INFO", logger="whis.fontes_ao_vivo"):
         texto_de(ferramenta(fontes, "slack"), {})
 
     assert "1 removido(s) pelo filtro de exclusão" in caplog.text
@@ -333,7 +333,7 @@ def test_sem_fonte_ligada_as_opcoes_so_tem_o_vault_e_o_prompt_nao_fala_delas(vau
 def test_o_prompt_manda_procurar_no_vault_antes_e_citar_com_a_origem_propria():
     assert "DEPOIS de procurar no vault" in PROMPT_DAS_FONTES_AO_VIVO
     assert "A nota é gratuita; a API não" in PROMPT_DAS_FONTES_AO_VIVO
-    for origem in ("linear:FN-1610", "slack:#dev-codereview", "git:second-brain@a1b2c3d"):
+    for origem in ("linear:FN-1610", "slack:#dev-codereview", "git:whis@a1b2c3d"):
         assert origem in PROMPT_DAS_FONTES_AO_VIVO
     assert "nunca com um caminho de nota" in PROMPT_DAS_FONTES_AO_VIVO
 
@@ -381,7 +381,7 @@ def test_montar_busca_sem_fonte_nenhuma_responde_so_com_o_vault(
 ):
     configuracao = configuracao_da_busca(tmp_path, caminho_do_vault, caminho_das_gravacoes)
 
-    with caplog.at_level("INFO", logger="second_brain"):
+    with caplog.at_level("INFO", logger="whis"):
         busca = cli.montar_busca(configuracao)
 
     assert isinstance(busca, BuscaClaude)

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from second_brain.configuracao import Configuracao, carregar
+from whis.configuracao import Configuracao, carregar
 
 PASTA_PRIVADA = "notas/pessoal"
 

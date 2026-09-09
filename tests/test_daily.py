@@ -14,13 +14,13 @@ from pathlib import Path
 import pytest
 
 from fixtures.leitura import arquivos_do_vault, corpo, ler_frontmatter
-from second_brain import vault as modulo_vault
-from second_brain.coleta import TodasAsFontesFalharam
-from second_brain.configuracao import Configuracao
-from second_brain.daily import gerar_daily
-from second_brain.fakes import DAILY_PADRAO, DailyFake, FonteFake
-from second_brain.fontes import ErroDeFonte, Evento
-from second_brain.portas import Daily, ErroDeDaily
+from whis import vault as modulo_vault
+from whis.coleta import TodasAsFontesFalharam
+from whis.configuracao import Configuracao
+from whis.daily import gerar_daily
+from whis.fakes import DAILY_PADRAO, DailyFake, FonteFake
+from whis.fontes import ErroDeFonte, Evento
+from whis.portas import Daily, ErroDeDaily
 
 QUINTA = date(2026, 9, 3)
 SEXTA = date(2026, 9, 4)
@@ -103,7 +103,7 @@ def test_frontmatter_da_daily_tem_os_campos_do_contrato(gerar, caminho_do_vault:
     gerar(
         agora=agora,
         fontes=[
-            FonteFake("git", (evento(SEXTA, 8, referencia="second-brain"),)),
+            FonteFake("git", (evento(SEXTA, 8, referencia="whis"),)),
             FonteFake("linear", (evento(SEXTA, 8, 30, fonte="linear", referencia="Plataforma"),)),
         ],
     )
@@ -115,7 +115,7 @@ def test_frontmatter_da_daily_tem_os_campos_do_contrato(gerar, caminho_do_vault:
     assert campos["desde"] == (agora - timedelta(hours=24)).isoformat()
     assert campos["fontes"] == ["git", "linear"]
     assert campos["fontes_com_falha"] == []
-    assert campos["temas"] == ["second-brain", "Plataforma"]
+    assert campos["temas"] == ["whis", "Plataforma"]
 
 
 def test_o_roteiro_vem_da_porta_na_ordem_de_falar(gerar, caminho_do_vault: Path):
@@ -135,7 +135,7 @@ def test_o_roteiro_vem_da_porta_na_ordem_de_falar(gerar, caminho_do_vault: Path)
 def test_as_listas_cruas_ficam_embaixo_do_roteiro(gerar, caminho_do_vault: Path):
     """É o que faz da daily o registro durável do vault, e não só um roteiro."""
     fontes = [
-        FonteFake("git", (evento(SEXTA, 8, titulo="`a1b2c3d` Fecha a camada 07", referencia="second-brain"),)),
+        FonteFake("git", (evento(SEXTA, 8, titulo="`a1b2c3d` Fecha a camada 07", referencia="whis"),)),
         FonteFake(
             "linear",
             (
@@ -157,7 +157,7 @@ def test_as_listas_cruas_ficam_embaixo_do_roteiro(gerar, caminho_do_vault: Path)
 
     texto = corpo(nota_da_daily(caminho_do_vault, SEXTA))
     assert "## Git" in texto and "## Linear" in texto
-    assert "### second-brain" in texto and "### Plataforma" in texto
+    assert "### whis" in texto and "### Plataforma" in texto
     assert "- 08:00 `a1b2c3d` Fecha a camada 07" in texto
     assert "- 08:30 [FN-123 Corrigir o frete](https://linear.app/exemplo/issue/FN-123)" in texto
     assert "  > Subiu em produção." in texto
@@ -464,7 +464,7 @@ def test_evento_excluido_nao_entra_no_vault_nem_chega_ao_claude(
         FonteFake(
             "git",
             (
-                evento(SEXTA, 8, titulo="commit do trabalho", referencia="second-brain"),
+                evento(SEXTA, 8, titulo="commit do trabalho", referencia="whis"),
                 evento(SEXTA, 8, 30, titulo="commit da terapia", referencia="diario-pessoal"),
             ),
         )

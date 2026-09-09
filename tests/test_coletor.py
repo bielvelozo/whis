@@ -18,11 +18,11 @@ from pathlib import Path
 import pytest
 
 from fixtures.gravacao import criar_pasta_de_gravacao
-from second_brain.coletor import Coletor, ErroDoColetor, Estado, Situacao
-from second_brain.configuracao import Configuracao
-from second_brain.fakes import ResumoFake, STTFake
-from second_brain.gravacao import STATUS_FALHOU, STATUS_TRANSCRITO, ler_estado
-from second_brain.portas import ErroDeResumo, ErroDeSTT
+from whis.coletor import Coletor, ErroDoColetor, Estado, Situacao
+from whis.configuracao import Configuracao
+from whis.fakes import ResumoFake, STTFake
+from whis.gravacao import STATUS_FALHOU, STATUS_TRANSCRITO, ler_estado
+from whis.portas import ErroDeResumo, ErroDeSTT
 
 
 class GravadorDublê:

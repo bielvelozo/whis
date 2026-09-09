@@ -20,10 +20,10 @@ from pathlib import Path
 import pytest
 
 from fixtures.leitura import corpo, ler_frontmatter
-from second_brain import __main__ as cli
-from second_brain.__main__ import SAIDA_COMPLETA, SAIDA_NAO_NASCEU, SAIDA_PARCIAL, main
-from second_brain.configuracao import VARIAVEL_DE_AMBIENTE
-from second_brain.fakes import (
+from whis import __main__ as cli
+from whis.__main__ import SAIDA_COMPLETA, SAIDA_NAO_NASCEU, SAIDA_PARCIAL, main
+from whis.configuracao import VARIAVEL_DE_AMBIENTE
+from whis.fakes import (
     EVENTOS_DE_GIT,
     DailyFake,
     FonteDaJanela,
@@ -31,8 +31,8 @@ from second_brain.fakes import (
     ResumoDoDiaFake,
     fontes_de_exemplo,
 )
-from second_brain.fontes import ErroDeFonte
-from second_brain.portas import ErroDeDaily, ErroDeResumoDoDia
+from whis.fontes import ErroDeFonte
+from whis.portas import ErroDeDaily, ErroDeResumoDoDia
 
 DIA = "2026-09-03"
 MOTIVO_DO_SLACK = "token do Slack ausente em [slack].user_token"

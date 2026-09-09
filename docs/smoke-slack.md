@@ -52,7 +52,7 @@ E uma terceira régua, que é de **ruído** e não de privacidade:
 
 Em <https://api.slack.com/apps>, **Create New App → From scratch**.
 
-1. Nome: `Second Brain (diário)`. Workspace: o do trabalho.
+1. Nome: `Whis (diário)`. Workspace: o do trabalho.
 2. **Não** ative *Distribution* / *Public Distribution*. A app tem que continuar
    sendo uma *internal customer-built application*: é essa condição que mantém
    `conversations.history` e `conversations.replies` no **Tier 3** (~50
@@ -140,7 +140,7 @@ token muda.
 
 ## Passo 5 — Colar o token e montar a blocklist
 
-Abra `%APPDATA%\second-brain\config.toml` e preencha a seção `[slack]`:
+Abra `%APPDATA%\whis\config.toml` e preencha a seção `[slack]`:
 
 ```toml
 [slack]
@@ -163,7 +163,7 @@ coloque em variável de ambiente, em teste, em fixture nem em issue.
 **Sucesso:** o arquivo continua carregando:
 
 ```
-python -m second_brain diario --simular
+python -m whis diario --simular
 ```
 
 **Falha:** se aparecer `Configuração inválida`, confira aspas e barras — use
@@ -172,7 +172,7 @@ barras normais (`/`) em qualquer caminho.
 ## Passo 6 — Ver o que seria coletado, sem escrever nada
 
 ```
-python -m second_brain diario --simular
+python -m whis diario --simular
 ```
 
 `--simular` coleta, aplica o filtro de exclusão e **imprime**: não chama o
@@ -226,7 +226,7 @@ token muda.
 Escolha um dia em que você sabe que conversou (pode ser uma data passada):
 
 ```
-python -m second_brain diario 2026-09-03
+python -m whis diario 2026-09-03
 ```
 
 Este passo **chama o Claude** para o resumo e **escreve no vault**.

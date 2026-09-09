@@ -30,11 +30,11 @@ from typing import Any
 import httpx
 import pytest
 
-from second_brain.__main__ import montar_fontes
-from second_brain.configuracao import Configuracao, ConfiguracaoInvalida, carregar
-from second_brain.diario import gerar_diario
-from second_brain.fakes import ResumoDoDiaFake
-from second_brain.fonte_slack import (
+from whis.__main__ import montar_fontes
+from whis.configuracao import Configuracao, ConfiguracaoInvalida, carregar
+from whis.diario import gerar_diario
+from whis.fakes import ResumoDoDiaFake
+from whis.fonte_slack import (
     BASE,
     ESPERA_MAXIMA_S,
     ESPERA_PADRAO_S,
@@ -43,7 +43,7 @@ from second_brain.fonte_slack import (
     FonteSlack,
     de_configuracao,
 )
-from second_brain.fontes import ErroDeFonte, Evento, Janela, janela_do_dia
+from whis.fontes import ErroDeFonte, Evento, Janela, janela_do_dia
 
 TOKEN_FALSO = "xoxp-EXEMPLO"
 FIXTURES = Path(__file__).parent / "fixtures"

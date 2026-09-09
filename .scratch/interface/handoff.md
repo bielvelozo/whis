@@ -6,7 +6,7 @@ terminar o que já está construído; a segunda é **um levantamento**, não uma
 
 O que o usuário disse, e é o motivo desta segunda frente, com todas as letras:
 
-> *"Percebi que chamar o second brain com comandos vai ser muito ruim. Vamos ter que construir
+> *"Percebi que chamar o Whis com comandos vai ser muito ruim. Vamos ter que construir
 > uma interface pra ele."*
 
 É a **segunda vez** que este projeto aprende a mesma lição. A primeira spec da recuperação
@@ -31,7 +31,7 @@ qualquer spec.
 
 ```bash
 .venv/Scripts/python.exe -m pytest
-.venv/Scripts/python.exe -m second_brain perguntar --fakes --sem-fio "teste"
+.venv/Scripts/python.exe -m whis perguntar --fakes --sem-fio "teste"
 git log --oneline -8
 ```
 
@@ -71,20 +71,20 @@ de novo.
 
 Cada item gasta algo; **peça antes** de cada um que gasta a assinatura.
 
-1. `second-brain atender --fakes` + uma mensagem na DM → 👀 e a resposta de exemplo. Prova o
+1. `whis atender --fakes` + uma mensagem na DM → 👀 e a resposta de exemplo. Prova o
    Slack; não gasta nada.
-2. `second-brain perguntar --sem-fio "o que ficou decidido sobre a retenção de 180 dias?"`
+2. `whis perguntar --sem-fio "o que ficou decidido sobre a retenção de 180 dias?"`
    → prova o Claude sem o Slack. **Gasta a assinatura.** É aqui que se confirma o único
    risco que o sem-rede não alcança: o nome `mcp__vault__<ferramenta>` em `allowed_tools` é
    convenção do Claude Code, não do SDK. Se toda resposta vier "não achei" com `0 notas
    lidas` no log, é isso — e o conserto é em `busca_claude.ferramentas_permitidas`.
 3. `pytest tests/test_busca_claude.py -m rede -o addopts="" -q` — o teste de rede, com
    vault de fixture e pasta privada.
-4. `second-brain atender` e a demo-mestra do passo 8 do roteiro, **pelo celular**: pergunta,
+4. `whis atender` e a demo-mestra do passo 8 do roteiro, **pelo celular**: pergunta,
    pergunta de acompanhamento sem repetir o assunto, pergunta sobre a última hora no Slack.
 5. Passo 9 do roteiro: a pasta privada, com um fato plantado. Ele **ainda não escolheu** a
    pasta; `[privacidade].pastas_privadas` está vazia.
-6. `second-brain windows --atendente`, para subir no logon.
+6. `whis windows --atendente`, para subir no logon.
 
 Ao fechar, mude os tickets 04 e 05 de `ready-for-human` para `resolved`, com o comentário
 de entrega dizendo **o que foi visto na DM** (custo da primeira resposta real, tempo, se
@@ -107,7 +107,7 @@ Nenhuma linha de código de interface antes da spec aprovada por ele.
 
 ### O problema, em uma frase
 
-Tudo que o Second Brain faz hoje, fora a bandeja, é acionado por comando de terminal — e o
+Tudo que o Whis faz hoje, fora a bandeja, é acionado por comando de terminal — e o
 usuário não vive no terminal. Ele vive **no Slack, no Obsidian e na reunião**.
 
 ### Inventário dos pontos de contato hoje
@@ -118,11 +118,11 @@ Levantado em 2026-09-09. É o ponto de partida do ticket 01; confira antes de co
 |---|---|---|---|
 | gravar a reunião | clique no ícone da bandeja | no Meet, no PC | nenhuma: é o gesto da spec original |
 | ler a nota da reunião | Obsidian, `reunioes/` | no PC, depois | nenhuma |
-| **gerar a daily** | `second-brain daily` no terminal, um minuto antes de falar | entrando na reunião, no PC | **a maior**: abrir terminal, digitar, esperar 40 s, ler |
+| **gerar a daily** | `whis daily` no terminal, um minuto antes de falar | entrando na reunião, no PC | **a maior**: abrir terminal, digitar, esperar 40 s, ler |
 | anotar um ponto para a daily | editar `notas/daily.md` no Obsidian, ou `daily --anotar "..."`, ou (em breve) `anotar ...` na DM | qualquer hora, qualquer lugar | depende de lembrar do arquivo |
 | conferir o filtro / ver o que entraria | `daily --simular` | no PC | raro, aceitável no terminal |
-| gerar o diário | `second-brain diario`, pensado para tarefa agendada às 19:00 — **conferir se ele agendou** (`windows --limpeza` agenda só a limpeza) | — | nenhuma se agendado; senão, esquecido |
-| perguntar ao vault | `second-brain perguntar` (diagnóstico) → DM do Slack (frente 1) | no Slack, no PC ou no celular | resolvida pela DM, quando ela existir |
+| gerar o diário | `whis diario`, pensado para tarefa agendada às 19:00 — **conferir se ele agendou** (`windows --limpeza` agenda só a limpeza) | — | nenhuma se agendado; senão, esquecido |
+| perguntar ao vault | `whis perguntar` (diagnóstico) → DM do Slack (frente 1) | no Slack, no PC ou no celular | resolvida pela DM, quando ela existir |
 | configurar (pasta privada, blocklist, referências pessoais, contexto do time) | editar `config.toml` à mão em `%APPDATA%` | raro | aceitável, mas ele nunca preencheu a pasta privada |
 | subir no logon, limpar áudio, init | comandos `windows`, `limpar`, `init` | uma vez | aceitável |
 | saber que algo falhou | balão da bandeja (reunião); código de saída e `bandeja.log` (o resto) | — | o diário e a daily falham em silêncio se ninguém olha o log |
@@ -197,7 +197,7 @@ o que exige de aprovação ou de stack nova). **Nenhuma exclui as outras**; a re
 - Conte o seu dia: a que horas é a daily, onde você está 5 minutos antes (PC? celular? já no
   Meet?), quantas vezes por dia você pensa "preciso lembrar disso na daily", e onde você está
   nessas horas.
-- Quando o Second Brain precisar te avisar de algo (daily pronta, reunião gravada, diário
+- Quando o Whis precisar te avisar de algo (daily pronta, reunião gravada, diário
   falhou), **onde** o aviso tem que aparecer para você ver?
 - Você quer **ler** a daily ou quer que ela **apareça**? (nota no Obsidian versus mensagem
   na DM versus toast)

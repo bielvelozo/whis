@@ -13,9 +13,9 @@ import pytest
 from slack_sdk.errors import SlackApiError
 from slack_sdk.socket_mode.request import SocketModeRequest
 
-from second_brain.atendente import ErroDeDM, Mensagem
-from second_brain.configuracao import carregar
-from second_brain.dm_slack import (
+from whis.atendente import ErroDeDM, Mensagem
+from whis.configuracao import carregar
+from whis.dm_slack import (
     SCOPES_DO_BOT,
     DMSlack,
     de_configuracao,
@@ -42,7 +42,7 @@ class WebFalso:
         self._erro_ao_reagir = erro_ao_reagir
 
     def auth_test(self) -> dict:
-        return {"ok": True, "user_id": "U0BOT", "user": "second-brain"}
+        return {"ok": True, "user_id": "U0BOT", "user": "whis"}
 
     def reactions_add(self, **campos) -> dict:
         if self._erro_ao_reagir is not None:

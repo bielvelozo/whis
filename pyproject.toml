@@ -1,5 +1,5 @@
 [project]
-name = "second-brain"
+name = "whis"
 version = "0.1.0"
 description = "Coletor de reunião sob demanda: grava, transcreve, resume e escreve no vault Obsidian."
 requires-python = ">=3.12,<3.13"
@@ -16,7 +16,7 @@ dependencies = [
 dev = ["pytest>=8.0"]
 
 [project.scripts]
-second-brain = "second_brain.__main__:main"
+whis = "whis.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68"]

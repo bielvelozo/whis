@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, time
 
-from second_brain.fontes import Evento
-from second_brain.resumo_dia_claude import (
+from whis.fontes import Evento
+from whis.resumo_dia_claude import (
     DETALHE_MAXIMO,
     montar_pergunta,
     montar_pergunta_da_daily,

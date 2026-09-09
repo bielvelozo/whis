@@ -2,7 +2,7 @@
 
 A da reunião — `processar(pasta) → arquivos no vault` — se monta com um vault
 em `tmp_path`, uma pasta de gravação de fixture, uma configuração local
-apontada por `SECOND_BRAIN_CONFIG` e as portas fake. A do diário —
+apontada por `WHIS_CONFIG` e as portas fake. A do diário —
 `gerar_diario(data) → nota em diario/` — reaproveita o mesmo vault e ganha uma
 configuração própria, porque a janela do dia e o filtro de exclusão mudam de
 teste para teste.
@@ -18,9 +18,9 @@ from pathlib import Path
 import pytest
 
 from fixtures.gravacao import criar_pasta_de_gravacao
-from second_brain import pipeline
-from second_brain.configuracao import VARIAVEL_DE_AMBIENTE, Configuracao, carregar
-from second_brain.fakes import ResumoFake, STTFake
+from whis import pipeline
+from whis.configuracao import VARIAVEL_DE_AMBIENTE, Configuracao, carregar
+from whis.fakes import ResumoFake, STTFake
 
 
 @pytest.fixture
@@ -44,7 +44,7 @@ def arquivo_de_configuracao(
     caminho_das_gravacoes: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Path:
-    """Escreve um `config.toml` de teste e aponta `SECOND_BRAIN_CONFIG` para ele."""
+    """Escreve um `config.toml` de teste e aponta `WHIS_CONFIG` para ele."""
     arquivo = tmp_path / "config.toml"
     arquivo.write_text(
         "\n".join(
@@ -102,7 +102,7 @@ def configuracao_do_diario(
     """Fábrica da configuração do diário: `configuracao_do_diario(...)`.
 
     Escreve um `config.toml` com a janela e o filtro que o teste precisa e
-    aponta `SECOND_BRAIN_CONFIG` para ele — assim o mesmo cenário serve à
+    aponta `WHIS_CONFIG` para ele — assim o mesmo cenário serve à
     costura e ao subcomando.
     """
 

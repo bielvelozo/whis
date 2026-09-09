@@ -20,10 +20,10 @@ from pathlib import Path
 
 import pytest
 
-from second_brain.__main__ import montar_fontes
-from second_brain.configuracao import Configuracao
-from second_brain.fonte_git import FonteGit, de_configuracao
-from second_brain.fontes import ErroDeFonte, Evento, Janela, janela_do_dia
+from whis.__main__ import montar_fontes
+from whis.configuracao import Configuracao
+from whis.fonte_git import FonteGit, de_configuracao
+from whis.fontes import ErroDeFonte, Evento, Janela, janela_do_dia
 
 DIA = date(2026, 9, 3)
 EMAIL = "gabriel@exemplo.dev"
@@ -133,7 +133,7 @@ def assuntos(eventos: tuple[Evento, ...]) -> list[str]:
 
 
 def test_traz_os_commits_do_dia_do_repositorio_varrido(raiz: Path, janela: Janela):
-    repositorio = criar_repositorio(raiz / "second-brain")
+    repositorio = criar_repositorio(raiz / "whis")
     commitar(repositorio, "Fecha a camada 02", momento(9, 12))
 
     eventos = FonteGit(raiz).coletar(janela)
@@ -141,7 +141,7 @@ def test_traz_os_commits_do_dia_do_repositorio_varrido(raiz: Path, janela: Janel
     assert len(eventos) == 1
     evento = eventos[0]
     assert evento.fonte == "git"
-    assert evento.referencia == "second-brain"
+    assert evento.referencia == "whis"
     assert evento.titulo.endswith("Fecha a camada 02")
     assert evento.momento == momento(9, 12)
     assert evento.momento.tzinfo is not None
@@ -254,7 +254,7 @@ def test_raiz_sem_repositorio_nenhum_nao_e_falha(raiz: Path, janela: Janela):
 
 
 def test_commit_de_outro_dia_nao_entra(raiz: Path, janela: Janela):
-    repositorio = criar_repositorio(raiz / "second-brain")
+    repositorio = criar_repositorio(raiz / "whis")
     commitar(repositorio, "commit de ontem", momento(9, 0, dia=DIA - timedelta(days=1)))
     commitar(repositorio, "commit de hoje", momento(9, 0))
 
@@ -262,7 +262,7 @@ def test_commit_de_outro_dia_nao_entra(raiz: Path, janela: Janela):
 
 
 def test_commit_da_madrugada_seguinte_entra_no_dia_anterior(raiz: Path, janela: Janela):
-    repositorio = criar_repositorio(raiz / "second-brain")
+    repositorio = criar_repositorio(raiz / "whis")
     commitar(repositorio, "commit da uma da manha", momento(1, 0, dia=DIA + timedelta(days=1)))
 
     assert assuntos(FonteGit(raiz).coletar(janela)) == ["commit da uma da manha"]
@@ -270,7 +270,7 @@ def test_commit_da_madrugada_seguinte_entra_no_dia_anterior(raiz: Path, janela: 
 
 def test_commit_na_virada_fica_fora_da_janela(raiz: Path, janela: Janela):
     """O fim da janela é exclusivo e o `--until` do git é inclusivo: quem recorta é a fonte."""
-    repositorio = criar_repositorio(raiz / "second-brain")
+    repositorio = criar_repositorio(raiz / "whis")
     commitar(repositorio, "commit das quatro em ponto", momento(4, 0, dia=DIA + timedelta(days=1)))
 
     assert FonteGit(raiz).coletar(janela) == ()
@@ -278,7 +278,7 @@ def test_commit_na_virada_fica_fora_da_janela(raiz: Path, janela: Janela):
 
 def test_commit_do_dia_sob_um_tip_com_data_velha_nao_some(raiz: Path, janela: Janela):
     """`git log --since` pararia a caminhada no tip velho e engoliria o dia inteiro."""
-    repositorio = criar_repositorio(raiz / "second-brain")
+    repositorio = criar_repositorio(raiz / "whis")
     commitar(repositorio, "commit do dia", momento(9, 0))
     commitar(
         repositorio,
@@ -291,7 +291,7 @@ def test_commit_do_dia_sob_um_tip_com_data_velha_nao_some(raiz: Path, janela: Ja
 
 def test_commit_rebaseado_depois_continua_no_dia_em_que_foi_escrito(raiz: Path, janela: Janela):
     """A data que vale é a de autoria: o rebase de amanhã não muda o que eu fiz hoje."""
-    repositorio = criar_repositorio(raiz / "second-brain")
+    repositorio = criar_repositorio(raiz / "whis")
     commitar(
         repositorio,
         "commit escrito hoje e rebaseado depois",
@@ -306,7 +306,7 @@ def test_commit_feito_em_outro_fuso_cai_na_hora_local(raiz: Path, janela: Janela
     """A data do commit traz o fuso em que ele foi feito; o diário quer o relógio de casa."""
     aqui = momento(9, 30)
     distante = aqui.astimezone(timezone(aqui.utcoffset() + timedelta(hours=5)))
-    repositorio = criar_repositorio(raiz / "second-brain")
+    repositorio = criar_repositorio(raiz / "whis")
     commitar(repositorio, "commit de viagem", distante)
 
     eventos = FonteGit(raiz).coletar(janela)
@@ -319,7 +319,7 @@ def test_commit_feito_em_outro_fuso_cai_na_hora_local(raiz: Path, janela: Janela
 
 
 def test_so_traz_os_commits_do_dono_do_repositorio(raiz: Path, janela: Janela):
-    repositorio = criar_repositorio(raiz / "second-brain", email=EMAIL)
+    repositorio = criar_repositorio(raiz / "whis", email=EMAIL)
     commitar(repositorio, "commit meu", momento(9, 0))
     commitar(repositorio, "commit do colega", momento(10, 0), email=OUTRO_EMAIL, nome="Colega")
 
@@ -340,7 +340,7 @@ def test_cada_repositorio_deduz_o_proprio_email(raiz: Path, janela: Janela):
 
 
 def test_autores_da_configuracao_valem_para_todos_os_repositorios(raiz: Path, janela: Janela):
-    repositorio = criar_repositorio(raiz / "second-brain", email=EMAIL)
+    repositorio = criar_repositorio(raiz / "whis", email=EMAIL)
     commitar(repositorio, "commit meu", momento(9, 0))
     commitar(repositorio, "commit do colega", momento(10, 0), email=OUTRO_EMAIL, nome="Colega")
 
@@ -358,7 +358,7 @@ def test_repositorio_sem_email_configurado_e_pulado_com_aviso(
     git("init", "-q", str(repositorio))
     commitar(repositorio, "commit sem dono", momento(9, 0), email=OUTRO_EMAIL, nome="Alguem")
 
-    with caplog.at_level("WARNING", logger="second_brain.fonte_git"):
+    with caplog.at_level("WARNING", logger="whis.fonte_git"):
         eventos = FonteGit(raiz).coletar(janela)
 
     assert eventos == ()
@@ -369,7 +369,7 @@ def test_repositorio_sem_email_configurado_e_pulado_com_aviso(
 
 
 def test_merge_commit_nao_entra(raiz: Path, janela: Janela):
-    repositorio = criar_repositorio(raiz / "second-brain")
+    repositorio = criar_repositorio(raiz / "whis")
     commitar(repositorio, "commit base", momento(8, 0))
     git("-C", str(repositorio), "checkout", "-q", "-b", "lateral")
     commitar(repositorio, "commit lateral", momento(9, 0))
@@ -397,7 +397,7 @@ def test_merge_commit_nao_entra(raiz: Path, janela: Janela):
 
 def test_commit_em_branch_nao_mergeada_entra(raiz: Path, janela: Janela):
     """Sem `--all` o trabalho do dia numa branch aberta sumiria do diário."""
-    repositorio = criar_repositorio(raiz / "second-brain")
+    repositorio = criar_repositorio(raiz / "whis")
     commitar(repositorio, "commit base", momento(8, 0))
     git("-C", str(repositorio), "checkout", "-q", "-b", "experimento")
     commitar(repositorio, "commit da branch aberta", momento(9, 0))
@@ -424,7 +424,7 @@ def test_repositorio_quebrado_nao_derruba_a_coleta_dos_outros(
     commitar(criar_repositorio(raiz / "saudavel"), "commit que precisa chegar", momento(9, 0))
     quebrar(raiz / "corrompido")
 
-    with caplog.at_level("ERROR", logger="second_brain.fonte_git"):
+    with caplog.at_level("ERROR", logger="whis.fonte_git"):
         eventos = FonteGit(raiz).coletar(janela)
 
     assert assuntos(eventos) == ["commit que precisa chegar"]
@@ -444,7 +444,7 @@ def test_todos_os_repositorios_quebrados_viram_erro_de_fonte(raiz: Path, janela:
 
 def test_git_ausente_no_path_vira_erro_de_fonte(raiz: Path, janela: Janela):
     """A costura só conhece `ErroDeFonte` — um `FileNotFoundError` mataria o diário."""
-    criar_repositorio(raiz / "second-brain")
+    criar_repositorio(raiz / "whis")
 
     with pytest.raises(ErroDeFonte) as erro:
         FonteGit(raiz, git="git-que-nao-existe").coletar(janela)

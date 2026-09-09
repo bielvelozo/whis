@@ -18,11 +18,11 @@ from pathlib import Path
 import pytest
 
 from fixtures.leitura import corpo
-from second_brain.configuracao import VARIAVEL_DE_AMBIENTE, carregar
-from second_brain.daily import do_trabalho, gerar_daily
-from second_brain.fakes import DailyFake, FonteFake
-from second_brain.fontes import Evento
-from second_brain.resumo_dia_claude import PROMPT_DA_DAILY, montar_pergunta_da_daily
+from whis.configuracao import VARIAVEL_DE_AMBIENTE, carregar
+from whis.daily import do_trabalho, gerar_daily
+from whis.fakes import DailyFake, FonteFake
+from whis.fontes import Evento
+from whis.resumo_dia_claude import PROMPT_DA_DAILY, montar_pergunta_da_daily
 
 TRABALHO = "flavianasser-monorepo"
 PESSOAL = "renovo-hub"
@@ -169,7 +169,7 @@ def test_periodo_so_de_projeto_pessoal_ainda_vira_nota(
 def test_o_log_diz_quantos_ficaram_fora_do_roteiro(
     gerar, dois_eventos, caplog: pytest.LogCaptureFixture
 ):
-    with caplog.at_level("INFO", logger="second_brain.daily"):
+    with caplog.at_level("INFO", logger="whis.daily"):
         gerar(pessoais=(PESSOAL,), eventos=dois_eventos)
 
     assert "1 evento(s) de [daily].referencias_pessoais" in caplog.text
@@ -201,8 +201,8 @@ def test_o_diario_continua_levando_o_projeto_pessoal_ao_claude(
     """O diário é o retrato do dia DELE: calar metade seria mentir sobre o dia."""
     from datetime import date
 
-    from second_brain.diario import gerar_diario
-    from second_brain.fakes import ResumoDoDiaFake
+    from whis.diario import gerar_diario
+    from whis.fakes import ResumoDoDiaFake
 
     dia = date(2026, 9, 3)
     quando = datetime.combine(dia, datetime.min.time()).astimezone().replace(hour=10)
@@ -240,7 +240,7 @@ def test_sem_contexto_nenhum_bloco_aparece():
 
 
 def test_o_adaptador_leva_o_contexto_da_configuracao():
-    from second_brain.resumo_dia_claude import ResumoDoDiaClaude
+    from whis.resumo_dia_claude import ResumoDoDiaClaude
 
     adaptador = ResumoDoDiaClaude(contexto_do_time="  O merge é meu.  ")
 
@@ -249,7 +249,7 @@ def test_o_adaptador_leva_o_contexto_da_configuracao():
 
 def test_a_cli_monta_o_roteiro_com_o_contexto_da_configuracao(configuracao_da_daily):
     """A chave só serve se o comando de verdade a entregar ao adaptador."""
-    from second_brain.__main__ import montar_roteiro_da_daily
+    from whis.__main__ import montar_roteiro_da_daily
 
     configuracao = configuracao_da_daily(contexto="Zeno aprovando ja libera.")
 
@@ -260,8 +260,8 @@ def test_a_cli_monta_o_roteiro_com_o_contexto_da_configuracao(configuracao_da_da
 
 def test_a_porta_da_daily_nao_mudou_de_assinatura():
     """O corte é da costura; o adaptador não conhece trabalho nem pessoal."""
-    from second_brain.portas import PortaDaily
-    from second_brain.resumo_dia_claude import ResumoDoDiaClaude
+    from whis.portas import PortaDaily
+    from whis.resumo_dia_claude import ResumoDoDiaClaude
 
     assert isinstance(ResumoDoDiaClaude(contexto_do_time="qualquer"), PortaDaily)
 
@@ -304,12 +304,12 @@ def test_a_simulacao_marca_o_que_nao_seria_falado(
     configuracao_da_daily, dois_eventos, capsys: pytest.CaptureFixture, agora: datetime
 ):
     """É pelo `--simular` que o usuário confere a configuração de graça."""
-    from second_brain.__main__ import main
+    from whis.__main__ import main
 
     configuracao_da_daily(pessoais=(PESSOAL,))
     monkey = pytest.MonkeyPatch()
     monkey.setattr(
-        "second_brain.__main__.montar_fontes_da_daily",
+        "whis.__main__.montar_fontes_da_daily",
         lambda configuracao, *, fakes=False: [FonteFake("git", eventos=dois_eventos)],
     )
 
@@ -329,12 +329,12 @@ def test_a_simulacao_marca_o_que_nao_seria_falado(
 def test_sem_configurar_nada_a_simulacao_nao_marca_ninguem(
     configuracao_da_daily, dois_eventos, capsys: pytest.CaptureFixture
 ):
-    from second_brain.__main__ import main
+    from whis.__main__ import main
 
     configuracao_da_daily()
     monkey = pytest.MonkeyPatch()
     monkey.setattr(
-        "second_brain.__main__.montar_fontes_da_daily",
+        "whis.__main__.montar_fontes_da_daily",
         lambda configuracao, *, fakes=False: [FonteFake("git", eventos=dois_eventos)],
     )
 
@@ -402,8 +402,8 @@ def test_rodar_de_novo_no_mesmo_dia_nao_afirma_que_a_janela_tem_24_horas():
     primeira, inclusive na segunda execução do dia — que já cobria 34 horas na
     máquina do usuário.
     """
-    from second_brain.daily import JanelaDaDaily
-    from second_brain.vault import cobertura_da_janela
+    from whis.daily import JanelaDaDaily
+    from whis.vault import cobertura_da_janela
 
     inicio = datetime.now().astimezone() - timedelta(hours=34)
     janela = JanelaDaDaily(
@@ -418,8 +418,8 @@ def test_rodar_de_novo_no_mesmo_dia_nao_afirma_que_a_janela_tem_24_horas():
 
 
 def test_a_linha_de_cobertura_sempre_diz_de_quando_a_daily_fala():
-    from second_brain.daily import JanelaDaDaily
-    from second_brain.vault import cobertura_da_janela
+    from whis.daily import JanelaDaDaily
+    from whis.vault import cobertura_da_janela
 
     desde = datetime.now().astimezone() - timedelta(hours=5)
     janela = JanelaDaDaily(data=desde.date(), desde=desde, ate=datetime.now().astimezone())
@@ -431,7 +431,7 @@ def test_a_linha_de_cobertura_sempre_diz_de_quando_a_daily_fala():
 
 
 def _pontos_com(caminho_do_vault: Path, texto: str) -> None:
-    from second_brain import vault as modulo_vault
+    from whis import vault as modulo_vault
 
     modulo_vault.preparar(caminho_do_vault)
     (caminho_do_vault / "notas" / "daily.md").write_text(texto, encoding="utf-8")
@@ -439,7 +439,7 @@ def _pontos_com(caminho_do_vault: Path, texto: str) -> None:
 
 def test_o_preciso_de_do_usuario_entra_na_batida(gerar, caminho_do_vault: Path):
     """Um bloqueio combinado numa conversa não deixa rastro em fonte nenhuma."""
-    from second_brain.portas import Daily
+    from whis.portas import Daily
 
     _pontos_com(
         caminho_do_vault,
@@ -456,7 +456,7 @@ def test_o_preciso_de_do_usuario_entra_na_batida(gerar, caminho_do_vault: Path):
 
 def test_o_meu_preciso_de_junta_com_o_do_claude(gerar, caminho_do_vault: Path):
     """É uma batida só, falada uma vez — não duas seções parecidas."""
-    from second_brain.portas import Daily
+    from whis.portas import Daily
 
     _pontos_com(
         caminho_do_vault, "# Daily\n\n## Preciso de\n- [ ] acesso ao painel\n"
@@ -510,7 +510,7 @@ def test_o_preciso_de_dele_nunca_vai_ao_claude(gerar, caminho_do_vault: Path):
 
 
 def test_o_modelo_do_arquivo_ja_traz_a_secao(caminho_do_vault: Path):
-    from second_brain import vault as modulo_vault
+    from whis import vault as modulo_vault
 
     modulo_vault.preparar(caminho_do_vault)
     modulo_vault.anotar_ponto(caminho_do_vault, "um ponto qualquer")
@@ -530,7 +530,7 @@ def dois_eventos_do_modulo() -> tuple[Evento, ...]:
 
 def test_a_ajuda_do_modelo_nao_vira_item(caminho_do_vault: Path):
     """As explicações existem para o Obsidian; o leitor só enxerga `- [ ]`."""
-    from second_brain import vault as modulo_vault
+    from whis import vault as modulo_vault
 
     modulo_vault.preparar(caminho_do_vault)
     (caminho_do_vault / "notas" / "daily.md").write_text(
@@ -543,7 +543,7 @@ def test_a_ajuda_do_modelo_nao_vira_item(caminho_do_vault: Path):
 
 
 def test_o_modelo_explica_cada_secao(caminho_do_vault: Path):
-    from second_brain.vault import MODELO_DOS_PONTOS as modelo
+    from whis.vault import MODELO_DOS_PONTOS as modelo
 
     for titulo in ("## Preciso de", "## Dúvidas", "## Off-topic", "## Pontos"):
         assert titulo in modelo
@@ -553,7 +553,7 @@ def test_o_modelo_explica_cada_secao(caminho_do_vault: Path):
 
 def test_anotar_ponto_continua_funcionando_com_o_modelo_novo(caminho_do_vault: Path):
     """A ajuda em itálico não pode empurrar o item para fora da seção."""
-    from second_brain import vault as modulo_vault
+    from whis import vault as modulo_vault
 
     modulo_vault.preparar(caminho_do_vault)
     modulo_vault.anotar_ponto(caminho_do_vault, "puxar a retenção de 180 dias")

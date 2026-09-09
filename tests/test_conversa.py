@@ -14,9 +14,9 @@ from pathlib import Path
 import pytest
 
 from fixtures.leitura import arquivos_do_vault
-from second_brain import vault as modulo_vault
-from second_brain.configuracao import Configuracao
-from second_brain.conversa import (
+from whis import vault as modulo_vault
+from whis.configuracao import Configuracao
+from whis.conversa import (
     AGENTE,
     NOME_DO_ARQUIVO,
     USUARIO,
@@ -204,7 +204,7 @@ def test_arquivo_ilegivel_vale_como_conversa_vazia(
 ):
     conversas.arquivo.write_text(conteudo, encoding="utf-8")
 
-    with caplog.at_level(logging.WARNING, logger="second_brain.conversa"):
+    with caplog.at_level(logging.WARNING, logger="whis.conversa"):
         fio = conversas.abrir(DM, agora=MANHA)
 
     assert fio.vazia()

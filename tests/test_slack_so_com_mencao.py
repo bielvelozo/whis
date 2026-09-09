@@ -97,7 +97,7 @@ def test_o_canal_continua_sendo_consultado():
 
 
 def test_o_log_conta_o_que_foi_descartado(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("INFO", logger="second_brain.fonte_slack"):
+    with caplog.at_level("INFO", logger="whis.fonte_slack"):
         fonte(so_com_mencao=(CANAL,)).coletar(JANELA)
 
     assert "so_com_mencao" in caplog.text
@@ -107,7 +107,7 @@ def test_o_log_conta_o_que_foi_descartado(caplog: pytest.LogCaptureFixture):
 def test_o_log_nao_fala_disso_quando_nada_foi_descartado(
     caplog: pytest.LogCaptureFixture
 ):
-    with caplog.at_level("INFO", logger="second_brain.fonte_slack"):
+    with caplog.at_level("INFO", logger="whis.fonte_slack"):
         fonte().coletar(JANELA)
 
     assert "so_com_mencao" not in caplog.text
@@ -144,8 +144,8 @@ def test_canal_que_nao_casa_fica_inteiro():
 
 
 def test_a_chave_do_toml_chega_ao_coletor(tmp_path, monkeypatch):
-    from second_brain.configuracao import VARIAVEL_DE_AMBIENTE, carregar
-    from second_brain.fonte_slack import de_configuracao
+    from whis.configuracao import VARIAVEL_DE_AMBIENTE, carregar
+    from whis.fonte_slack import de_configuracao
 
     arquivo = tmp_path / "config.toml"
     arquivo.write_text(
@@ -170,7 +170,7 @@ def test_a_chave_do_toml_chega_ao_coletor(tmp_path, monkeypatch):
 
 
 def test_configuracao_sem_a_chave_continua_carregando(tmp_path):
-    from second_brain.configuracao import carregar
+    from whis.configuracao import carregar
 
     arquivo = tmp_path / "config.toml"
     arquivo.write_text(

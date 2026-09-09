@@ -8,7 +8,7 @@ import pytest
 
 from fixtures.gravacao import criar_pasta_de_gravacao, criar_wav
 from fixtures.leitura import corpo
-from second_brain.gravacao import GravacaoInvalida, ler
+from whis.gravacao import GravacaoInvalida, ler
 
 
 def test_pasta_com_nome_fora_do_contrato_e_recusada(caminho_das_gravacoes: Path):

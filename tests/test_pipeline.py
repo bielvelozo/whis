@@ -12,14 +12,14 @@ import pytest
 
 from fixtures.gravacao import criar_pasta_de_gravacao
 from fixtures.leitura import corpo, ler_frontmatter
-from second_brain.fakes import RESUMO_PADRAO, TRANSCRICAO_PADRAO, ResumoFake, STTFake
-from second_brain.gravacao import (
+from whis.fakes import RESUMO_PADRAO, TRANSCRICAO_PADRAO, ResumoFake, STTFake
+from whis.gravacao import (
     STATUS_FALHOU,
     STATUS_TRANSCRITO,
     ler_estado,
     ler_transcricao,
 )
-from second_brain.portas import EU, ErroDeResumo, ErroDeSTT, Fala, Resumo, Transcricao
+from whis.portas import EU, ErroDeResumo, ErroDeSTT, Fala, Resumo, Transcricao
 
 BASENAME = "2026-08-20-1430-daily-do-time"
 
@@ -277,7 +277,7 @@ def test_falha_no_stt_e_registrada_no_log(
 ):
     stt = STTFake(erro=ErroDeSTT(ERRO_DO_STT))
 
-    with caplog.at_level("ERROR", logger="second_brain.pipeline"):
+    with caplog.at_level("ERROR", logger="whis.pipeline"):
         with pytest.raises(ErroDeSTT):
             processar_gravacao(pasta_de_gravacao, stt=stt)
 
@@ -371,7 +371,7 @@ def test_reaproveitamento_da_transcricao_aparece_no_log(
     with pytest.raises(ErroDeResumo):
         processar_gravacao(pasta_de_gravacao, resumo=ResumoFake(erro=ErroDeResumo("caiu")))
 
-    with caplog.at_level("INFO", logger="second_brain.pipeline"):
+    with caplog.at_level("INFO", logger="whis.pipeline"):
         processar_gravacao(pasta_de_gravacao, stt=STTIndisponivel())
 
     assert "o STT não é chamado de novo" in caplog.text

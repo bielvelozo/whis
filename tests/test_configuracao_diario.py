@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from second_brain.configuracao import ConfiguracaoInvalida, carregar
+from whis.configuracao import ConfiguracaoInvalida, carregar
 
 
 def escrever(tmp_path: Path, corpo: str) -> Path:

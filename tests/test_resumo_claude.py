@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from second_brain.portas import EU, OUTROS, ErroDeResumo, Fala, PortaResumo, Resumo, Transcricao
-from second_brain.resumo_claude import (
+from whis.portas import EU, OUTROS, ErroDeResumo, Fala, PortaResumo, Resumo, Transcricao
+from whis.resumo_claude import (
     PROMPT_DO_SISTEMA,
     VARIAVEIS_DE_API_PAGA,
     ResumoClaude,
@@ -174,7 +174,7 @@ def test_json_sem_nenhuma_das_tres_listas_levanta_erro_de_resumo():
 
 
 def test_resposta_crua_fica_no_log_para_diagnostico(caplog: pytest.LogCaptureFixture):
-    with caplog.at_level("ERROR", logger="second_brain.resumo"):
+    with caplog.at_level("ERROR", logger="whis.resumo"):
         with pytest.raises(ErroDeResumo):
             interpretar_resposta("não é json nenhum, é papo")
 
@@ -283,7 +283,7 @@ def test_api_key_vazia_nao_conta_como_api_key(monkeypatch: pytest.MonkeyPatch):
 #: O marcador `rede` sozinho não segura nada: o `addopts` do `pyproject.toml`
 #: é só `-q`, sem `-m "not rede"`, então um teste marcado roda na suíte
 #: normal. Enquanto o `addopts` não desselecionar o marcador, o gate é este.
-VARIAVEL_DE_OPT_IN = "SECOND_BRAIN_TESTES_DE_REDE"
+VARIAVEL_DE_OPT_IN = "WHIS_TESTES_DE_REDE"
 
 
 def _ha_credencial_do_claude() -> bool:

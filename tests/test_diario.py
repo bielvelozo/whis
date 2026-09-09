@@ -12,12 +12,12 @@ from pathlib import Path
 import pytest
 
 from fixtures.leitura import arquivos_do_vault, corpo, ler_frontmatter
-from second_brain import vault as modulo_vault
-from second_brain.configuracao import Configuracao
-from second_brain.diario import TodasAsFontesFalharam, gerar_diario
-from second_brain.fakes import RESUMO_DO_DIA_PADRAO, FonteFake, ResumoDoDiaFake
-from second_brain.fontes import ErroDeFonte, Evento, data_do_diario
-from second_brain.portas import ErroDeResumoDoDia, ResumoDoDia
+from whis import vault as modulo_vault
+from whis.configuracao import Configuracao
+from whis.diario import TodasAsFontesFalharam, gerar_diario
+from whis.fakes import RESUMO_DO_DIA_PADRAO, FonteFake, ResumoDoDiaFake
+from whis.fontes import ErroDeFonte, Evento, data_do_diario
+from whis.portas import ErroDeResumoDoDia, ResumoDoDia
 
 DIA = date(2026, 9, 3)
 
@@ -114,7 +114,7 @@ def test_listas_cruas_saem_por_fonte_e_por_referencia(gerar, caminho_do_vault: P
         FonteFake(
             "git",
             (
-                evento(9, 12, titulo="`a1b2c3d` Fecha a camada 01", referencia="second-brain"),
+                evento(9, 12, titulo="`a1b2c3d` Fecha a camada 01", referencia="whis"),
                 evento(17, 45, titulo="`d4e5f6a` Corrige o frete", referencia="loja"),
             ),
         ),
@@ -138,7 +138,7 @@ def test_listas_cruas_saem_por_fonte_e_por_referencia(gerar, caminho_do_vault: P
 
     texto = corpo(nota_do_dia(caminho_do_vault))
     assert "## Git" in texto and "## Linear" in texto
-    assert "### second-brain" in texto and "### loja" in texto
+    assert "### whis" in texto and "### loja" in texto
     assert "- 09:12 `a1b2c3d` Fecha a camada 01" in texto
     assert "- 11:20 [FN-123 Corrigir o frete](https://linear.app/exemplo/issue/FN-123)" in texto
     assert "  > Subiu em produção." in texto
@@ -417,7 +417,7 @@ def test_evento_excluido_nao_entra_no_vault_nem_chega_ao_resumo(
         FonteFake(
             "git",
             (
-                evento(9, 12, titulo="commit do trabalho", referencia="second-brain"),
+                evento(9, 12, titulo="commit do trabalho", referencia="whis"),
                 evento(21, 0, titulo="commit da terapia", referencia="diario-pessoal"),
             ),
         )
@@ -532,7 +532,7 @@ def test_fonte_que_falha_deixa_o_motivo_no_log(gerar, caplog: pytest.LogCaptureF
         FonteFake("slack", erro=ErroDeFonte("token do Slack ausente")),
     ]
 
-    with caplog.at_level("ERROR", logger="second_brain.diario"):
+    with caplog.at_level("ERROR", logger="whis.diario"):
         gerar(fontes=fontes)
 
     assert "token do Slack ausente" in caplog.text
