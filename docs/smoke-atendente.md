@@ -306,6 +306,12 @@ cobrança**, é o equivalente da tabela da API, para você medir se o hábito fi
 pesado na cota. Anote o das primeiras perguntas reais aqui, para o próximo a
 ler saber o que esperar.
 
+Medido na primeira pergunta real, em 2026-09-09: *"o que ficou decidido
+sobre a retencao de 180 dias?"* custou o equivalente a **US$ 0,5589**, com 18
+turnos, 17 chamadas de ferramenta e 63 segundos de espera. Voltou com 7 citacoes
+de 4 notas (`diario/2026-09-03.md`, `daily/2026-09-04.md`, `daily/2026-09-08.md`)
+e a resposta certa. Para comparar: uma daily de um dia custa ~US$ 0,70.
+
 Os freios: `[busca].maximo_de_notas` (padrão 40 notas por pergunta) e o teto de
 turnos do agente. Uma pergunta que estoura qualquer um deles termina com o que
 já leu.
