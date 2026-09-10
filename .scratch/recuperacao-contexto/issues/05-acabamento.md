@@ -49,3 +49,26 @@ sobreviveu. O atalho não foi criado na máquina real: é decisão do usuário, 
 **Não provado, e é o que fecha a entrega inteira**: a demo-mestra do passo 8 do roteiro, pelo
 celular, e antes dela o passo humano do bot. Nenhuma pergunta real ao Claude foi feita em
 nenhuma camada — **peça antes**, gasta a assinatura.
+
+### Parcial — 2026-09-10
+
+O roteiro `docs/smoke-atendente.md` foi seguido do passo 1 ao 8 com o usuario, e passou. O que
+ele provou esta no comentario de entrega do ticket 04. O roteiro ganhou o custo real medido na
+secao "Quanto pesa na assinatura", como ele mesmo pedia.
+
+Correcoes que o uso real exigiu no proprio roteiro: os scopes de bot vem **antes** do App Home
+(o Slack so libera as abas depois do primeiro scope), e a Messages Tab tem **duas** marcacoes —
+ligar a aba faz a DM aparecer, mas *Allow users to send Slash commands and messages* e um
+checkbox separado, e sem ele o Slack mostra "Sending messages to this app has been turned off".
+
+**Continua `ready-for-human`**, e por dois passos que so o usuario fecha:
+
+- **Passo 9, a pasta privada.** `[privacidade].pastas_privadas` continua vazia desde 04/09 — o
+  agente enxerga o vault inteiro. Falta ele escolher a pasta e plantar o fato de teste. E a
+  unica garantia de privacidade da entrega, e a unica nao exercitada na maquina dele.
+- **Passo 11, subir no logon.** `windows --atendente` ainda nao rodou. Esperando o rename da
+  pasta do repositorio, porque o atalho grava o caminho absoluto do venv.
+
+O passo 5 (pedido ao admin) nao foi enviado: a reinstalacao passou sem aprovacao, entao nao ha
+portao tecnico. Fica como aviso pendente, porque o texto anterior afirmava ao admin que a app
+nao teria scope de escrita, e agora tem quatro de bot. Decisao do usuario.

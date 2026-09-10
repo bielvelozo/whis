@@ -8,7 +8,7 @@ Contrato: **[contrato-busca.md](../contrato-busca.md)**, seções 3 e 5.
 
 **Blocked by:** 01, 02, 03, **e a aprovação do admin do Slack**
 
-**Status:** ready-for-human
+**Status:** resolved
 
 - [x] `atendente.py`: recebe evento de mensagem, chama `responder`, publica a resposta na mesma DM
 - [x] **Socket Mode**, com app-level token (`xapp-`) e bot token (`xoxb-`) em chaves novas de
@@ -85,3 +85,33 @@ humano do `docs/smoke-atendente.md` (camada 05): bot na app com `im:history`, `i
 `chat:write`, `reactions:write`, Socket Mode ligado, `message.im` assinado, app-level token
 com `connections:write`, e a aprovação nova do admin. Depois: `second-brain atender --fakes`
 prova o Slack sem gastar a assinatura; `second-brain atender` faz a demo-mestra.
+
+### Entrega — provado na maquina do usuario, 2026-09-10
+
+O passo humano foi feito com o usuario na sessao, e a DM funcionou de ponta a ponta.
+
+**O Slack, sem gastar nada** (`atender --fakes`): a mensagem ganhou 👀 em um ou dois segundos
+e a resposta de exemplo chegou. Prova junta: `reactions:write`, `chat:write`, Socket Mode de
+pe, `message.im` assinado e a Messages Tab liberada. O bot subiu como `U0C0AJXB59V` e so a DM
+`D0C1LAWCNHE` foi atendida.
+
+**O Claude de verdade**: a primeira pergunta real custou o equivalente a **US$ 0,5589**, com 18
+turnos, **17 chamadas de ferramenta** e 63 s, e voltou com 7 citacoes de 4 notas. As 17 chamadas
+fecham o risco que este ticket deixou aberto: `mcp__vault__<ferramenta>` em `allowed_tools` casa
+com o que o SDK espera, e nao era so convencao do Claude Code.
+
+**O fio de 24h**: provado pela porta dos fundos. A resposta do ensaio com `--fakes` ficou no
+`conversas.json`, e a primeira pergunta real abriu com *"Correcao do que eu disse antes: nao
+achei essa decisao em nenhuma nota de reuniao"* — o agente leu o turno anterior, foi conferir e
+desmentiu o fake. Funciona; e o fake contaminar o fio virou achado no DEFERRED.
+
+**A fonte ao vivo**: perguntado sobre a ultima hora no Slack, citou com origem `slack:DM com
+Whis`, e nao com caminho de nota. Veio do coletor, nao do vault.
+
+**O que o uso real revelou**, tudo no DEFERRED: a resposta e longa demais e o bloco de fontes
+incomoda (dito pelo usuario no celular); o agente le a propria DM como fonte ao vivo, inclusive
+os proprios erros; imagem e audio na DM sao ignorados em silencio; e o OAuth da conta Claude
+vence e derruba tudo que fala com o modelo — aconteceu no meio da demo, as 19:45.
+
+Nota de contexto: o projeto foi rebatizado de Second Brain para **Whis** em 2026-09-09, no meio
+deste fechamento. Os comandos citados acima em documentos antigos aparecem como `second-brain`.
