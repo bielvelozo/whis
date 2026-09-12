@@ -21,6 +21,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from . import obsidian as _obsidian
+from .configuracao import Configuracao
 from .fontes import ORDEM_DAS_FONTES, Evento, Janela, nome_legivel
 from .nota_viva import (
     SECAO_FALAR,
@@ -174,6 +176,15 @@ def caminho_da_nota(basename: str) -> str:
 def caminho_da_transcricao(basename: str) -> str:
     """Caminho relativo da transcrição, com o mesmo basename da nota."""
     return f"{PASTA_TRANSCRICOES}/{basename}.md"
+
+
+def uri_do_obsidian(configuracao: Configuracao, caminho_relativo: str) -> str:
+    """A URI `obsidian://open` de uma nota do vault — ver `whis.obsidian`.
+
+    Vive lá, e não aqui, porque a bandeja também precisa dela e não pode
+    importar este módulo.
+    """
+    return _obsidian.uri_da_nota(configuracao, caminho_relativo)
 
 
 def wikilink(caminho_relativo: str) -> str:

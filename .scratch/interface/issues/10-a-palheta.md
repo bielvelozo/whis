@@ -1,7 +1,7 @@
 # 10 — Camada 3: a palheta
 
 Type: task
-Status: ready-for-agent
+Status: claimed
 Blocked by: 09
 
 **What to build:** uma janela aberta por atalho global — um campo de texto, o comando, e a janela

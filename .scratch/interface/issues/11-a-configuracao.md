@@ -1,7 +1,7 @@
 # 11 — Camada 4: o painel de configuração
 
 Type: task
-Status: ready-for-agent
+Status: claimed
 Blocked by: 10
 
 **What to build:** uma tela com todas as chaves do `config.toml`, segredos inclusive, e um escritor

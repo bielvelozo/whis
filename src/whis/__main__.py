@@ -48,6 +48,7 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
+from . import avisos as _avisos
 from . import registro as _registro
 from . import retencao as _retencao
 from . import vault as _vault
@@ -488,7 +489,9 @@ def _comando_daily(args: argparse.Namespace) -> int:
 
     O que sai no terminal são as quatro seções da nota viva como ficaram — o
     que o usuário lê em voz alta um minuto depois; a nota datada guarda o que
-    mudou e as listas cruas. Nada é agendado: quem decide a hora é ele.
+    mudou e as listas cruas. Quando a nota viva existe ao fim, sai também o
+    toast com o botão que a abre no Obsidian — quem chamou foi a tarefa
+    agendada, e não há terminal para ler.
     """
     configuracao = _configuracao(args)
     if args.anotar is not None:
@@ -508,11 +511,52 @@ def _comando_daily(args: argparse.Namespace) -> int:
         simular=args.simular,
     )
     _relatar_daily(resultado)
+    if not args.simular and resultado.nota_viva is not None:
+        _avisar_que_a_daily_nasceu(configuracao, resultado)
     return _codigo_de_saida(
         f"Daily de {resultado.janela.data.isoformat()}",
         vazio=resultado.vazio,
         parcial=bool(resultado.fontes_com_falha or resultado.falha_do_roteiro),
     )
+
+
+TITULO_DO_TOAST_DA_DAILY = "A daily está pronta"
+ROTULO_DO_BOTAO_DA_DAILY = "Abrir no Obsidian"
+
+
+def _avisar_que_a_daily_nasceu(configuracao: Configuracao, resultado: ResultadoDaDaily) -> None:
+    """O toast com o botão que abre `daily/atual.md` no Obsidian.
+
+    Quem chama `whis daily` na hora agendada não está olhando terminal nenhum;
+    o toast é o único sinal de que a nota nasceu. Falhar em avisar já é
+    tratado dentro de `avisar` — o código de saída continua sendo o da nota.
+    """
+    _avisos.avisar(
+        TITULO_DO_TOAST_DA_DAILY,
+        texto_do_toast_da_daily(resultado),
+        botao=(
+            ROTULO_DO_BOTAO_DA_DAILY,
+            _vault.uri_do_obsidian(configuracao, _vault.CAMINHO_DA_NOTA_VIVA),
+        ),
+    )
+
+
+def texto_do_toast_da_daily(resultado: ResultadoDaDaily) -> str:
+    """Uma linha: o que mudou na nota viva, ou por que nada mudou."""
+    if resultado.falha_do_roteiro:
+        return (
+            f"A nota nasceu parcial: {resultado.falha_do_roteiro}. "
+            f"A nota viva ficou como estava."
+        )
+    mudancas = resultado.mudancas
+    if mudancas is None or mudancas.vazia():
+        return "Nada mudou na nota viva."
+    partes: list[str] = []
+    if novos := len(mudancas.acrescentadas):
+        partes.append(f"{novos} {'item novo' if novos == 1 else 'itens novos'}")
+    if movidos := len(mudancas.movidas):
+        partes.append(f"{movidos} {'movido' if movidos == 1 else 'movidos'} para 'O que eu fiz'")
+    return " e ".join(partes) + "."
 
 
 def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
@@ -712,6 +756,9 @@ conversas_excluidas = []     # canais e DMs que o coletor nunca lê
 so_com_mencao = []           # canais em que só entra o que cita você (ex.: code review)
 bot_token = ""               # Bot User OAuth Token xoxb da mesma app: o atendente responde na DM com ele
 app_token = ""               # App-Level Token xapp com connections:write: a conexão do Socket Mode
+
+[obsidian]
+vault = "245833c11ad43e6e"   # o ID do vault (Copy vault ID no seletor de vaults) ou o nome da pasta; é o que o botão "Abrir no Obsidian" usa
 """
 
 

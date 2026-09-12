@@ -29,6 +29,7 @@ import logging
 import os
 import subprocess
 import threading
+from collections.abc import Callable
 from pathlib import Path
 
 from PIL import Image, ImageDraw
@@ -37,6 +38,7 @@ from . import registro as _registro
 from .coletor import Coletor, Estado, Situacao
 from .configuracao import Configuracao
 from .instancia import OutraInstancia, Trava, caminho_da_trava
+from .obsidian import uri_da_nota
 
 _log = logging.getLogger("whis.bandeja")
 
@@ -96,14 +98,56 @@ def desenhar_icone(estado: Estado) -> Image.Image:
     return imagem
 
 
-def abrir_no_windows(caminho: Path) -> None:
-    """Abre um arquivo ou pasta no programa padrão (Obsidian, Explorer...)."""
+#: Quem lança um caminho ou URI no Windows (injetável em teste).
+Lancador = Callable[[str], None]
+
+
+def alvo_para_abrir(caminho: Path, configuracao: Configuracao | None) -> str:
+    """Uma nota do vault vira URI `obsidian://`; o resto continua caminho.
+
+    `.md` não tem programa associado nesta máquina, então `os.startfile` de
+    uma nota nunca abriu o Obsidian. A URI abre a nota certa, no vault certo,
+    com o Obsidian aberto ou não.
+    """
+    if configuracao is None or caminho.suffix.lower() != ".md":
+        return str(caminho)
     try:
-        os.startfile(str(caminho))  # type: ignore[attr-defined]  # Windows
-    except AttributeError:  # outro sistema operacional — só no desenvolvimento
-        subprocess.run(["xdg-open", str(caminho)], check=False)
+        relativo = caminho.resolve().relative_to(Path(configuracao.vault).resolve())
+    except ValueError:
+        return str(caminho)
+    return uri_da_nota(configuracao, relativo.as_posix())
+
+
+def abrir_no_windows(
+    caminho: Path, configuracao: Configuracao | None = None, *, lancar: Lancador | None = None
+) -> str:
+    """Abre uma nota no Obsidian, ou um arquivo/pasta no programa padrão.
+
+    Devolve o que foi lançado (a URI ou o caminho) — é o que o teste confere.
+    """
+    alvo = alvo_para_abrir(caminho, configuracao)
+    (lancar or _lancar)(alvo)
+    return alvo
+
+
+def _lancar(alvo: str, *, iniciar=None, executar=subprocess.run) -> None:
+    """`ShellExecute` (via `os.startfile`), que aceita caminho e URI.
+
+    Se ele recusar a URI, `cmd /c start` é a segunda porta: é o mesmo
+    `ShellExecute`, mas com o `start` resolvendo o protocolo registrado.
+    """
+    iniciar = iniciar or getattr(os, "startfile", None)
+    if iniciar is None:  # outro sistema operacional — só no desenvolvimento
+        executar(["xdg-open", alvo], check=False)
+        return
+    try:
+        iniciar(alvo)
     except OSError as erro:
-        _log.error("Não foi possível abrir %s: %s", caminho, erro)
+        if "://" in alvo:
+            _log.info("startfile recusou a URI (%s); tentando por 'start'.", erro)
+            executar(["cmd", "/c", "start", "", alvo], check=False)
+            return
+        _log.error("Não foi possível abrir %s: %s", alvo, erro)
 
 
 class Bandeja:
@@ -157,7 +201,7 @@ class Bandeja:
     def abrir_ultima_nota(self, *_ignorado) -> None:
         nota = self._coletor.situacao().nota
         if nota is not None:
-            abrir_no_windows(nota)
+            abrir_no_windows(nota, self._coletor.configuracao)
 
     def abrir_gravacoes(self, *_ignorado) -> None:
         pasta = Path(self._coletor.configuracao.gravacoes)

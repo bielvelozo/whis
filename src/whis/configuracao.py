@@ -59,6 +59,11 @@ class Configuracao:
     `daily_horarios` é a hora em que a daily deve nascer em cada dia da semana,
     como pares `(dia, "HH:MM")` na ordem segunda→domingo. Dia ausente é dia sem
     daily; tabela vazia é nada agendado — a tarefa do Windows nasce daqui.
+
+    `obsidian_vault` é como o Obsidian chama o vault na URI `obsidian://` — o
+    ID (o que *Copy vault ID* copia) ou o nome da pasta. Vazio usa o nome da
+    pasta de `vault`, que é o que o Obsidian usa quando o vault foi aberto
+    pela pasta.
     """
 
     vault: Path
@@ -86,6 +91,7 @@ class Configuracao:
     slack_so_com_mencao: tuple[str, ...] = ()
     slack_bot_token: str = ""
     slack_app_token: str = ""
+    obsidian_vault: str = ""
     origem: Path | None = None
 
 
@@ -145,6 +151,7 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
     git = dados.get("git") or {}
     linear = dados.get("linear") or {}
     slack = dados.get("slack") or {}
+    obsidian = dados.get("obsidian") or {}
     raiz_do_git = str(git.get("raiz", "")).strip()
     return Configuracao(
         vault=Path(dados["vault"]),
@@ -180,6 +187,7 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
         slack_so_com_mencao=_textos(slack.get("so_com_mencao")),
         slack_bot_token=_token_do_slack(slack.get("bot_token", ""), "bot_token", "xoxb-", arquivo),
         slack_app_token=_token_do_slack(slack.get("app_token", ""), "app_token", "xapp-", arquivo),
+        obsidian_vault=str(obsidian.get("vault", "")).strip(),
         origem=arquivo,
     )
 
