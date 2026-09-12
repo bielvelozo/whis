@@ -756,8 +756,21 @@ def _comando_windows(args: argparse.Namespace) -> int:
     configuracao = _configuracao(args) if args.config else None
     origem = configuracao.origem if configuracao else None
     feitos: list[str] = []
+    so_remover_legado = args.remover_legado and not (args.atendente or args.limpeza)
 
     try:
+        if args.remover_legado:
+            legado = automacao.remover_legado()
+            feitos.append(
+                f"Atalho antigo removido de {legado.atalho}"
+                if legado.atalho
+                else f"Não havia atalho '{automacao.NOME_DO_ATALHO_LEGADO}' na Inicialização."
+            )
+            feitos.append(
+                f"Tarefa antiga '{automacao.NOME_DA_TAREFA_LEGADA}' removida do Agendador."
+                if legado.tarefa
+                else f"Não havia tarefa '{automacao.NOME_DA_TAREFA_LEGADA}' no Agendador."
+            )
         if args.remover:
             atalho = automacao.remover_inicializacao()
             feitos.append(
@@ -779,9 +792,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     if removida
                     else "Não havia tarefa de limpeza agendada."
                 )
-        else:
+        elif not so_remover_legado:
             atalho = automacao.instalar_inicializacao()
             feitos.append(f"Atalho de inicialização criado em {atalho}")
+            feitos.append(
+                f"Atalho do Menu Iniciar criado em {automacao.caminho_do_atalho_do_menu()} "
+                f"(AUMID {automacao.AUMID}) — é o que permite ao Whis mostrar toast."
+            )
             feitos.append("A bandeja passa a subir sozinha no próximo logon.")
             if args.atendente:
                 atalho_do_atendente = automacao.instalar_atendente()
@@ -1059,6 +1076,14 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     windows_cmd.add_argument(
         "--remover", action="store_true", help="desfaz o que foi instalado"
+    )
+    windows_cmd.add_argument(
+        "--remover-legado",
+        action="store_true",
+        help=(
+            "apaga o atalho 'Second Brain.lnk' e a tarefa 'SecondBrain-Limpeza' do nome "
+            "antigo do projeto; sozinho, não instala nada"
+        ),
     )
     windows_cmd.set_defaults(funcao=_comando_windows)
     return parser
