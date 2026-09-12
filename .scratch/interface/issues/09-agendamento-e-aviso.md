@@ -37,3 +37,24 @@ Spec: [../spec.md](../spec.md), *Os avisos* e *Horário por dia da semana*. Fato
 - O `.ps1` do vigia precisa rodar com `-ExecutionPolicy Bypass -File`; PowerShell 5.1.
 - Toast por PowerShell precisa de uma AUMID cujo atalho exista no Menu Iniciar — a da camada 0.
   Para o vigia, a mesma AUMID serve (o atalho está lá mesmo com o Whis morto).
+
+## Comments
+
+**Sonda feita na sessão principal, 2026-09-12** (passo 4 do pipeline), nesta máquina, sem elevação
+(`IsInRole(Administrator) = False`), PowerShell 5.1.26100:
+
+```
+Register-ScheduledTask -TaskName Whis-Sonda-Descartavel -Action (cmd.exe /c exit 0)
+  -Trigger (New-ScheduledTaskTrigger -Weekly -DaysOfWeek Monday -At 03:00)
+  -Settings (New-ScheduledTaskSettingsSet -StartWhenAvailable -WakeToRun -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries) -Force
+→ registrada, State=Ready, StartWhenAvailable=True, WakeToRun=True, RunAs=gabri, LogonType=Interactive
+Get-ScheduledTaskInfo → LastTaskResult 267011 (nunca rodou), NumberOfMissedRuns 0, NextRunTime 14/09 03:00
+Unregister-ScheduledTask -Confirm:$false → apagada
+```
+
+Conclusões para a camada: o módulo funciona **sem elevação** para tarefa do próprio usuário; a
+propriedade de bateria se lê como `Settings.DisallowStartIfOnBatteries` (o `-AllowStartIfOnBatteries`
+a põe em `False`; `AllowStartIfOnBatteries` não existe como propriedade); `LastTaskResult 267011`
+(`0x41303`) é "a tarefa ainda não rodou" — o vigia não pode tratá-lo como falha. A tarefa antiga
+`SecondBrain-Limpeza` continua no Agendador desta máquina (é o usuário quem a remove com
+`whis windows --remover-legado`).

@@ -1,13 +1,31 @@
-# Smoke manual: a daily, do filtro ao checkbox
+# Smoke manual: a daily, do filtro à nota viva
 
 Roteiro curto de ponta a ponta para `whis daily`: conferir o filtro de
-exclusão sem gastar nada, anotar um ponto seu, gerar a daily de verdade, ler no
-Obsidian, falar, marcar o checkbox e ver o ponto sumir da daily seguinte. É a
-validação do que fica fora da costura de teste automatizada: git, Linear e
-Claude reais, na sua máquina, um minuto antes de você falar.
+exclusão sem gastar nada, anotar um ponto seu, gerar a daily de verdade, ler a
+nota viva no Obsidian, falar, e ver no dia seguinte o que continuou aberto
+chegar **com as suas palavras**. É a validação do que fica fora da costura de
+teste automatizada: git, Linear e Claude reais, na sua máquina, um minuto antes
+de você falar.
 
 Tempo: ~10 minutos, espalhados por **dois dias** — o passo final só acontece na
 daily seguinte.
+
+## A nota viva
+
+O que você lê antes da reunião é **`daily/atual.md`**, uma nota só, que o Whis
+mantém em vez de reescrever. Quatro seções, nesta ordem:
+
+- `## O que eu fiz` e `## O que estou fazendo` são do Whis: ele **acrescenta** o
+  que é novo e **move** um item de uma para a outra quando o sinal é forte (PR
+  mergeada, issue em Done), copiando a sua linha byte a byte, com os sub-itens.
+  Ele nunca reescreve nem apaga um item: corrija e apague à vontade, o que você
+  escrever fica.
+- `## Dúvidas` e `## Falar` são só suas. O Whis lê para não repetir, e nunca
+  escreve nelas — a única exceção é `--anotar`, que acrescenta uma linha em
+  *Falar* a seu pedido.
+
+A cada daily nova, *O que eu fiz* é arquivado na nota do dia e recomeça vazio —
+é o que as suas dailies à mão fazem: a de hoje não repete a de ontem.
 
 Rode tudo de dentro do repositório, com o interpretador do ambiente virtual. Nos
 exemplos abaixo, `python` significa `.venv\Scripts\python.exe`.
@@ -131,9 +149,10 @@ Escreva em texto corrido, como explicaria a alguém que entrou no time hoje. Val
 para qualquer coisa que o roteiro não tem como saber: quem aprova, o que trava, o
 que um estado significa aí.
 
-**Sucesso:** na daily do passo 3, `Preciso de` para de listar o que depende só de
-você. Se o merge é seu e ninguém está esperando nada, `Preciso de` vem **vazio** —
-e isso é uma daily melhor do que um bloqueio inventado.
+**Sucesso:** na daily do passo 3, nenhum item novo diz que algo depende de outra
+pessoa só porque o estado se chama "In Review". Se o merge é seu e ninguém está
+esperando nada, nenhum item fala em bloqueio — e isso é uma daily melhor do que
+um bloqueio inventado.
 
 ## Passo 2 — Anotar um ponto seu
 
@@ -141,15 +160,16 @@ e isso é uma daily melhor do que um bloqueio inventado.
 python -m whis daily --anotar "quero puxar a conversa sobre a retenção de 180 dias"
 ```
 
-**Sucesso:** o comando diz `Anotado em ...notas/daily.md` e sai **sem coletar
-nada**. Abra o arquivo no Obsidian: o ponto está em `## Pontos` como
-`- [ ] ...`, desmarcado. Se o arquivo já existia, tudo que estava nele
-continua onde estava — o agente só acrescenta.
+**Sucesso:** o comando diz `Anotado em ...daily\atual.md` e sai **sem coletar
+nada**. Abra a nota no Obsidian: a linha está no fim de `## Falar`, como
+`- quero puxar ...`. Se a nota já existia, todo byte fora dessa linha continua
+onde estava — o agente só acrescenta. Se não existia, ela nasce do modelo, com
+um callout no topo explicando quem escreve onde.
 
-`## Preciso de`, `## Dúvidas` e `## Off-topic` se editam direto no Obsidian, no
-mesmo arquivo. As duas primeiras **se juntam** ao que o Claude achou, numa seção
-só: é onde você sabe mais que ele. Um bloqueio combinado numa conversa não deixa
-rastro em commit nem em issue, então só existe na daily se você escrever.
+`## Dúvidas` e o resto de `## Falar` se editam direto no Obsidian, na mesma
+nota. É onde você sabe mais que o Claude: um bloqueio combinado numa conversa
+não deixa rastro em commit nem em issue, então só existe na daily se você
+escrever. Ele lê essas duas seções para não repetir, e nunca escreve nelas.
 
 ## Passo 3 — Gerar a daily de verdade
 
@@ -159,37 +179,41 @@ Um minuto antes de falar:
 python -m whis daily
 ```
 
-Este passo **chama o Claude** pela sua assinatura e escreve
-`daily/YYYY-MM-DD.md`. Não há cobrança por token; o que ele consome é cota de
-uso do plano. O terminal imprime o roteiro
-pronto para ler em voz alta.
+Este passo **chama o Claude** pela sua assinatura, mantém `daily/atual.md` e
+escreve `daily/YYYY-MM-DD.md`. Não há cobrança por token; o que ele consome é
+cota de uso do plano. O terminal imprime as quatro seções da nota viva como
+ficaram, prontas para ler em voz alta, e os caminhos das duas notas.
 
 **Sucesso:**
 
-- as quatro batidas do Claude aparecem, na ordem de falar: `Entreguei`,
-  `Sigo em`, `Preciso de`, `Dúvidas`;
-- `Meus pontos` traz o que você anotou no passo 2;
-- `Entreguei` e `Sigo em` são **o seu trabalho** — os commits são seus por
-  construção, mas o Linear traz o time inteiro, e a movimentação dos outros
-  não pode aparecer como se fosse sua;
-- `Preciso de` só tem o que **espera outra pessoa**, segundo o que você contou
-  no passo 1c. Nota para si mesmo não é daily. Lista vazia é resposta válida;
+- as quatro seções aparecem, na ordem de falar: `O que eu fiz`, `O que estou
+  fazendo`, `Dúvidas`, `Falar`;
+- `Falar` traz o que você anotou no passo 2, **com as suas palavras**;
+- os itens novos de `O que eu fiz` e `O que estou fazendo` são **o seu
+  trabalho** — os commits são seus por construção, mas o Linear traz o time
+  inteiro, e a movimentação dos outros não pode aparecer como se fosse sua;
+- os itens novos seguem a régua das suas dailies à mão: agrupados por quem
+  pediu ("Correções que o Ribeiro apontou" como item, achados como sub-itens),
+  ancorados no sintoma, com o id da issue inline (`FN-1784`);
 - o que a daily cobra vem **com link clicável** quando o material tinha um: a PR
   aparece como `[#1636](https://github.com/...)`, que você lê em voz alta como
   "#1636" e clica depois;
-- **nada de assunto pessoal das suas DMs** aparece no roteiro. Trabalho e vida
+- **nada de assunto pessoal das suas DMs** aparece na nota. Trabalho e vida
   moram na mesma thread, e a blocklist não separa isso: quem separa é o prompt,
   com ordem de calar na dúvida. Se algo pessoal escapar, ponha a DM inteira em
   `[slack].conversas_excluidas` ou o assunto em `[privacidade].excluir`;
 - o código de saída é `0`.
 
-**Falha — o Claude não respondeu:** a daily nasce mesmo assim, com o aviso
-`Esta daily não tem roteiro: ...` no topo e as listas cruas embaixo, e o
-código é `3`. Rode de novo quando o Claude voltar: a nota do dia é
-regenerada, mantendo o mesmo `desde`.
+**Falha — o Claude não respondeu:** a nota do dia nasce mesmo assim, com o
+aviso `A nota viva ficou como estava: ...` no topo e as listas cruas embaixo, e
+o código é `3`. `daily/atual.md` não é tocada. Rode de novo quando o Claude
+voltar: a nota do dia é regenerada, mantendo o mesmo `desde`, e a nota viva é
+atualizada enfim.
 
 **Rodar de novo no mesmo dia** mantém o início da janela e estende o fim até
-agora, reescrevendo a nota. Nada cai no vão entre a geração e a fala.
+agora, reescrevendo a nota do dia. A nota viva só ganha o que ainda não estava
+nela: o que já está em *O que eu fiz* ou *O que estou fazendo* não volta. Nada
+cai no vão entre a geração e a fala.
 
 ## Passo 4 — Ver a degradação graciosa acontecer
 
@@ -204,25 +228,37 @@ palavra, está em `bandeja.log`.
 
 ## Passo 5 — Ler no Obsidian
 
-Abra `daily/YYYY-MM-DD.md` no vault.
+Abra `daily/atual.md` no vault — é o que você lê em voz alta.
+
+**Sucesso:**
+
+- o frontmatter tem só `tipo: daily-atual` (sem `data`: a Daily notes do
+  Obsidian transformaria o campo em link para uma nota que não existe);
+- as quatro seções estão na ordem, e `Dúvidas` e `Falar` estão **exatamente**
+  como você as deixou;
+- o que o Whis acrescentou está no fim de cada lista, como `- item`; o que ele
+  aninhou está indentado sob o item que você (ou ele) já tinha.
+
+Abra também `daily/YYYY-MM-DD.md`, a nota do dia.
 
 **Sucesso:**
 
 - o frontmatter tem `desde`, `ate`, `fontes`, `fontes_com_falha`, `temas` e
   `reunioes`;
 - a linha `Cobre de ...` bate com a do terminal;
-- o roteiro está em cima e, da `## Reuniões` para baixo, as listas cruas por
-  fonte, agrupadas por repositório ou projeto — é isso que faz da daily o
-  registro durável do seu período. Recolha um cabeçalho de fonte quando quiser
-  só o roteiro na tela;
-- os wikilinks de `## Reuniões` abrem as notas de reunião;
-- `notas/daily.md` continua exatamente como você deixou: o checkbox do seu
-  ponto **segue desmarcado**. O agente nunca marca nada.
+- `## Mudanças na nota viva` diz o que esta execução acrescentou e moveu, com
+  as linhas literais — ou `_(nada)_`;
+- da `## Reuniões` para baixo, as listas cruas por fonte, agrupadas por
+  repositório ou projeto — é isso que faz da nota do dia o registro durável do
+  seu período e o lugar de conferir de onde veio cada item;
+- os wikilinks de `## Reuniões` abrem as notas de reunião.
 
-## Passo 6 — Falar, marcar, e conferir na daily seguinte
+## Passo 6 — Falar, editar, e conferir na daily seguinte
 
-Depois de falar, abra `notas/daily.md` no Obsidian e marque o ponto:
-`- [x] quero puxar a conversa sobre a retenção de 180 dias`.
+Depois de falar, edite `daily/atual.md` à vontade no Obsidian: reescreva um
+item do Whis com as suas palavras, apague o que não vale, tire da seção `Falar`
+o que já falou. Deixe **um item aberto** em `O que estou fazendo` — com
+sub-itens, se quiser, e um espaço no fim da linha para a prova ficar visível.
 
 No dia seguinte, um minuto antes da próxima daily:
 
@@ -232,15 +268,22 @@ python -m whis daily
 
 **Sucesso, e este é o critério que fecha o smoke:**
 
-- `Meus pontos` **não** traz mais o ponto marcado — e a seção some inteira se
-  não sobrou nenhum desmarcado;
+- o item que continuou aberto está em `O que estou fazendo` **byte a byte**
+  igual ao que você deixou — mesmas palavras, mesmos sub-itens, mesmo espaço no
+  fim;
+- se algo que você tinha em aberto foi mergeado ou foi para Done, a linha
+  **inteira** subiu para `O que eu fiz` como você a escreveu; se o Whis errou
+  a mão, mova de volta — ele não repete o movimento;
+- `O que eu fiz` de ontem não está mais em `atual.md`: está na nota de hoje,
+  em `## O que eu fiz na daily anterior`, literal;
+- `Dúvidas` e `Falar` continuam como você deixou;
 - a linha `Cobre de ...` começa exatamente onde a daily de ontem terminou (o
   `ate` do frontmatter dela): nada do fim do dia anterior ficou no vão;
-- `daily/` tem uma nota por dia, e a de ontem não foi tocada.
+- `daily/` tem uma nota datada por dia, e a de ontem não foi tocada.
 
-**Falha:** se o ponto marcado reaparecer, confira se a linha ficou
-`- [x]` com o `x` minúsculo dentro dos colchetes e a seção sob um título que
-o agente reconhece (`## Pontos`, `## Dúvidas`, `## Off-topic`).
+**Falha:** se um item seu apareceu com outras palavras, ou uma das seções suas
+mudou sem você mexer, isto é o bug que a entrega existe para não ter — abra
+`bandeja.log`, copie a resposta do Claude registrada ali e abra uma issue.
 
 ## Se a daily não nasceu e você não viu o terminal
 

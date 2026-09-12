@@ -24,12 +24,14 @@ from .busca import Citacao, Resposta
 from .conversa import Turno
 from .ferramentas import Ferramentas
 from .fontes import Evento, Janela
+from .nota_viva import NotaViva, id_do_item
 from .portas import (
     EU,
     OUTROS,
     CanaisDaGravacao,
     Daily,
     Fala,
+    ItemNovo,
     Resumo,
     ResumoDoDia,
     Transcricao,
@@ -114,15 +116,29 @@ RESUMO_DO_DIA_PADRAO = ResumoDoDia(
     temas=("fontes passivas", "checkout"),
 )
 
-#: Roteiro de daily de exemplo, na estrutura que a nota da daily espera.
+#: O item aberto de exemplo: entra em *O que estou fazendo* na primeira
+#: execução e é movido para *O que eu fiz* na seguinte.
+ITEM_ABERTO_DE_EXEMPLO = "Sigo no coletor de git, que ficou pela metade."
+
+#: Resposta de daily de exemplo: acrescenta em cada lista e pede um movimento.
+#:
+#: O id em `mover` é o que `NotaViva` dará ao item aberto assim que ele
+#: existir. Na primeira execução ele ainda não está na nota e o pedido é
+#: ignorado com log; na segunda, o item está lá e sobe. Nenhum texto entra
+#: duas vezes: a costura reconhece o que já está na nota.
 DAILY_PADRAO = Daily(
-    entreguei=(
-        "Fechei a camada 01 do diário.",
-        "Corrigi o cálculo de frete do checkout e subi para produção.",
+    fiz=(
+        ItemNovo("Fechei a camada 01 do diário."),
+        ItemNovo("FN-123, o cálculo de frete do checkout: corrigido e em produção."),
     ),
-    sigo_em=("Sigo no coletor de git, que ficou pela metade.",),
-    preciso_de=("Preciso do review da Ana na FN-123 para fechar.",),
-    duvidas=("Vale mesmo gerar o diário às 19:00 com a máquina ligada?",),
+    fazendo=(
+        ItemNovo(ITEM_ABERTO_DE_EXEMPLO),
+        ItemNovo(
+            "FN-130, o diário automático: combinado gerar às 19:00 com a máquina ligada.",
+            sob=ITEM_ABERTO_DE_EXEMPLO,
+        ),
+    ),
+    mover=(id_do_item(ITEM_ABERTO_DE_EXEMPLO),),
 )
 
 
@@ -271,11 +287,11 @@ class ResumoDoDiaFake:
 
 
 class DailyFake:
-    """Porta de daily que devolve sempre o mesmo roteiro em português.
+    """Porta de daily que devolve sempre a mesma resposta.
 
     Guarda o que recebeu pelo mesmo motivo que `ResumoDoDiaFake`: é assim que o
     teste do filtro de exclusão prova que o conteúdo excluído nunca chegou
-    perto de sair da máquina.
+    perto de sair da máquina — e que a nota viva chegou inteira ao modelo.
     """
 
     def __init__(
@@ -285,12 +301,14 @@ class DailyFake:
         self._erro = erro
         self.eventos_recebidos: tuple[Evento, ...] = ()
         self.reunioes_recebidas: tuple[str, ...] = ()
+        self.nota_recebida: NotaViva | None = None
 
     def resumir_daily(
-        self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...]
+        self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...], nota: NotaViva
     ) -> Daily:
         self.eventos_recebidos = tuple(eventos)
         self.reunioes_recebidas = tuple(reunioes)
+        self.nota_recebida = nota
         if self._erro is not None:
             raise self._erro
         return self._roteiro

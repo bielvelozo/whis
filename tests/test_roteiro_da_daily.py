@@ -1,9 +1,9 @@
-"""O adaptador do roteiro da daily: da pergunta montada até `Daily`.
+"""O adaptador da daily: da pergunta montada até `Daily`.
 
 Os testes daqui não tocam a rede — `_conversar` é substituído, como no irmão
-`test_resumo_dia_claude.py`. O que se exercita é o que a camada 07 exige do
-adaptador: a janela que sai, o prompt que separa o trabalho dele do contexto do
-time, e a tradução da resposta que volta.
+`test_resumo_dia_claude.py`. O que se exercita é o que a nota viva exige do
+adaptador: a janela e a nota que saem, o prompt que separa o trabalho dele do
+contexto do time e manda não repetir, e a tradução da resposta que volta.
 """
 
 from __future__ import annotations
@@ -16,7 +16,8 @@ from pathlib import Path
 import pytest
 
 from whis.fontes import Evento
-from whis.portas import Daily, ErroDeDaily, PortaDaily
+from whis.nota_viva import SECAO_FAZENDO, NotaViva
+from whis.portas import Daily, ErroDeDaily, ItemNovo, PortaDaily
 from whis.resumo_dia_claude import (
     PROMPT_DA_DAILY,
     VARIAVEIS_DE_API_PAGA,
@@ -26,6 +27,14 @@ from whis.resumo_dia_claude import (
 )
 
 SEXTA = date(2026, 9, 4)
+
+NOTA = NotaViva.de_texto(
+    "---\ntipo: daily-atual\n---\n\n"
+    "## O que eu fiz\n\n- fechei a FN-1610\n\n"
+    "## O que estou fazendo\n\n1. Correções que o Ribeiro apontou\n\t1. FN-1786, a foto extra \n\n"
+    "## Dúvidas\n\n- o link coringa muda para todo mundo?\n\n"
+    "## Falar\n\n- avisar da folga de sexta\n"
+)
 
 
 def _momento(dia: date, hora: int, minuto: int = 0) -> datetime:
@@ -63,10 +72,12 @@ REUNIOES = ("reunioes/2026-09-04-1430-planejamento.md",)
 
 RESPOSTA_COMPLETA = json.dumps(
     {
-        "entreguei": ["Subi a validação do link coringa e fechei a FN-1610."],
-        "sigo_em": ["Sigo nas FN-1617, FN-1618 e FN-1619, que ficaram em In Progress."],
-        "preciso_de": ["Os PRs #1623 e #1628 estão aguardando merge."],
-        "duvidas": ["O link coringa muda para todo mundo ou só para novos pedidos?"],
+        "fiz": [{"texto": "FN-1773, o aviso amarelo do envio virou toast", "sob": "a1b2c3"}],
+        "fazendo": [
+            {"texto": "Correções que o Lucas pediu no flow de pix", "sob": None},
+            {"texto": "FN-1790, o pix pendente não expira", "sob": "Correções que o Lucas pediu no flow de pix"},
+        ],
+        "mover": ["d4e5f6"],
     },
     ensure_ascii=False,
 )
@@ -126,6 +137,28 @@ def test_periodo_sem_evento_ou_sem_reuniao_diz_que_nao_houve():
     assert "nenhuma reunião gravada" in montar_pergunta_da_daily(EVENTOS, ())
 
 
+def test_pergunta_leva_a_nota_viva_com_um_id_por_item_do_agente():
+    pergunta = montar_pergunta_da_daily(EVENTOS, REUNIOES, nota=NOTA)
+
+    grupo, foto = NOTA.itens(SECAO_FAZENDO)
+    assert f"1. Correções que o Ribeiro apontou (id {grupo.id})" in pergunta
+    assert f"\t1. FN-1786, a foto extra (id {foto.id})" in pergunta
+    assert "- fechei a FN-1610 (id " in pergunta
+    assert pergunta.index("## O que eu fiz") < pergunta.index("Tudo que aconteceu desde a última daily")
+
+
+def test_pergunta_leva_duvidas_e_falar_como_contexto_sem_id():
+    pergunta = montar_pergunta_da_daily(EVENTOS, REUNIOES, nota=NOTA)
+
+    assert "## Dúvidas\n\n- o link coringa muda para todo mundo?\n" in pergunta
+    assert "## Falar\n\n- avisar da folga de sexta\n" in pergunta
+    assert "para você não repetir o que ele já anotou" in pergunta
+
+
+def test_sem_nota_a_pergunta_nao_fala_dela():
+    assert "A nota viva como está agora" not in montar_pergunta_da_daily(EVENTOS, REUNIOES)
+
+
 # --- o prompt ----------------------------------------------------------------
 
 
@@ -133,17 +166,36 @@ def test_prompt_separa_o_trabalho_dele_do_contexto_do_time():
     """A regra que mais importa: o git é dele, o Linear é do time inteiro."""
     assert "a fonte já filtra por autor" in PROMPT_DA_DAILY
     assert "time INTEIRO" in PROMPT_DA_DAILY
-    assert '"entreguei" e "sigo_em" são só o trabalho DELE' in PROMPT_DA_DAILY
+    assert '"fiz" e "fazendo" são só o trabalho DELE' in PROMPT_DA_DAILY
 
 
-def test_prompt_restringe_preciso_de_ao_que_espera_outra_pessoa():
-    assert "SÓ o que depende de OUTRA PESSOA" in PROMPT_DA_DAILY
-    # O exemplo era "os PRs #1623 e #1628 estão aguardando merge... porque quem
-    # faz o merge é outra pessoa". A camada 08 o trocou: no time deste usuário o
-    # merge é dele, e o exemplo empurrava o modelo a inventar um bloqueio.
-    assert "esperando o review da Ana" in PROMPT_DA_DAILY
-    assert "estado expirado" in PROMPT_DA_DAILY
-    assert "dependem só dele" in PROMPT_DA_DAILY
+def test_prompt_manda_acrescentar_e_apontar_sem_reescrever():
+    assert "Nunca reescrever" in PROMPT_DA_DAILY
+    assert "nunca repetir o que já está na nota" in PROMPT_DA_DAILY
+    assert "Você nunca devolve o texto de um item que já existe" in PROMPT_DA_DAILY
+    assert "(id a1b2c3)" in PROMPT_DA_DAILY
+
+
+def test_prompt_manda_mover_so_com_sinal_forte():
+    assert "PR mergeada, issue movida para Done" in PROMPT_DA_DAILY
+    assert 'Na dúvida, deixe em "O que estou fazendo"' in PROMPT_DA_DAILY
+
+
+def test_prompt_segue_a_regua_das_dailies_a_mao():
+    assert "Agrupe por quem pediu" in PROMPT_DA_DAILY
+    assert "Ancore no sintoma, não no commit" in PROMPT_DA_DAILY
+    assert "Carregue o id da issue inline" in PROMPT_DA_DAILY
+    assert "roteiro seco, sem personalidade" in PROMPT_DA_DAILY
+
+
+def test_prompt_diz_que_duvidas_e_falar_sao_do_usuario():
+    assert '"Dúvidas" e "Falar" são do usuário' in PROMPT_DA_DAILY
+    assert "você nunca escreve nelas" in PROMPT_DA_DAILY
+
+
+def test_prompt_poe_o_que_espera_outra_pessoa_dentro_do_item():
+    assert 'diga isso dentro do item de "fazendo", nomeando de quem depende' in PROMPT_DA_DAILY
+    assert "NÃO deduza de quem é uma etapa pelo nome do estado" in PROMPT_DA_DAILY
 
 
 def test_prompt_pede_roteiro_falado_e_nao_narrativa():
@@ -161,7 +213,7 @@ def test_prompt_pede_json_em_portugues_preservando_termos_em_ingles():
     assert "português do Brasil" in PROMPT_DA_DAILY
     assert "JSON" in PROMPT_DA_DAILY
     assert "Nunca os traduza" in PROMPT_DA_DAILY
-    for campo in ("entreguei", "sigo_em", "preciso_de", "duvidas"):
+    for campo in ('"fiz"', '"fazendo"', '"mover"', '"sob"'):
         assert campo in PROMPT_DA_DAILY
 
 
@@ -176,36 +228,44 @@ def test_prompt_proibe_inventar_e_aceita_lista_vazia():
 def test_resposta_json_vira_daily():
     roteiro = interpretar_daily(RESPOSTA_COMPLETA)
 
-    assert roteiro.entreguei == ("Subi a validação do link coringa e fechei a FN-1610.",)
-    assert roteiro.sigo_em[0].startswith("Sigo nas FN-1617")
-    assert roteiro.preciso_de == ("Os PRs #1623 e #1628 estão aguardando merge.",)
-    assert roteiro.duvidas[0].startswith("O link coringa muda")
+    assert roteiro.fiz == (ItemNovo("FN-1773, o aviso amarelo do envio virou toast", sob="a1b2c3"),)
+    assert roteiro.fazendo == (
+        ItemNovo("Correções que o Lucas pediu no flow de pix"),
+        ItemNovo("FN-1790, o pix pendente não expira", sob="Correções que o Lucas pediu no flow de pix"),
+    )
+    assert roteiro.mover == ("d4e5f6",)
 
 
 def test_json_dentro_de_cerca_de_codigo_e_aceito():
     roteiro = interpretar_daily(f"```json\n{RESPOSTA_COMPLETA}\n```")
 
-    assert roteiro.entreguei
+    assert roteiro.fiz
 
 
-def test_batidas_ausentes_viram_vazio():
-    roteiro = interpretar_daily('{"entreguei": ["fechei a camada 07"]}')
+def test_listas_ausentes_viram_vazio():
+    roteiro = interpretar_daily('{"fiz": [{"texto": "fechei a camada 07"}]}')
 
-    assert roteiro.entreguei == ("fechei a camada 07",)
-    assert roteiro.sigo_em == () and roteiro.preciso_de == () and roteiro.duvidas == ()
+    assert roteiro.fiz == (ItemNovo("fechei a camada 07"),)
+    assert roteiro.fazendo == () and roteiro.mover == ()
 
 
-def test_preciso_de_vazio_e_uma_resposta_valida():
-    """Dizer que não está bloqueado é melhor do que inventar um bloqueio."""
-    roteiro = interpretar_daily('{"entreguei": ["subi o deploy"], "preciso_de": []}')
+def test_item_como_string_solta_vale_como_item_sem_pai():
+    roteiro = interpretar_daily('{"fiz": ["fechei a camada 07"]}')
 
-    assert roteiro.preciso_de == ()
+    assert roteiro.fiz == (ItemNovo("fechei a camada 07"),)
+
+
+def test_tres_listas_vazias_sao_uma_resposta_valida():
+    """Numa segunda execução do dia, "a nota já diz tudo" é a resposta certa."""
+    roteiro = interpretar_daily('{"fiz": [], "fazendo": [], "mover": []}')
+
+    assert roteiro == Daily()
 
 
 def test_itens_em_branco_sao_descartados():
-    roteiro = interpretar_daily('{"entreguei": ["  ", "Subi o deploy.", ""]}')
+    roteiro = interpretar_daily('{"fiz": [{"texto": "  "}, "Subi o deploy.", ""]}')
 
-    assert roteiro.entreguei == ("Subi o deploy.",)
+    assert roteiro.fiz == (ItemNovo("Subi o deploy."),)
 
 
 def test_resposta_sem_json_levanta_erro_de_daily():
@@ -215,21 +275,16 @@ def test_resposta_sem_json_levanta_erro_de_daily():
     assert "não devolveu um objeto JSON" in str(erro.value)
 
 
-def test_json_sem_nenhuma_batida_levanta_erro_de_daily():
+def test_json_sem_nenhuma_das_listas_levanta_erro_de_daily():
     with pytest.raises(ErroDeDaily) as erro:
         interpretar_daily('{"resumo": "foi um bom período"}')
 
-    assert "sem 'entreguei'" in str(erro.value)
+    assert "sem 'fiz'" in str(erro.value)
 
 
-def test_roteiro_inteiramente_vazio_e_tratado_como_falha():
-    """Quatro rótulos sem nada embaixo não são um roteiro para falar em voz alta."""
-    with pytest.raises(ErroDeDaily) as erro:
-        interpretar_daily(
-            '{"entreguei": [], "sigo_em": [], "preciso_de": [], "duvidas": []}'
-        )
-
-    assert "inteiramente vazio" in str(erro.value)
+def test_json_vazio_levanta_erro_de_daily():
+    with pytest.raises(ErroDeDaily):
+        interpretar_daily("{}")
 
 
 def test_resposta_crua_fica_no_log_para_diagnostico(caplog: pytest.LogCaptureFixture):
@@ -243,15 +298,16 @@ def test_resposta_crua_fica_no_log_para_diagnostico(caplog: pytest.LogCaptureFix
 # --- o adaptador inteiro -----------------------------------------------------
 
 
-def test_resumir_daily_devolve_o_roteiro_traduzido():
+def test_resumir_daily_devolve_a_resposta_traduzida():
     adaptador = ClaudeDeMentira(RESPOSTA_COMPLETA)
 
-    roteiro = adaptador.resumir_daily(EVENTOS, REUNIOES)
+    roteiro = adaptador.resumir_daily(EVENTOS, REUNIOES, NOTA)
 
     assert isinstance(roteiro, Daily)
-    assert roteiro.preciso_de
+    assert roteiro.mover == ("d4e5f6",)
     assert "Fecha a validacao do link coringa" in adaptador.perguntas[0]
     assert "planejamento" in adaptador.perguntas[0]
+    assert "Correções que o Ribeiro apontou (id " in adaptador.perguntas[0]
 
 
 def test_a_daily_usa_o_prompt_da_daily_e_nao_o_do_diario():
@@ -325,7 +381,7 @@ def test_roteiro_real_separa_o_trabalho_dele_do_contexto_do_time():
     """Fala com o Claude de verdade, pela conta do usuário. Não roda por padrão.
 
     É o único jeito de saber se o prompt segura a regra que mais importa: o
-    commit do git é dele, e a issue que outra pessoa moveu não vira "entreguei".
+    commit do git é dele, e a issue que outra pessoa moveu não vira item de "fiz".
     """
     da_outra_pessoa = Evento(
         fonte="linear",
@@ -336,11 +392,9 @@ def test_roteiro_real_separa_o_trabalho_dele_do_contexto_do_time():
     )
 
     roteiro = ResumoDoDiaClaude(timeout_s=180.0).resumir_daily(
-        (*EVENTOS, da_outra_pessoa), REUNIOES
+        (*EVENTOS, da_outra_pessoa), REUNIOES, NotaViva.do_modelo()
     )
 
-    assert roteiro.entreguei or roteiro.sigo_em, "o roteiro veio sem trabalho nenhum"
-    falado = " ".join((*roteiro.entreguei, *roteiro.sigo_em)).casefold()
-    assert "fn-1702" not in falado, (
-        f"o trabalho da Ana entrou como se fosse dele: {roteiro.entreguei}"
-    )
+    assert roteiro.fiz or roteiro.fazendo, "a resposta veio sem trabalho nenhum"
+    falado = " ".join(item.texto for item in (*roteiro.fiz, *roteiro.fazendo)).casefold()
+    assert "fn-1702" not in falado, f"o trabalho da Ana entrou como se fosse dele: {roteiro.fiz}"

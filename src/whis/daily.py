@@ -1,17 +1,21 @@
-"""A costura da daily: `gerar_daily(agora) → nota em daily/`.
+"""A costura da daily: `gerar_daily(agora) → nota viva mantida + nota em daily/`.
 
 A janela não é um dia civil: vai do fim da última daily até agora. Numa
 segunda-feira ela cobre o fim de semana inteiro, e é isso que impede que o
 trabalho de sábado caia no vão entre duas falas. A âncora mora no frontmatter
-da nota anterior — o vault é a fonte da verdade, e o usuário audita a janela
-lendo o próprio arquivo.
+da nota datada anterior — o vault é a fonte da verdade, e o usuário audita a
+janela lendo o próprio arquivo.
+
+O que se lê antes da reunião é a **nota viva** `daily/atual.md`: o modelo
+recebe a janela e a nota como está, e devolve só o que é novo e o que
+terminou; quem acrescenta e move é `NotaViva`, copiando cada linha do usuário
+byte a byte. A nota datada `daily/YYYY-MM-DD.md` nasce ao lado, com a janela,
+o que mudou nesta execução, o bloco de *O que eu fiz* arquivado ao abrir a
+janela e as listas cruas — o registro durável e de conferência.
 
 A daily **não deriva do diário**: os dois recortes são diferentes e um não se
 reconstrói do outro depois de resumido. O que as duas costuras compartilham é a
 leitura das fontes, em `coleta.py`.
-
-Como a nota carrega também as listas cruas, ela é o registro durável do vault —
-o arquivo que o usuário efetivamente lê.
 """
 
 from __future__ import annotations
@@ -26,6 +30,7 @@ from . import vault as _vault
 from .coleta import FalhaDeFonte, coletar
 from .configuracao import Configuracao
 from .fontes import Evento, Janela, PortaFonte
+from .nota_viva import SECAO_FIZ, Mudancas, NotaViva
 from .portas import Daily, ErroDeDaily, PortaDaily
 
 _log = logging.getLogger("whis.daily")
@@ -60,7 +65,12 @@ class ResultadoDaDaily:
     fontes_com_falha: tuple[FalhaDeFonte, ...]
     reunioes: tuple[str, ...]
     roteiro: Daily | None
-    pontos: _vault.PontosDaDaily
+    #: `daily/atual.md`, quando ela existe ao fim da execução.
+    nota_viva: Path | None
+    #: As quatro seções da nota viva como ficaram — o que se lê em voz alta.
+    secoes: tuple[tuple[str, tuple[str, ...]], ...]
+    #: O que esta execução acrescentou e moveu; `None` se a nota viva não foi tocada.
+    mudancas: Mudancas | None
     #: Eventos que ficam só no vault: casaram com `[daily].referencias_pessoais`.
     calados: tuple[Evento, ...] = ()
     vazio: bool = False
@@ -138,11 +148,12 @@ def gerar_daily(
     roteiro: PortaDaily,
     simular: bool = False,
 ) -> ResultadoDaDaily:
-    """Lê a janela desde a última daily e escreve `daily/YYYY-MM-DD.md`.
+    """Lê a janela desde a última daily, mantém `daily/atual.md` e escreve a nota do dia.
 
     Rodar de novo no mesmo dia mantém o `desde`, estende o `ate` até agora e
-    reescreve a nota daquele dia. Nada cai no vão: o que acontecer depois da
-    geração entra na daily de amanhã.
+    reescreve a nota daquele dia; a nota viva só ganha o que ainda não estava
+    nela. Nada cai no vão: o que acontecer depois da geração entra na daily de
+    amanhã.
 
     `simular=True` coleta e filtra, mas não chama o Claude nem escreve nada.
     """
@@ -155,7 +166,6 @@ def gerar_daily(
     )
 
     colhido = coletar(fontes, janela.como_janela(), configuracao=configuracao)
-    pontos = _vault.pontos_da_daily(configuracao.vault)
 
     # O corte trabalho/pessoal acontece antes da simulação de propósito: é pelo
     # `--simular` que o usuário confere a configuração sem pagar uma chamada.
@@ -169,6 +179,7 @@ def gerar_daily(
             len(calados),
         )
 
+    nota_viva = _vault.ler_nota_viva(configuracao.vault)
     parcial = ResultadoDaDaily(
         janela=janela,
         nota=None,
@@ -178,13 +189,13 @@ def gerar_daily(
         fontes_com_falha=colhido.fontes_com_falha,
         reunioes=colhido.reunioes,
         roteiro=None,
-        pontos=pontos,
+        nota_viva=None,
+        secoes=nota_viva.secoes(),
+        mudancas=None,
         calados=calados,
     )
 
-    # Um ponto escrito à mão é motivo suficiente para a daily existir: ele é a
-    # única coisa que não se recupera de lugar nenhum depois.
-    if colhido.vazia() and not pontos.tem_algo():
+    if colhido.vazia():
         _log.info("Nada desde a última daily — nenhuma nota foi escrita.")
         return replace(parcial, vazio=True)
 
@@ -193,21 +204,48 @@ def gerar_daily(
         return replace(parcial, simulado=True)
 
     # Só o que é do trabalho é FALADO; `montar_daily` abaixo recebe todos os
-    # eventos, porque a daily é o registro durável do vault e a memória é do
-    # usuário — o time só ouve o roteiro.
+    # eventos, porque a nota datada é o registro durável do vault e a memória
+    # é do usuário — o time só ouve o que está na nota viva.
     if not para_falar and not colhido.reunioes:
-        # Um fim de semana inteiro de projeto pessoal é isto: pedir um roteiro
-        # sobre nada gastaria a assinatura para receber quatro listas vazias, que
-        # o adaptador trata como falha. A nota nasce dizendo a verdade.
+        # Um fim de semana inteiro de projeto pessoal é isto: pedir ao modelo
+        # sobre nada gastaria a assinatura para receber três listas vazias. A
+        # nota viva é mantida mesmo assim — a janela abriu, e *O que eu fiz*
+        # da janela anterior precisa ser arquivado.
         _log.info("Nada do trabalho no período — o Claude não foi chamado.")
         falado, falha = None, (
             "não houve nada do trabalho neste período — só o que está em "
             "[daily].referencias_pessoais, que fica fora do roteiro."
         )
+        resposta: Daily | None = Daily()
     else:
-        falado, falha = _montar_roteiro(roteiro, para_falar, colhido.reunioes)
+        falado, falha = _montar_roteiro(roteiro, para_falar, colhido.reunioes, nota_viva)
+        resposta = falado
 
     raiz = _vault.preparar(configuracao.vault)
+    arquivado = _vault.arquivo_da_nota_viva(raiz, janela.data)
+    mudancas: Mudancas | None = None
+    caminho_da_nota_viva: Path | None = None
+    if resposta is not None:
+        if arquivado is None:
+            arquivado = nota_viva.arquivar_fiz()
+            _log.info(
+                "Janela nova: %d linha(s) de '%s' arquivadas na nota de hoje.",
+                len(arquivado),
+                SECAO_FIZ,
+            )
+        mudancas = nota_viva.aplicar(resposta)
+        caminho_da_nota_viva = _vault.escrever_nota_viva(raiz, nota_viva)
+        _log.info(
+            "Nota viva mantida: %d bloco(s) acrescentado(s), %d movido(s), "
+            "%d referência(s) ignorada(s), %d repetido(s).",
+            len(mudancas.acrescentadas),
+            len(mudancas.movidas),
+            len(mudancas.ignorados),
+            len(mudancas.repetidos),
+        )
+    elif (raiz / _vault.CAMINHO_DA_NOTA_VIVA).is_file():
+        caminho_da_nota_viva = raiz / _vault.CAMINHO_DA_NOTA_VIVA
+
     caminho = _vault.caminho_da_daily(janela.data)
     nota = _vault.escrever(
         raiz,
@@ -218,27 +256,39 @@ def gerar_daily(
             reunioes=colhido.reunioes,
             fontes_lidas=colhido.fontes_lidas,
             fontes_com_falha=colhido.fontes_com_falha,
-            roteiro=falado,
-            pontos=pontos,
+            mudancas=mudancas,
+            arquivado=arquivado,
             falha_do_roteiro=falha,
         ),
         zonas=_vault.ZONAS_DA_DAILY,
     )
     _log.info("Daily disponível no vault: %s", caminho)
 
-    return replace(parcial, nota=nota, roteiro=falado, falha_do_roteiro=falha)
+    return replace(
+        parcial,
+        nota=nota,
+        roteiro=falado,
+        nota_viva=caminho_da_nota_viva,
+        secoes=nota_viva.secoes(),
+        mudancas=mudancas,
+        falha_do_roteiro=falha,
+    )
 
 
 def _montar_roteiro(
-    roteiro: PortaDaily, eventos: tuple[Evento, ...], reunioes: tuple[str, ...]
+    roteiro: PortaDaily,
+    eventos: tuple[Evento, ...],
+    reunioes: tuple[str, ...],
+    nota_viva: NotaViva,
 ) -> tuple[Daily | None, str | None]:
-    """Pede o roteiro ao Claude; uma falha dele não custa a daily.
+    """Pede ao Claude o que muda na nota viva; uma falha dele não custa a daily.
 
-    As listas cruas e os pontos do usuário não existem em nenhum outro lugar —
-    perder a nota inteira por causa do Claude seria perder o período.
+    As listas cruas não existem em nenhum outro lugar — perder a nota datada
+    por causa do Claude seria perder o período. A nota viva, essa fica como
+    estava.
     """
     try:
-        return roteiro.resumir_daily(eventos, reunioes), None
+        return roteiro.resumir_daily(eventos, reunioes, nota_viva), None
     except ErroDeDaily as erro:
         _log.error("A daily ficou sem roteiro: %s", erro)
         return None, str(erro)

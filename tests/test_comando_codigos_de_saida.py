@@ -43,7 +43,8 @@ def _log_de(configuracao) -> str:
 
 
 def _unica_nota(vault: Path, pasta: str) -> Path:
-    escritas = sorted((vault / pasta).glob("*.md"))
+    """A única nota datada da pasta — a nota viva `daily/atual.md` mora ao lado e não conta."""
+    escritas = sorted(nota for nota in (vault / pasta).glob("*.md") if nota.name != "atual.md")
     assert len(escritas) == 1, f"esperava uma nota em {pasta}/, achei {escritas}"
     return escritas[0]
 
@@ -145,7 +146,7 @@ def test_daily_sem_roteiro_nasce_com_as_listas_cruas_e_sai_parcial(
 
     nota = _unica_nota(caminho_do_vault, "daily")
     assert codigo == SAIDA_PARCIAL
-    assert "Esta daily não tem roteiro: o Claude não respondeu a tempo" in corpo(nota)
+    assert "A nota viva ficou como estava: o Claude não respondeu a tempo" in corpo(nota)
     assert "## Git" in corpo(nota) and "## Linear" in corpo(nota)
 
 

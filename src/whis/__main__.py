@@ -2,7 +2,7 @@ r"""Entrada de linha de comando do Whis.
 
 Nove subcomandos sobre a mesma configuração local e sobre as quatro costuras
 do projeto — `pipeline.processar` para a reunião, `diario.gerar_diario` para o
-dia civil, `daily.gerar_daily` para o roteiro falado, `pergunta.responder`
+dia civil, `daily.gerar_daily` para a nota viva da daily, `pergunta.responder`
 para a busca no vault::
 
     python -m whis init
@@ -479,11 +479,11 @@ def _relatar_diario(resultado: ResultadoDoDiario) -> None:
 
 
 def _comando_daily(args: argparse.Namespace) -> int:
-    """Lê da última daily até agora, escreve `daily/` e imprime o roteiro.
+    """Lê da última daily até agora, mantém `daily/atual.md` e imprime a nota viva.
 
-    O que sai no terminal é o que o usuário lê em voz alta um minuto depois; a
-    nota guarda o mesmo roteiro com as listas cruas embaixo. Nada é agendado:
-    quem decide a hora é ele.
+    O que sai no terminal são as quatro seções da nota viva como ficaram — o
+    que o usuário lê em voz alta um minuto depois; a nota datada guarda o que
+    mudou e as listas cruas. Nada é agendado: quem decide a hora é ele.
     """
     configuracao = _configuracao(args)
     if args.anotar is not None:
@@ -511,14 +511,14 @@ def _comando_daily(args: argparse.Namespace) -> int:
 
 
 def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
-    """Acrescenta um ponto em `notas/daily.md` e sai, sem coletar nada."""
+    """Acrescenta uma linha em *Falar* de `daily/atual.md` e sai, sem coletar nada."""
     if not texto.strip():
         _log.error("Nada a anotar: --anotar precisa de um texto.")
         return 1
     raiz = _vault.preparar(configuracao.vault)
     arquivo = _vault.anotar_ponto(raiz, texto)
     print(f"Anotado em {arquivo}")
-    print("Ele entra na próxima daily enquanto o checkbox estiver desmarcado.")
+    print(f"Está em '## {_vault.SECAO_FALAR}' da nota viva, e fica lá até você tirar.")
     return 0
 
 
@@ -532,11 +532,11 @@ def _relatar_daily(resultado: ResultadoDaDaily) -> None:
     print(_vault.cobertura_da_janela(resultado.janela))
     print()
 
-    for titulo, itens in _vault.secoes_do_roteiro(resultado.roteiro, resultado.pontos):
+    for titulo, linhas in resultado.secoes:
         print(f"{titulo}:")
-        for item in itens:
-            print(f"  - {item}")
-        if not itens:
+        for linha in linhas:
+            print(f"  {linha}")
+        if not linhas:
             print("  (nada)")
         print()
 
@@ -553,6 +553,8 @@ def _relatar_daily(resultado: ResultadoDaDaily) -> None:
         if not resultado.eventos:
             print("  (nenhum evento)")
     else:
+        if resultado.nota_viva is not None:
+            print(f"Nota viva: {resultado.nota_viva}")
         print(f"Nota: {resultado.nota}")
 
     for reuniao in resultado.reunioes:
@@ -567,7 +569,7 @@ def _relatar_daily(resultado: ResultadoDaDaily) -> None:
     for falha in resultado.fontes_com_falha:
         print(f"Fonte '{falha.fonte}' não entrou: {falha.motivo}")
     if resultado.falha_do_roteiro:
-        print(f"Sem roteiro nesta daily: {resultado.falha_do_roteiro}")
+        print(f"A nota viva não ganhou nada nesta daily: {resultado.falha_do_roteiro}")
 
 
 # -- perguntar --------------------------------------------------------------
@@ -973,7 +975,7 @@ def construir_parser() -> argparse.ArgumentParser:
 
     daily_cmd = subcomandos.add_parser(
         "daily",
-        help="monta o roteiro da daily desde a última fala e escreve em daily/",
+        help="mantém a nota viva da daily (daily/atual.md) desde a última fala e escreve a nota do dia",
         epilog=CODIGOS_DE_SAIDA,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -982,7 +984,7 @@ def construir_parser() -> argparse.ArgumentParser:
         "--anotar",
         metavar="TEXTO",
         default=None,
-        help="acrescenta um ponto em notas/daily.md e sai, sem coletar nada",
+        help="acrescenta uma linha em '## Falar' de daily/atual.md e sai, sem coletar nada",
     )
     daily_cmd.add_argument(
         "--fakes",

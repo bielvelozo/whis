@@ -1,4 +1,4 @@
-"""Comportamento da costura da daily: a janela desde a última fala vira nota.
+"""Comportamento da costura da daily: a janela desde a última fala mantém a nota viva.
 
 Nada aqui olha para dentro de `gerar_daily`: os testes leem o vault, como o
 usuário leria no Obsidian, e passam `agora` explicitamente — é o relógio que
@@ -8,6 +8,7 @@ fim de semana ser testável.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
@@ -18,9 +19,10 @@ from whis import vault as modulo_vault
 from whis.coleta import TodasAsFontesFalharam
 from whis.configuracao import Configuracao
 from whis.daily import gerar_daily
-from whis.fakes import DAILY_PADRAO, DailyFake, FonteFake
+from whis.fakes import DAILY_PADRAO, ITEM_ABERTO_DE_EXEMPLO, DailyFake, FonteFake
 from whis.fontes import ErroDeFonte, Evento
-from whis.portas import Daily, ErroDeDaily
+from whis.nota_viva import SECAO_DUVIDAS, SECAO_FALAR, SECAO_FAZENDO, SECAO_FIZ, NotaViva
+from whis.portas import Daily, ErroDeDaily, ItemNovo
 
 QUINTA = date(2026, 9, 3)
 SEXTA = date(2026, 9, 4)
@@ -79,12 +81,66 @@ def criar_nota_de_reuniao(vault: Path, basename: str) -> Path:
     return arquivo
 
 
-def escrever_pontos(vault: Path, conteudo: str) -> Path:
-    """O arquivo da zona do usuário, como ele o deixaria no Obsidian."""
+def nota_viva(vault: Path) -> Path:
+    return vault / "daily" / "atual.md"
+
+
+def escrever_nota_viva(vault: Path, conteudo: str) -> Path:
+    """A nota viva como o usuário a deixaria no Obsidian — bytes, sem tradução."""
     modulo_vault.preparar(vault)
-    arquivo = vault / "notas" / "daily.md"
-    arquivo.write_text(conteudo, encoding="utf-8")
+    arquivo = nota_viva(vault)
+    arquivo.write_bytes(conteudo.encode("utf-8"))
     return arquivo
+
+
+def hash_de(caminho: Path) -> str:
+    return hashlib.sha256(caminho.read_bytes()).hexdigest()
+
+
+def trecho(texto: str, titulo: str) -> str:
+    """O texto de uma seção, do título até o próximo `## `."""
+    inicio = texto.index(f"## {titulo}")
+    fim = texto.find("\n## ", inicio + 1)
+    return texto[inicio:] if fim == -1 else texto[inicio:fim]
+
+
+#: Uma nota viva no formato das dailies à mão: `1.` com sub-itens por tab, um
+#: item com espaço à direita, e as duas seções do usuário preenchidas.
+NOTA_DO_USUARIO = (
+    "---\n"
+    "tipo: daily-atual\n"
+    "---\n"
+    "\n"
+    "## O que eu fiz\n"
+    "\n"
+    "1. Planejei e ativei o pix transparente da AppMax no checkout\n"
+    "\n"
+    "## O que estou fazendo\n"
+    "\n"
+    "1. Estou fazendo mais correções dos achados do ribeiro\n"
+    "\t1. FN-1786: a foto extra do Porta Retrato não será cobrada de novo no hub.\n"
+    "\t2. Card \"A pagar agora\" e adicionais do porta-retrato (FN-1784)\n"
+    "\t\t1. Problema A, adicionais de outros itens \n"
+    "2. Testando no android  \n"
+    "\n"
+    "## Dúvidas\n"
+    "\n"
+    "- o pix pendente expira sozinho?\n"
+    "\n"
+    "## Falar\n"
+    "\n"
+    "- avisar que sexta eu saio mais cedo\n"
+)
+
+
+def id_na_nota(vault: Path, comeco: str) -> str:
+    nota = NotaViva.de_texto(nota_viva(vault).read_bytes().decode("utf-8"))
+    return next(item.id for item in nota.itens(SECAO_FAZENDO) if item.texto.startswith(comeco))
+
+
+def abrir_a_janela(gerar, dia: date) -> None:
+    """Uma geração de manhã, sem resposta, para a execução seguinte cair na mesma janela."""
+    gerar(agora=momento(dia, 8, 30), fontes=[FonteFake("git", (evento(dia, 8),))], roteiro=DailyFake(Daily()))
 
 
 # -- Caminho feliz ----------------------------------------------------------
@@ -95,6 +151,21 @@ def test_gerar_daily_escreve_a_nota_do_dia_no_vault(gerar, caminho_do_vault: Pat
 
     assert nota_da_daily(caminho_do_vault, SEXTA).is_file()
     assert resultado.nota == nota_da_daily(caminho_do_vault, SEXTA)
+
+
+def test_a_primeira_geracao_faz_a_nota_viva_nascer_do_modelo_com_os_itens_do_fake(
+    gerar, caminho_do_vault: Path
+):
+    resultado = gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
+
+    texto = nota_viva(caminho_do_vault).read_text(encoding="utf-8")
+    assert resultado.nota_viva == nota_viva(caminho_do_vault)
+    assert texto.startswith("---\ntipo: daily-atual\n---\n")
+    for item in DAILY_PADRAO.fiz:
+        assert f"- {item.texto}" in trecho(texto, SECAO_FIZ)
+    assert f"- {ITEM_ABERTO_DE_EXEMPLO}\n\t- FN-130" in trecho(texto, SECAO_FAZENDO)
+    assert trecho(texto, SECAO_DUVIDAS) == "## Dúvidas\n"
+    assert trecho(texto, SECAO_FALAR) == "## Falar\n"
 
 
 def test_frontmatter_da_daily_tem_os_campos_do_contrato(gerar, caminho_do_vault: Path):
@@ -118,18 +189,16 @@ def test_frontmatter_da_daily_tem_os_campos_do_contrato(gerar, caminho_do_vault:
     assert campos["temas"] == ["whis", "Plataforma"]
 
 
-def test_o_roteiro_vem_da_porta_na_ordem_de_falar(gerar, caminho_do_vault: Path):
+def test_a_nota_datada_registra_o_que_mudou_na_nota_viva(gerar, caminho_do_vault: Path):
     gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
 
     texto = corpo(nota_da_daily(caminho_do_vault, SEXTA))
     assert "# Daily — 4 de setembro de 2026 (sexta-feira)" in texto
-    for batida in ("## Entreguei", "## Sigo em", "## Preciso de", "## Dúvidas"):
-        assert batida in texto
-    assert texto.index("## Entreguei") < texto.index("## Sigo em")
-    assert texto.index("## Sigo em") < texto.index("## Preciso de")
-    assert texto.index("## Preciso de") < texto.index("## Dúvidas")
-    for item in (*DAILY_PADRAO.entreguei, *DAILY_PADRAO.sigo_em, *DAILY_PADRAO.preciso_de):
-        assert item in texto
+    mudancas = trecho(texto, "Mudanças na nota viva")
+    assert "**Acrescentado:**" in mudancas
+    for item in (*DAILY_PADRAO.fiz, *DAILY_PADRAO.fazendo):
+        assert f"- {item.texto}" in mudancas
+    assert "## O que eu fiz\n" not in texto, "o roteiro vive na nota viva, não aqui"
 
 
 def test_as_listas_cruas_ficam_embaixo_do_roteiro(gerar, caminho_do_vault: Path):
@@ -161,7 +230,7 @@ def test_as_listas_cruas_ficam_embaixo_do_roteiro(gerar, caminho_do_vault: Path)
     assert "- 08:00 `a1b2c3d` Fecha a camada 07" in texto
     assert "- 08:30 [FN-123 Corrigir o frete](https://linear.app/exemplo/issue/FN-123)" in texto
     assert "  > Subiu em produção." in texto
-    assert texto.index("## Entreguei") < texto.index("## Git")
+    assert texto.index("## Mudanças na nota viva") < texto.index("## Git")
 
 
 def test_a_daily_linka_as_reunioes_da_janela(gerar, caminho_do_vault: Path):
@@ -260,7 +329,7 @@ def test_rodar_de_novo_no_mesmo_dia_mantem_o_desde_e_estende_o_ate(
     assert campos["desde"] == momento(QUINTA, 9, 0).isoformat()
     assert campos["ate"] == momento(SEXTA, 17, 30).isoformat()
     assert "commit da tarde" in corpo(nota_da_daily(caminho_do_vault, SEXTA))
-    assert len(list((caminho_do_vault / "daily").glob("*.md"))) == 2
+    assert len(list((caminho_do_vault / "daily").glob("2026-*.md"))) == 2
 
 
 def test_rodar_de_novo_mantem_o_desde_ate_na_primeira_daily_de_todas(
@@ -303,77 +372,152 @@ def test_daily_anterior_com_frontmatter_editado_a_mao_nao_quebra_a_janela(
     assert resultado.janela.desde == momento(SABADO, 9, 0) - timedelta(hours=24)
 
 
-# -- Os pontos do usuário ---------------------------------------------------
+# -- A nota viva: carregar sem reescrever -----------------------------------
 
 
-def test_item_desmarcado_entra_e_item_marcado_nao(gerar, caminho_do_vault: Path):
-    escrever_pontos(
-        caminho_do_vault,
-        "# Daily — meus pontos\n\n"
-        "## Dúvidas\n- [ ] o link coringa muda para todo mundo?\n"
-        "- [x] duvida ja falada\n\n"
-        "## Off-topic\n- [ ] staging caiu duas vezes ontem\n\n"
-        "## Pontos\n- [ ] quero puxar a retenção de 180 dias\n- [x] ponto ja falado\n",
+def test_item_aberto_que_continua_aberto_sai_byte_a_byte_igual(gerar, caminho_do_vault: Path):
+    """O conserto do motivo pelo qual o usuário parou de usar: as palavras são dele."""
+    escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+    roteiro = DailyFake(Daily(fazendo=(ItemNovo("Revisar o flow de pix pendente que o Lucas pediu"),)))
+
+    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))], roteiro=roteiro)
+
+    texto = nota_viva(caminho_do_vault).read_bytes().decode("utf-8")
+    assert trecho(texto, SECAO_FAZENDO) == (
+        trecho(NOTA_DO_USUARIO, SECAO_FAZENDO).rstrip("\n")
+        + "\n- Revisar o flow de pix pendente que o Lucas pediu\n"
     )
-
-    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
-
-    texto = corpo(nota_da_daily(caminho_do_vault, SEXTA))
-    assert "o link coringa muda para todo mundo?" in texto
-    assert "staging caiu duas vezes ontem" in texto
-    assert "quero puxar a retenção de 180 dias" in texto
-    assert "ja falada" not in texto and "ja falado" not in texto
+    assert "\t\t1. Problema A, adicionais de outros itens \n" in texto
+    assert "2. Testando no android  \n" in texto
 
 
-def test_as_duvidas_do_claude_e_as_do_usuario_ficam_na_mesma_secao(
+def test_item_movido_chega_em_fiz_byte_a_byte_com_a_subarvore_e_some_de_fazendo(
     gerar, caminho_do_vault: Path
 ):
-    escrever_pontos(
-        caminho_do_vault, "# Daily\n\n## Dúvidas\n- [ ] dúvida que eu escrevi\n"
+    abrir_a_janela(gerar, SEXTA)
+    escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+    roteiro = DailyFake(Daily(mover=(id_na_nota(caminho_do_vault, "Testando"),)))
+
+    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))], roteiro=roteiro)
+
+    texto = nota_viva(caminho_do_vault).read_bytes().decode("utf-8")
+    assert trecho(texto, SECAO_FIZ).endswith(
+        "1. Planejei e ativei o pix transparente da AppMax no checkout\n2. Testando no android  \n"
+    )
+    assert "Testando no android" not in trecho(texto, SECAO_FAZENDO)
+
+
+def test_item_aninhado_movido_leva_o_ancestral_como_cabecalho_literal(gerar, caminho_do_vault: Path):
+    abrir_a_janela(gerar, SEXTA)
+    escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+    roteiro = DailyFake(Daily(mover=(id_na_nota(caminho_do_vault, 'Card "A pagar'),)))
+
+    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))], roteiro=roteiro)
+
+    texto = nota_viva(caminho_do_vault).read_bytes().decode("utf-8")
+    assert trecho(texto, SECAO_FIZ).endswith(
+        "1. Estou fazendo mais correções dos achados do ribeiro\n"
+        "\t2. Card \"A pagar agora\" e adicionais do porta-retrato (FN-1784)\n"
+        "\t\t1. Problema A, adicionais de outros itens \n"
+    )
+    assert trecho(texto, SECAO_FAZENDO) == (
+        "## O que estou fazendo\n"
+        "\n"
+        "1. Estou fazendo mais correções dos achados do ribeiro\n"
+        "\t1. FN-1786: a foto extra do Porta Retrato não será cobrada de novo no hub.\n"
+        "2. Testando no android  \n"
     )
 
+
+@pytest.mark.parametrize(
+    "resposta",
+    [
+        DAILY_PADRAO,
+        Daily(fiz=(ItemNovo("item sob a dúvida", sob="ffffff"),)),
+        Daily(mover=("ffffff",)),
+    ],
+    ids=["resposta normal", "sob um id que não existe", "mover um id que não existe"],
+)
+def test_duvidas_e_falar_ficam_intactas_seja_qual_for_a_resposta(
+    gerar, caminho_do_vault: Path, resposta: Daily
+):
+    """As seções do usuário são fronteira: o agente lê, e nenhuma escrita as alcança."""
+    escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+    antes = {secao: trecho(NOTA_DO_USUARIO, secao) for secao in (SECAO_DUVIDAS, SECAO_FALAR)}
+
+    gerar(
+        agora=momento(SEXTA, 9, 5),
+        fontes=[FonteFake("git", (evento(SEXTA, 8),))],
+        roteiro=DailyFake(resposta),
+    )
+
+    texto = nota_viva(caminho_do_vault).read_bytes().decode("utf-8")
+    assert {secao: trecho(texto, secao) for secao in antes} == antes
+
+
+def test_o_modelo_recebe_a_nota_viva_com_os_ids_e_as_secoes_do_usuario(
+    gerar, caminho_do_vault: Path, roteiro: DailyFake
+):
+    escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+
     gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
+
+    assert roteiro.nota_recebida is not None
+    assert roteiro.nota_recebida.itens(SECAO_FAZENDO)
+    assert roteiro.nota_recebida.conteudo(SECAO_DUVIDAS) == ("- o pix pendente expira sozinho?",)
+    assert roteiro.nota_recebida.conteudo(SECAO_FALAR) == ("- avisar que sexta eu saio mais cedo",)
+
+
+def test_rodar_de_novo_na_mesma_janela_nao_duplica_nem_arquiva(gerar, caminho_do_vault: Path):
+    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
+    depois_da_primeira = nota_viva(caminho_do_vault).read_text(encoding="utf-8")
+
+    gerar(agora=momento(SEXTA, 17, 30), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
+
+    texto = nota_viva(caminho_do_vault).read_text(encoding="utf-8")
+    for item in DAILY_PADRAO.fiz:
+        assert texto.count(item.texto) == 1
+    assert texto.count(ITEM_ABERTO_DE_EXEMPLO) == 1
+    assert trecho(texto, SECAO_FIZ) != trecho(depois_da_primeira, SECAO_FIZ), "o fake pediu o movimento"
+    assert ITEM_ABERTO_DE_EXEMPLO in trecho(texto, SECAO_FIZ)
+    datada = corpo(nota_da_daily(caminho_do_vault, SEXTA))
+    assert "## O que eu fiz na daily anterior\n\n_(nada registrado)_\n\n---\n" in datada
+    assert datada.count("Daqui para baixo, tudo que a janela trouxe") == 1
+
+
+def test_janela_nova_arquiva_o_que_eu_fiz_na_nota_datada_e_recomeca(gerar, caminho_do_vault: Path):
+    """É o que as dailies à mão mostram: a de hoje não repete a de ontem."""
+    gerar(agora=momento(QUINTA, 9, 0), fontes=[FonteFake("git", (evento(QUINTA, 8),))])
+    escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+    roteiro = DailyFake(Daily(fiz=(ItemNovo("Corrigi o toast da reordenação"),)))
+
+    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))], roteiro=roteiro)
+
+    texto = nota_viva(caminho_do_vault).read_bytes().decode("utf-8")
+    assert trecho(texto, SECAO_FIZ) == "## O que eu fiz\n- Corrigi o toast da reordenação\n"
+    assert trecho(texto, SECAO_FAZENDO) == trecho(NOTA_DO_USUARIO, SECAO_FAZENDO)
+    assert (
+        "## O que eu fiz na daily anterior\n\n"
+        "1. Planejei e ativei o pix transparente da AppMax no checkout\n"
+    ) in corpo(nota_da_daily(caminho_do_vault, SEXTA))
+    assert "Planejei e ativei o pix" not in corpo(nota_da_daily(caminho_do_vault, QUINTA))
+
+
+def test_o_arquivo_sobrevive_a_segunda_execucao_do_dia(gerar, caminho_do_vault: Path):
+    gerar(agora=momento(QUINTA, 9, 0), fontes=[FonteFake("git", (evento(QUINTA, 8),))])
+    escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
+
+    gerar(agora=momento(SEXTA, 17, 30), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
 
     texto = corpo(nota_da_daily(caminho_do_vault, SEXTA))
-    depois_das_duvidas = texto.split("## Dúvidas", 1)[1]
-    assert "dúvida que eu escrevi" in depois_das_duvidas.split("##", 1)[0]
-    assert DAILY_PADRAO.duvidas[0] in depois_das_duvidas.split("##", 1)[0]
-
-
-def test_secao_manual_vazia_nao_aparece(gerar, caminho_do_vault: Path):
-    """O roteiro não pode ter buraco para o usuário pular em voz alta."""
-    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
-
-    texto = corpo(nota_da_daily(caminho_do_vault, SEXTA))
-    assert "## Meus pontos" not in texto
-    assert "## Off-topic" not in texto
-
-
-def test_so_um_ponto_do_usuario_ja_faz_a_daily_existir(gerar, caminho_do_vault: Path):
-    """O ponto escrito à mão não se recupera de lugar nenhum depois."""
-    escrever_pontos(caminho_do_vault, "# Daily\n\n## Pontos\n- [ ] falar da retenção\n")
-
-    resultado = gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", ())])
-
-    assert resultado.vazio is False
-    assert "falar da retenção" in corpo(nota_da_daily(caminho_do_vault, SEXTA))
-
-
-def test_arquivo_de_pontos_ausente_nao_e_erro(gerar, caminho_do_vault: Path):
-    resultado = gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
-
-    assert resultado.pontos.tem_algo() is False
-    assert nota_da_daily(caminho_do_vault, SEXTA).is_file()
-
-
-def test_gerar_a_daily_nunca_marca_nem_reescreve_os_pontos(gerar, caminho_do_vault: Path):
-    """Quem marca é o usuário, no Obsidian, depois de falar."""
-    original = "# Daily\n\n## Pontos\n- [ ] ponto por falar\n- [x] ponto ja falado\n"
-    arquivo = escrever_pontos(caminho_do_vault, original)
-
-    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
-
-    assert arquivo.read_text(encoding="utf-8") == original
+    assert texto.count("## O que eu fiz na daily anterior") == 1
+    assert texto.count("Daqui para baixo, tudo que a janela trouxe") == 1
+    assert (
+        "## O que eu fiz na daily anterior\n\n"
+        "1. Planejei e ativei o pix transparente da AppMax no checkout\n\n---\n"
+    ) in texto
+    assert "Planejei e ativei" not in nota_viva(caminho_do_vault).read_text(encoding="utf-8")
 
 
 # -- Degradação graciosa ----------------------------------------------------
@@ -418,10 +562,12 @@ def test_periodo_vazio_nao_vira_nota(gerar, caminho_do_vault: Path):
     assert not nota_da_daily(caminho_do_vault, SEXTA).exists()
 
 
-def test_roteiro_que_falha_ainda_deixa_as_listas_cruas_e_os_pontos(
+def test_resposta_ilegivel_deixa_a_nota_viva_intacta_e_a_datada_marcada(
     gerar, caminho_do_vault: Path
 ):
-    escrever_pontos(caminho_do_vault, "# Daily\n\n## Pontos\n- [ ] meu ponto sobrevive\n")
+    """Falhar no Claude não custa a nota: nem a viva, nem as listas cruas."""
+    arquivo = escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+    antes = hash_de(arquivo)
     roteiro = DailyFake(erro=ErroDeDaily("o Claude não respondeu a tempo"))
 
     resultado = gerar(
@@ -431,11 +577,44 @@ def test_roteiro_que_falha_ainda_deixa_as_listas_cruas_e_os_pontos(
     )
 
     texto = corpo(nota_da_daily(caminho_do_vault, SEXTA))
+    assert hash_de(arquivo) == antes
     assert "commit que precisa sobreviver" in texto
-    assert "meu ponto sobrevive" in texto
-    assert "o Claude não respondeu a tempo" in texto
-    assert "## Entreguei" not in texto and "## Preciso de" not in texto
-    assert resultado.roteiro is None
+    assert "> [!warning] A nota viva ficou como estava: o Claude não respondeu a tempo" in texto
+    assert "## Mudanças na nota viva" not in texto
+    assert "## O que eu fiz na daily anterior" not in texto
+    assert resultado.roteiro is None and resultado.mudancas is None
+    assert resultado.falha_do_roteiro == "o Claude não respondeu a tempo"
+
+
+def test_depois_de_uma_falha_a_reexecucao_arquiva_enfim(gerar, caminho_do_vault: Path):
+    """A janela abriu de verdade na primeira execução; a segunda não pode fingir que não."""
+    gerar(agora=momento(QUINTA, 9, 0), fontes=[FonteFake("git", (evento(QUINTA, 8),))])
+    escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+    gerar(
+        agora=momento(SEXTA, 9, 5),
+        fontes=[FonteFake("git", (evento(SEXTA, 8),))],
+        roteiro=DailyFake(erro=ErroDeDaily("o Claude não respondeu a tempo")),
+    )
+
+    gerar(agora=momento(SEXTA, 9, 20), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
+
+    texto = nota_viva(caminho_do_vault).read_text(encoding="utf-8")
+    assert "Planejei e ativei" not in trecho(texto, SECAO_FIZ)
+    assert "1. Planejei e ativei o pix transparente da AppMax no checkout" in corpo(
+        nota_da_daily(caminho_do_vault, SEXTA)
+    )
+
+
+def test_periodo_so_com_o_que_o_fake_ja_conhece_registra_nada_nas_mudancas(
+    gerar, caminho_do_vault: Path
+):
+    gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
+    gerar(agora=momento(SEXTA, 12, 0), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
+
+    resultado = gerar(agora=momento(SEXTA, 17, 30), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
+
+    assert resultado.mudancas is not None and resultado.mudancas.vazia()
+    assert "## Mudanças na nota viva\n\n_(nada)_" in corpo(nota_da_daily(caminho_do_vault, SEXTA))
 
 
 def test_simulacao_nao_escreve_nem_chama_o_claude(
@@ -488,15 +667,24 @@ def test_evento_excluido_nao_entra_no_vault_nem_chega_ao_claude(
 
 def test_a_daily_escreve_apenas_em_daily(gerar, caminho_do_vault: Path):
     modulo_vault.preparar(caminho_do_vault)
-    escrever_pontos(caminho_do_vault, "# Daily\n\n## Pontos\n- [ ] um ponto\n")
     criar_nota_de_reuniao(caminho_do_vault, "2026-09-04-0830-daily-do-time")
     antes = arquivos_do_vault(caminho_do_vault)
 
     gerar(agora=momento(SEXTA, 9, 5), fontes=[FonteFake("git", (evento(SEXTA, 8),))])
 
     novos = arquivos_do_vault(caminho_do_vault) - antes
-    assert novos, "o coletor de daily não escreveu nada"
-    assert all(arquivo.startswith("daily/") for arquivo in novos), sorted(novos)
+    assert novos == {"daily/atual.md", "daily/2026-09-04.md"}
+
+
+def test_a_nota_viva_so_alcanca_daily(caminho_do_vault: Path, monkeypatch: pytest.MonkeyPatch):
+    """Mesmo que alguém mude o caminho, a escrita da nota viva não sai de `daily/`."""
+    modulo_vault.preparar(caminho_do_vault)
+    monkeypatch.setattr(modulo_vault, "CAMINHO_DA_NOTA_VIVA", "notas/atual.md")
+
+    with pytest.raises(modulo_vault.ForaDaZonaDePropriedade):
+        modulo_vault.anotar_ponto(caminho_do_vault, "escrita indevida")
+
+    assert list((caminho_do_vault / "notas").iterdir()) == []
 
 
 def test_notas_reunioes_e_diario_permanecem_intactos(gerar, caminho_do_vault: Path):
@@ -568,15 +756,22 @@ def test_o_claude_recebe_as_reunioes_da_janela(
     assert roteiro.reunioes_recebidas == ("reunioes/2026-09-04-0830-daily-do-time.md",)
 
 
-def test_batida_vazia_do_claude_vira_nada_registrado(gerar, caminho_do_vault: Path):
-    """"Nada esperando ninguém" é uma daily boa de ouvir, e precisa ser dita."""
-    roteiro = DailyFake(Daily(entreguei=("fechei a camada 07",)))
+def test_o_resultado_traz_as_quatro_secoes_como_ficaram(gerar, caminho_do_vault: Path):
+    """É o que o terminal imprime: a nota viva depois da execução, na ordem de falar."""
+    abrir_a_janela(gerar, SEXTA)
+    escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
+    roteiro = DailyFake(Daily(fiz=(ItemNovo("fechei a camada 07"),)))
 
-    gerar(
+    resultado = gerar(
         agora=momento(SEXTA, 9, 5),
         fontes=[FonteFake("git", (evento(SEXTA, 8),))],
         roteiro=roteiro,
     )
 
-    texto = corpo(nota_da_daily(caminho_do_vault, SEXTA))
-    assert "## Preciso de\n\n_(nada registrado)_" in texto
+    secoes = dict(resultado.secoes)
+    assert list(secoes) == [SECAO_FIZ, SECAO_FAZENDO, SECAO_DUVIDAS, SECAO_FALAR]
+    assert secoes[SECAO_FIZ] == (
+        "1. Planejei e ativei o pix transparente da AppMax no checkout",
+        "- fechei a camada 07",
+    )
+    assert secoes[SECAO_FALAR] == ("- avisar que sexta eu saio mais cedo",)

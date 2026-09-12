@@ -25,11 +25,15 @@ Nota diária em `diario/` que resume o trabalho do dia a partir das fontes passi
 _Avoid_: daily note, log
 
 **Daily**:
-Roteiro falado que o usuário lê na reunião diária do time, em `daily/`. Cobre da última daily até agora — não um dia civil — e carrega as listas cruas embaixo do roteiro, sendo por isso o registro durável do trabalho.
+Roteiro falado que o usuário lê na reunião diária do time. Vive na **Nota viva** (`daily/atual.md`); cobre da última daily até agora — não um dia civil. Cada geração deixa ao lado uma nota datada `daily/YYYY-MM-DD.md` com a janela e as listas cruas, que é o registro durável e de conferência.
 _Avoid_: standup, resumo diário
 
+**Nota viva**:
+`daily/atual.md` — a terceira zona de propriedade: uma nota só, que agente e usuário mantêm juntos, dividida por seção. O agente cuida de *O que eu fiz* e *O que estou fazendo*: **acrescenta** o que é novo e **move** um item de *fazendo* para *fiz* quando o sinal é forte (PR mergeada, issue em Done), transportando a linha **literalmente** — nunca reescreve texto que já está lá, nunca apaga um item aberto. *Dúvidas* e *Falar* são só do usuário: o agente lê, nunca escreve — salvo `anotar`, que acrescenta uma linha em *Falar* a pedido explícito. *O que eu fiz* é da janela da daily: ao abrir a janela seguinte, o bloco é arquivado literalmente na nota datada e a seção recomeça.
+_Avoid_: painel, dashboard, `daily/hoje.md`, `notas/daily.md`
+
 **Zona de propriedade**:
-Divisão do vault entre pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`, `daily/`) e a zona do usuário (`notas/`), que o agente só toca sob pedido explícito — nunca por iniciativa própria. `notas/daily.md` é o caso do pedido explícito: o agente lê os pontos que o usuário escreveu ali e só escreve neles quando mandado (`daily --anotar`).
+Divisão do vault em três contratos: as pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`, `daily/`); a zona do usuário (`notas/`), que o agente nunca toca; e a **Nota viva**, onde os dois escrevem, cada um nas suas seções. `notas/daily.md` foi aposentado em 2026-09-12 — nunca foi usado; o que era dele vive nas seções do usuário da nota viva.
 
 **Tracer bullet**:
 A primeira fatia construível de ponta a ponta: "aperto um botão durante a reunião → nota transcrita/resumida aparece no vault".

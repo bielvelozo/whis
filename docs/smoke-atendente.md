@@ -273,10 +273,10 @@ verdade.
 
 Na DM: *"anotar preciso do acesso ao Sentry"*.
 
-**Sucesso:** *"Anotado em `notas/daily.md`..."*, e a linha
-`- [ ] preciso do acesso ao Sentry` aparece em `## Pontos` do arquivo, sem que
-nada mais nele mude. Nenhuma outra mensagem escreve no vault: é o único
-caminho, e ele não passa pelo Claude.
+**Sucesso:** *"Anotado em `daily/atual.md`, em *Falar*..."*, e a linha
+`- preciso do acesso ao Sentry` aparece no fim de `## Falar` da nota viva, sem
+que nenhum outro byte dela mude. Nenhuma outra mensagem escreve no vault: é o
+único caminho, e ele não passa pelo Claude.
 
 ## Passo 11 — Subir com o Windows
 

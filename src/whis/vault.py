@@ -1,14 +1,15 @@
-"""Escrita no vault: pastas, nota de reunião, transcrição, diário e daily.
+"""Escrita no vault: pastas, nota de reunião, transcrição, diário, daily e nota viva.
 
 A zona de propriedade é uma invariante deste módulo, não só dos testes — e ela
 é **por coletor**: `escrever` recebe as zonas que aquela chamada permite. O
 coletor de reunião escreve em `reunioes/` e `transcricoes/`; o do diário, só em
 `diario/`; o da daily, só em `daily/`. Nenhum alcança a zona do outro.
 
-`notas/` é a zona do usuário e é recusada para todos eles. A única exceção é
-`notas/daily.md`, e só pelo pedido explícito de `daily --anotar`: ali o agente
-lê os pontos que o usuário escreveu e, quando mandado, **acrescenta** um — sem
-nunca reescrever o que já estava lá nem marcar checkbox nenhum.
+`notas/` é a zona do usuário e é recusada para todos eles. A nota viva
+`daily/atual.md` é a terceira zona: mora em `daily/`, mas o que o agente pode
+fazer nela é decidido seção a seção em `nota_viva.py` — aqui só se lê e se
+grava o arquivo, **sem traduzir quebra de linha**, porque cada byte que o
+usuário escreveu ali precisa voltar igual.
 """
 
 from __future__ import annotations
@@ -16,13 +17,20 @@ from __future__ import annotations
 import logging
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .fontes import ORDEM_DAS_FONTES, Evento, Janela, nome_legivel
-from .portas import Daily, Resumo, ResumoDoDia, Transcricao
+from .nota_viva import (
+    SECAO_FALAR,
+    SECAO_FAZENDO,
+    SECAO_FIZ,
+    Mudancas,
+    NotaViva,
+    sem_brancos_nas_pontas,
+)
+from .portas import Resumo, ResumoDoDia, Transcricao
 
 if TYPE_CHECKING:  # ambos importam este módulo em tempo de execução
     from .coleta import FalhaDeFonte
@@ -48,8 +56,17 @@ ZONAS_DO_DIARIO = (PASTA_DIARIO,)
 #: A única pasta em que o coletor de daily pode escrever.
 ZONAS_DA_DAILY = (PASTA_DAILY,)
 
-#: Onde o usuário escreve o que quer levantar na daily — a zona dele.
-ARQUIVO_DE_PONTOS = f"{PASTA_NOTAS}/daily.md"
+#: A nota viva: a única nota que agente e usuário mantêm juntos.
+CAMINHO_DA_NOTA_VIVA = f"{PASTA_DAILY}/atual.md"
+
+#: As duas seções da nota datada que falam da nota viva.
+SECAO_MUDANCAS = "Mudanças na nota viva"
+SECAO_ARQUIVO = "O que eu fiz na daily anterior"
+
+#: O que abre as listas cruas numa nota, abaixo do que foi escrito sobre elas.
+_SEPARADOR = "---"
+
+_NADA_REGISTRADO = "_(nada registrado)_"
 
 #: Valor do campo `tipo` no frontmatter de cada artefato.
 TIPO_REUNIAO = "reuniao"
@@ -85,54 +102,6 @@ _DIAS_DA_SEMANA = (
 #: O `YYYY-MM-DD-HHMM` com que a nota de reunião começa, pelo contrato da pasta.
 _PREFIXO_DA_REUNIAO = re.compile(r"^(?P<data>\d{4}-\d{2}-\d{2})-(?P<hora>\d{4})(?:-.*)?$")
 
-#: `- [ ] texto` — o item que o usuário ainda não falou. `- [x]` fica de fora.
-_ITEM_DESMARCADO = re.compile(r"^\s*[-*]\s+\[ \]\s+(?P<texto>.+?)\s*$")
-
-#: Os títulos que `notas/daily.md` pode ter, e o campo de `PontosDaDaily` de cada um.
-_SECOES_DOS_PONTOS = {
-    "preciso de": "preciso_de",
-    "preciso_de": "preciso_de",
-    "dúvidas": "duvidas",
-    "duvidas": "duvidas",
-    "off-topic": "off_topic",
-    "off topic": "off_topic",
-    "pontos": "pontos",
-}
-
-#: O arquivo que `--anotar` cria quando o usuário ainda não tem um.
-#:
-#: As linhas em itálico e o callout são só para quem lê no Obsidian: o leitor
-#: só enxerga títulos e itens `- [ ]`, então explicar ali não custa nada — e é
-#: o que evita o usuário abrir um arquivo de títulos vazios sem saber o que
-#: cada um quer dizer.
-MODELO_DOS_PONTOS = """\
-# Daily — meus pontos
-
-> [!tip] Como funciona
-> Escreva em qualquer seção como `- [ ] o que eu quero falar`.
-> Só o que está **desmarcado** entra na próxima daily.
-> Depois de falar, marque o checkbox: o item sai da daily e fica aqui como registro.
-> Este arquivo é seu. O agente lê, nunca escreve por conta própria e nunca marca nada.
-
-## Preciso de
-
-*O que espera outra pessoa e não deixou rastro em commit nem em issue — acesso, \
-aprovação, uma resposta combinada no boca a boca. Junta-se ao que o Claude achar.*
-
-## Dúvidas
-
-*Pergunta aberta para levar ao time. Junta-se às que o Claude achar.*
-
-## Off-topic
-
-*O que não é trabalho mas você quer avisar: viagem, consulta, um dia fora.*
-
-## Pontos
-
-*Assunto que você quer puxar na daily, mesmo sem ser entrega nem bloqueio.*
-"""
-
-
 class ForaDaZonaDePropriedade(RuntimeError):
     """Tentativa de escrever fora das zonas permitidas àquela chamada."""
 
@@ -157,6 +126,7 @@ def escrever(
     conteudo: str,
     *,
     zonas: Sequence[str] = ZONAS_DE_ESCRITA,
+    literal: bool = False,
 ) -> Path:
     """Escreve um arquivo no vault, recusando caminhos fora de `zonas`.
 
@@ -167,6 +137,9 @@ def escrever(
     A checagem é feita no caminho **resolvido**: não basta começar com o nome
     de uma zona, o arquivo precisa terminar dentro dela. Assim `..` no meio do
     caminho não escapa para `notas/` nem para fora do vault.
+
+    `literal=True` grava o texto como está, sem trocar a quebra de linha pela
+    do sistema — é o que a nota viva exige para voltar byte a byte.
     """
     raiz = Path(vault)
     caminho_relativo = Path(relativo)
@@ -183,7 +156,7 @@ def escrever(
         raise ForaDaZonaDePropriedade(_recusa(relativo, zonas))
 
     alvo.parent.mkdir(parents=True, exist_ok=True)
-    alvo.write_text(conteudo, encoding="utf-8")
+    alvo.write_text(conteudo, encoding="utf-8", newline="" if literal else None)
     _log.info("Escrito no vault: %s", relativo)
     return alvo
 
@@ -354,7 +327,7 @@ def _listas_cruas(
 ) -> list[str]:
     """As reuniões e uma seção por fonte — a memória durável de diário e daily."""
     linhas = [
-        "---",
+        _SEPARADOR,
         "",
         "*Daqui para baixo, tudo que a janela trouxe, para conferir de onde veio "
         "cada afirmação. Recolha um cabeçalho para tirá-lo da tela.*",
@@ -458,20 +431,6 @@ def _linhas_do_evento(evento: Evento) -> list[str]:
     return linhas
 
 
-@dataclass(frozen=True)
-class PontosDaDaily:
-    """O que o usuário escreveu em `notas/daily.md` e ainda não falou."""
-
-    preciso_de: tuple[str, ...] = ()
-    duvidas: tuple[str, ...] = ()
-    off_topic: tuple[str, ...] = ()
-    pontos: tuple[str, ...] = ()
-
-    def tem_algo(self) -> bool:
-        """Há alguma coisa dele para levar à daily?"""
-        return bool(self.preciso_de or self.duvidas or self.off_topic or self.pontos)
-
-
 def caminho_da_daily(data: date) -> str:
     """Caminho relativo da daily: um arquivo por dia, sem hora no nome."""
     return f"{PASTA_DAILY}/{data.isoformat()}.md"
@@ -520,69 +479,58 @@ def desde_da_daily_de(vault: Path, dia: date) -> datetime | None:
     return _momento_do_frontmatter(Path(vault) / caminho_da_daily(dia), "desde")
 
 
-def pontos_da_daily(vault: Path) -> PontosDaDaily:
-    """Os itens ainda não falados de `notas/daily.md`, separados por seção.
+def ler_nota_viva(vault: Path) -> NotaViva:
+    """A nota viva como está no vault — ou a do modelo, se ainda não existe.
 
-    Só entram os **desmarcados** (`- [ ]`): quem marca é o usuário, no
-    Obsidian, depois de falar. O agente lê e nunca escreve por iniciativa
-    própria. Arquivo ausente, seção ausente ou lista vazia não é erro — a daily
-    apenas não mostra aquela seção.
+    Lê os bytes, não o texto: `read_text` traduziria `\\r\\n`, e a nota precisa
+    voltar ao disco exatamente como o usuário a deixou.
     """
-    arquivo = Path(vault) / ARQUIVO_DE_PONTOS
+    arquivo = Path(vault) / CAMINHO_DA_NOTA_VIVA
     if not arquivo.is_file():
-        return PontosDaDaily()
+        return NotaViva.do_modelo()
+    return NotaViva.de_texto(arquivo.read_bytes().decode("utf-8"))
 
-    colhidos: dict[str, list[str]] = {
-        "preciso_de": [],
-        "duvidas": [],
-        "off_topic": [],
-        "pontos": [],
-    }
-    secao: str | None = None
-    for linha in arquivo.read_text(encoding="utf-8").splitlines():
-        if linha.lstrip().startswith("#"):
-            secao = _SECOES_DOS_PONTOS.get(linha.lstrip("# ").strip().casefold())
-            continue
-        item = _ITEM_DESMARCADO.match(linha)
-        if secao is not None and item is not None:
-            colhidos[secao].append(item["texto"])
 
-    _log.info(
-        "notas/daily.md: %d em 'preciso de', %d dúvida(s), %d off-topic e "
-        "%d ponto(s) por falar.",
-        len(colhidos["preciso_de"]),
-        len(colhidos["duvidas"]),
-        len(colhidos["off_topic"]),
-        len(colhidos["pontos"]),
-    )
-    return PontosDaDaily(
-        preciso_de=tuple(colhidos["preciso_de"]),
-        duvidas=tuple(colhidos["duvidas"]),
-        off_topic=tuple(colhidos["off_topic"]),
-        pontos=tuple(colhidos["pontos"]),
-    )
+def escrever_nota_viva(vault: Path, nota: NotaViva) -> Path:
+    """Grava a nota viva, literalmente, e só em `daily/`."""
+    return escrever(vault, CAMINHO_DA_NOTA_VIVA, nota.texto(), zonas=ZONAS_DA_DAILY, literal=True)
 
 
 def anotar_ponto(vault: Path, texto: str) -> Path:
-    """Acrescenta um ponto desmarcado em `## Pontos` de `notas/daily.md`.
+    """Acrescenta `- texto` no fim de `## Falar` da nota viva.
 
-    A única escrita do agente na zona do usuário, e só a pedido explícito
-    (`daily --anotar`). O arquivo é tratado como **append-only**: cada linha que
-    já estava lá continua onde estava, porque tudo ali foi digitado à mão e um
-    bug que reescrevesse o arquivo apagaria texto do usuário.
+    O único gesto do agente numa seção do usuário, e só a pedido explícito
+    (`daily --anotar`, ou `anotar` na DM). É **append-only**: todo byte fora
+    da linha nova continua onde estava, porque o que há ali foi digitado à mão.
     """
-    arquivo = Path(vault) / ARQUIVO_DE_PONTOS
-    existente = arquivo.read_text(encoding="utf-8") if arquivo.is_file() else None
-    linhas = (existente if existente is not None else MODELO_DOS_PONTOS).splitlines()
-
-    escrito = escrever(
-        vault,
-        ARQUIVO_DE_PONTOS,
-        "\n".join(_com_o_ponto(linhas, f"- [ ] {texto.strip()}")) + "\n",
-        zonas=(PASTA_NOTAS,),
-    )
-    _log.info("Ponto anotado em %s", ARQUIVO_DE_PONTOS)
+    nota = ler_nota_viva(vault)
+    nota.anotar(texto)
+    escrito = escrever_nota_viva(vault, nota)
+    _log.info("Ponto anotado em '%s' de %s", SECAO_FALAR, CAMINHO_DA_NOTA_VIVA)
     return escrito
+
+
+def arquivo_da_nota_viva(vault: Path, dia: date) -> tuple[str, ...] | None:
+    """O bloco de *O que eu fiz* que a daily de hoje já arquivou.
+
+    `None` diz que a nota viva ainda não foi arquivada nesta janela: não há
+    daily de hoje, ou ela nasceu sem a seção — o roteiro falhou antes de a
+    nota viva ser tocada. É esse sinal que faz a segunda execução do dia não
+    arquivar de novo, e a reexecução depois de uma falha arquivar enfim.
+
+    A seção vai até o separador das listas cruas, que não é um título: é a
+    mesma régua que `montar_daily` usa para escrever.
+    """
+    arquivo = Path(vault) / caminho_da_daily(dia)
+    if not arquivo.is_file():
+        return None
+    nota = NotaViva.de_texto(arquivo.read_bytes().decode("utf-8"))
+    if not nota.tem_secao(SECAO_ARQUIVO):
+        return None
+    secao = nota.conteudo(SECAO_ARQUIVO)
+    fim = next((i for i, linha in enumerate(secao) if linha.strip() == _SEPARADOR), len(secao))
+    bloco = sem_brancos_nas_pontas(secao[:fim])
+    return () if bloco == (_NADA_REGISTRADO,) else bloco
 
 
 def montar_daily(
@@ -592,14 +540,15 @@ def montar_daily(
     reunioes: Sequence[str],
     fontes_lidas: Sequence[str],
     fontes_com_falha: Sequence["FalhaDeFonte"],
-    roteiro: Daily | None,
-    pontos: PontosDaDaily,
+    mudancas: Mudancas | None,
+    arquivado: Sequence[str] | None,
     falha_do_roteiro: str | None = None,
 ) -> str:
-    """Monta o markdown da daily: o roteiro em cima, as listas cruas embaixo.
+    """Monta o markdown da nota datada: o que mudou na nota viva, e as listas cruas.
 
-    As seções do usuário só aparecem quando têm conteúdo: um rótulo vazio no
-    roteiro é um buraco que ele pularia em voz alta.
+    O roteiro não mora mais aqui — ele é a nota viva. O que esta nota guarda é
+    a janela, o que esta execução acrescentou e moveu, o bloco de *O que eu
+    fiz* arquivado ao abrir a janela, e tudo que as fontes trouxeram.
     """
     frontmatter = _frontmatter(
         {
@@ -620,46 +569,43 @@ def montar_daily(
         f"> [!info] {cobertura_da_janela(janela)}",
         "",
     ]
-    for aviso in _avisos_da_daily(fontes_com_falha, roteiro, falha_do_roteiro):
+    for aviso in _avisos_da_daily(fontes_com_falha, mudancas, falha_do_roteiro):
         corpo.extend([f"> [!warning] {aviso}", ""])
 
-    for titulo, itens in secoes_do_roteiro(roteiro, pontos):
-        corpo.extend([f"## {titulo}", "", _lista(itens), ""])
+    if mudancas is not None:
+        corpo.extend([f"## {SECAO_MUDANCAS}", "", *_secao_das_mudancas(mudancas), ""])
+    if arquivado is not None:
+        corpo.extend([f"## {SECAO_ARQUIVO}", "", *(arquivado or [_NADA_REGISTRADO]), ""])
 
     corpo.extend(_listas_cruas(eventos, reunioes, fontes_lidas, fontes_com_falha))
 
     return frontmatter + "\n".join(corpo)
 
 
-def secoes_do_roteiro(
-    roteiro: Daily | None, pontos: PontosDaDaily
-) -> list[tuple[str, tuple[str, ...]]]:
-    """As seções faladas, na ordem de falar — nota e terminal usam as mesmas.
+def _secao_das_mudancas(mudancas: Mudancas) -> list[str]:
+    """Os blocos que entraram na nota viva, literais, alinhados à esquerda."""
+    if mudancas.vazia():
+        return ["_(nada)_"]
+    linhas: list[str] = []
+    if mudancas.acrescentadas:
+        linhas.extend(["**Acrescentado:**", ""])
+        for bloco in mudancas.acrescentadas:
+            linhas.extend(_alinhado(bloco))
+        linhas.append("")
+    if mudancas.movidas:
+        linhas.extend([f"**Movido de _{SECAO_FAZENDO}_ para _{SECAO_FIZ}_:**", ""])
+        for bloco in mudancas.movidas:
+            linhas.extend(_alinhado(bloco))
+        linhas.append("")
+    return linhas[:-1]
 
-    As quatro do Claude aparecem mesmo vazias, porque "nada esperando ninguém"
-    é uma daily boa de ouvir; as duas que são só do usuário desaparecem quando
-    ele não escreveu nada.
 
-    `Preciso de` e `Dúvidas` **juntam** o que o Claude achou com o que o usuário
-    escreveu: cada uma é uma batida só, falada uma vez. E é nessas duas que ele
-    sabe mais que o modelo — um bloqueio combinado numa conversa que não deixou
-    rastro nas fontes só existe se ele escrever.
-    """
-    preciso_de = (*(roteiro.preciso_de if roteiro else ()), *pontos.preciso_de)
-    duvidas = (*(roteiro.duvidas if roteiro else ()), *pontos.duvidas)
-    secoes: list[tuple[str, tuple[str, ...]]] = []
-    if roteiro is not None:
-        secoes.append(("Entreguei", roteiro.entreguei))
-        secoes.append(("Sigo em", roteiro.sigo_em))
-    if roteiro is not None or preciso_de:
-        secoes.append(("Preciso de", preciso_de))
-    if roteiro is not None or duvidas:
-        secoes.append(("Dúvidas", duvidas))
-    if pontos.pontos:
-        secoes.append(("Meus pontos", pontos.pontos))
-    if pontos.off_topic:
-        secoes.append(("Off-topic", pontos.off_topic))
-    return secoes
+def _alinhado(bloco: Sequence[str]) -> list[str]:
+    """Um bloco de linhas literais sem a indentação da primeira, para não virar código."""
+    if not bloco:
+        return []
+    recuo = len(bloco[0]) - len(bloco[0].lstrip(" \t"))
+    return [linha[recuo:] if linha[:recuo].strip() == "" else linha for linha in bloco]
 
 
 def cobertura_da_janela(janela: "JanelaDaDaily") -> str:
@@ -683,19 +629,21 @@ def cobertura_da_janela(janela: "JanelaDaDaily") -> str:
 
 def _avisos_da_daily(
     fontes_com_falha: Sequence["FalhaDeFonte"],
-    roteiro: Daily | None,
+    mudancas: Mudancas | None,
     falha_do_roteiro: str | None,
 ) -> list[str]:
     avisos = [
         f"{nome_legivel(falha.fonte)} não entrou nesta daily: {falha.motivo}"
         for falha in fontes_com_falha
     ]
-    if roteiro is None:
+    if mudancas is None:
         motivo = falha_do_roteiro or "o roteiro da daily não está configurado."
         avisos.append(
-            f"Esta daily não tem roteiro: {motivo} "
+            f"A nota viva ficou como estava: {motivo} "
             "As listas cruas abaixo continuam completas."
         )
+    elif falha_do_roteiro:
+        avisos.append(f"Nada novo entrou na nota viva: {falha_do_roteiro}")
     return avisos
 
 
@@ -709,34 +657,6 @@ def _temas_dos_eventos(eventos: Sequence[Evento]) -> tuple[str, ...]:
     return tuple(
         dict.fromkeys(evento.referencia for evento in eventos if evento.referencia)
     )
-
-
-def _com_o_ponto(linhas: list[str], item: str) -> list[str]:
-    """As linhas do arquivo com o item novo no fim da seção `## Pontos`."""
-    inicio = _indice_da_secao(linhas, "pontos")
-    if inicio is None:
-        return [*linhas, "", "## Pontos", "", item]
-
-    fim = _fim_da_secao(linhas, inicio)
-    while fim > inicio + 1 and not linhas[fim - 1].strip():
-        fim -= 1
-    return [*linhas[:fim], item, *linhas[fim:]]
-
-
-def _indice_da_secao(linhas: Sequence[str], chave: str) -> int | None:
-    for indice, linha in enumerate(linhas):
-        if linha.lstrip().startswith("#") and (
-            _SECOES_DOS_PONTOS.get(linha.lstrip("# ").strip().casefold()) == chave
-        ):
-            return indice
-    return None
-
-
-def _fim_da_secao(linhas: Sequence[str], inicio: int) -> int:
-    for indice in range(inicio + 1, len(linhas)):
-        if linhas[indice].lstrip().startswith("#"):
-            return indice
-    return len(linhas)
 
 
 def _data_do_nome(nome: str) -> date | None:
@@ -828,5 +748,5 @@ def _parece_data(texto: str) -> bool:
 
 def _lista(itens: tuple[str, ...]) -> str:
     if not itens:
-        return "_(nada registrado)_"
+        return _NADA_REGISTRADO
     return "\n".join(f"- {item}" for item in itens)

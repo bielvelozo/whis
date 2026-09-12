@@ -18,8 +18,8 @@ Regras que valem sempre:
 - **Nada derruba o processo.** Uma resposta que falha vira mensagem de erro em
   português na DM, e o atendimento continua na próxima.
 - A única escrita no vault é o pedido explícito `anotar <texto>`, que acrescenta
-  um ponto em `notas/daily.md` pelo mesmo caminho de `daily --anotar` — sem
-  passar pelo modelo, para a zona do usuário continuar dele.
+  uma linha em *Falar* da nota viva pelo mesmo caminho de `daily --anotar` —
+  sem passar pelo modelo, para a seção do usuário continuar dele.
 
 É um processo separado da bandeja de propósito: ela tem trava de instância e
 máquina de estados de gravação, e o pipeline de reunião está em uso real.
@@ -191,10 +191,10 @@ class Atendente:
             return "Anotar o quê? Manda `anotar <o que você quer levantar na daily>`."
         raiz = _vault.preparar(self._configuracao.vault)
         _vault.anotar_ponto(raiz, texto)
-        _log.info("Ponto anotado pela DM em %s", _vault.ARQUIVO_DE_PONTOS)
+        _log.info("Ponto anotado pela DM em %s", _vault.CAMINHO_DA_NOTA_VIVA)
         return (
-            f"Anotado em `{_vault.ARQUIVO_DE_PONTOS}`. "
-            f"Entra na próxima daily enquanto o checkbox estiver desmarcado."
+            f"Anotado em `{_vault.CAMINHO_DA_NOTA_VIVA}`, em *{_vault.SECAO_FALAR}*. "
+            f"Fica lá até você tirar."
         )
 
     def _e_para_mim(self, mensagem: Mensagem) -> bool:
