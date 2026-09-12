@@ -207,10 +207,11 @@ def test_a_limpeza_agendada_roda_o_comando_limpar_diariamente(tmp_path: Path):
     automacao.agendar_limpeza(hora="12:00", executar=espiao, config=tmp_path / "c.toml")
 
     comando = espiao.comandos[0]
-    assert comando[0] == "schtasks" and "/Create" in comando
-    assert automacao.NOME_DA_TAREFA in comando
-    assert "DAILY" in comando and "12:00" in comando
-    tarefa = comando[comando.index("/TR") + 1]
+    assert comando[0] == "powershell" and "-File" in comando
+    assert comando[comando.index("-File") + 1] == str(automacao.SCRIPT_DE_AGENDAMENTO)
+    assert comando[comando.index("-Nome") + 1] == automacao.NOME_DA_TAREFA
+    assert comando[comando.index("-Gatilhos") + 1] == "Daily=12:00"
+    tarefa = comando[comando.index("-Argumentos") + 1]
     assert "whis" in tarefa and "limpar" in tarefa
     assert "c.toml" in tarefa  # a tarefa aponta a mesma configuração
 
@@ -221,7 +222,7 @@ def test_a_limpeza_agendada_nunca_apaga_direto():
 
     automacao.agendar_limpeza(executar=espiao)
 
-    tarefa = espiao.comandos[0][espiao.comandos[0].index("/TR") + 1]
+    tarefa = espiao.comandos[0][espiao.comandos[0].index("-Argumentos") + 1]
     assert "--dias" not in tarefa  # respeita o prazo da configuração
     assert "reprocessar" not in tarefa
 

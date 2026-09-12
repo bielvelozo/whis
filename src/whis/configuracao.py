@@ -25,6 +25,10 @@ VARIAVEL_DE_AMBIENTE = "WHIS_CONFIG"
 #: Nome do arquivo dentro de `%APPDATA%\whis\`.
 NOME_DO_ARQUIVO = "config.toml"
 
+#: As chaves aceitas em `[daily].horarios`, na ordem em que a semana anda.
+#: Sem acento de propósito: é o que se digita num TOML sem pensar em escape.
+DIAS_DA_SEMANA = ("segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo")
+
 
 class ConfiguracaoInvalida(RuntimeError):
     """A configuração não existe, não é TOML válido ou não tem os caminhos."""
@@ -51,6 +55,10 @@ class Configuracao:
     daily do time. Lista-se o que é **pessoal**, e não o que é do trabalho,
     porque trabalho novo aparece toda semana e sumir da daily em silêncio é pior
     do que aparecer demais.
+
+    `daily_horarios` é a hora em que a daily deve nascer em cada dia da semana,
+    como pares `(dia, "HH:MM")` na ordem segunda→domingo. Dia ausente é dia sem
+    daily; tabela vazia é nada agendado — a tarefa do Windows nasce daqui.
     """
 
     vault: Path
@@ -64,6 +72,7 @@ class Configuracao:
     diario_hora_da_tarefa: str = "19:00"
     daily_referencias_pessoais: tuple[str, ...] = ()
     daily_contexto_do_time: str = ""
+    daily_horarios: tuple[tuple[str, str], ...] = ()
     privacidade_excluir: tuple[str, ...] = ()
     privacidade_pastas_privadas: tuple[str, ...] = ()
     busca_maximo_de_notas: int = 40
@@ -155,6 +164,7 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
         ),
         daily_referencias_pessoais=_textos(daily.get("referencias_pessoais")),
         daily_contexto_do_time=str(daily.get("contexto_do_time", "")).strip(),
+        daily_horarios=_horarios_da_daily(daily.get("horarios"), arquivo),
         privacidade_excluir=_textos(privacidade.get("excluir")),
         privacidade_pastas_privadas=_pastas_privadas(
             privacidade.get("pastas_privadas"), arquivo
@@ -185,6 +195,34 @@ def _hora(valor: object, chave: str, arquivo: Path) -> str:
             f"HH:MM em 24 horas (por exemplo \"04:00\"), e veio {valor!r}."
         ) from None
     return texto.strip()
+
+
+def _horarios_da_daily(valor: object, arquivo: Path) -> tuple[tuple[str, str], ...]:
+    """A tabela `[daily].horarios` como pares ordenados pela semana.
+
+    Uma chave desconhecida é erro, e não dia ignorado: `terça` com acento ou
+    `seg` abreviado deixariam a daily sem nascer naquele dia em silêncio — o
+    modo de falha que a tabela existe para evitar.
+    """
+    if valor is None:
+        return ()
+    if not isinstance(valor, dict):
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '[daily].horarios' precisa ser uma tabela de "
+            f'dia da semana para hora (por exemplo {{ segunda = "13:55" }}), e veio {valor!r}.'
+        )
+    desconhecidas = [chave for chave in valor if chave not in DIAS_DA_SEMANA]
+    if desconhecidas:
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '[daily].horarios' tem dia(s) que não existem: "
+            f"{', '.join(repr(chave) for chave in desconhecidas)}. "
+            f"Os aceitos são {', '.join(DIAS_DA_SEMANA)}."
+        )
+    return tuple(
+        (dia, _hora(valor[dia], f"[daily].horarios.{dia}", arquivo))
+        for dia in DIAS_DA_SEMANA
+        if dia in valor
+    )
 
 
 def _textos(valor: object) -> tuple[str, ...]:

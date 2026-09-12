@@ -7,7 +7,7 @@ para a busca no vault::
 
     python -m whis init
     python -m whis bandeja
-    python -m whis windows [--limpeza] [--remover]
+    python -m whis windows [--daily] [--limpeza] [--remover]
     python -m whis processar <pasta-da-gravacao>
     python -m whis reprocessar [<pasta> ...]
     python -m whis limpar [--simular]
@@ -20,6 +20,11 @@ para a busca no vault::
 Socket Mode e responde ali, com o fio de 24 horas por conversa. `perguntar`
 existe **para teste e diagnóstico**: responde no terminal, citando as notas, e
 continua o fio do terminal entre uma chamada e outra.
+
+`windows` amarra o Whis à máquina: o atalho de logon da bandeja sempre;
+`--daily` agenda a daily nos horários de `[daily].horarios` (e o vigia, que
+avisa por toast quando uma peça do Whis não subiu); `--limpeza` agenda a
+limpeza do áudio. As tarefas rodam mesmo que o PC estivesse desligado na hora.
 
 Por padrão o comando usa os **adaptadores reais** — Deepgram para o STT, Claude
 (conta do usuário, OAuth) para os resumos, git/Linear/Slack para as fontes.
@@ -683,6 +688,7 @@ hora_da_tarefa = "19:00"     # quando a tarefa agendada gera o diário
 [daily]
 referencias_pessoais = []     # repositórios e canais que são seus, não do trabalho: ficam no vault mas fora do roteiro
 contexto_do_time = ""         # como o seu processo funciona, para o roteiro não inventar bloqueio
+horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:55", sexta = "10:25" }}  # hora em que a daily nasce em cada dia (segunda..domingo, sem acento); dia ausente = sem daily
 
 [privacidade]
 excluir = []                 # trechos que nunca saem da máquina (substring, sem diferenciar maiúsculas)
@@ -746,19 +752,51 @@ def _comando_init(args: argparse.Namespace) -> int:
 # -- windows ----------------------------------------------------------------
 
 
-def _comando_windows(args: argparse.Namespace) -> int:
-    """Amarra (ou desamarra) o coletor ao Windows: logon e limpeza diária.
+#: Como cada chave de `[daily].horarios` aparece para o usuário.
+_DIAS_POR_EXTENSO = {
+    "segunda": "segunda",
+    "terca": "terça",
+    "quarta": "quarta",
+    "quinta": "quinta",
+    "sexta": "sexta",
+    "sabado": "sábado",
+    "domingo": "domingo",
+}
 
-    Duas amarrações explícitas, cada uma com o seu `--remover`. A limpeza
-    agendada só existe se o usuário pedir: apagar áudio é irreversível e não
-    pode ser efeito colateral de instalar um atalho.
+
+def _horarios_por_extenso(configuracao: Configuracao) -> str:
+    return ", ".join(
+        f"{_DIAS_POR_EXTENSO[dia]} {hora}" for dia, hora in configuracao.daily_horarios
+    )
+
+
+def _comando_windows(args: argparse.Namespace) -> int:
+    """Amarra (ou desamarra) o Whis ao Windows: logon, daily, vigia e limpeza.
+
+    Amarrações explícitas, cada uma com o seu `--remover`. A limpeza agendada
+    só existe se o usuário pedir: apagar áudio é irreversível e não pode ser
+    efeito colateral de instalar um atalho. A daily precisa da configuração
+    (é dela que saem os dias e horas); a tarefa recebe o caminho do arquivo
+    explicitamente, porque não herda `WHIS_CONFIG` de quem a criou.
     """
     from . import automacao
 
-    configuracao = _configuracao(args) if args.config else None
-    origem = configuracao.origem if configuracao else None
+    precisa_da_configuracao = bool(args.config) or (args.daily and not args.remover)
+    configuracao = _configuracao(args) if precisa_da_configuracao else None
+    origem = (configuracao.origem if configuracao else None) or caminho_padrao()
     feitos: list[str] = []
-    so_remover_legado = args.remover_legado and not (args.atendente or args.limpeza)
+    so_remover_legado = args.remover_legado and not (
+        args.atendente or args.limpeza or args.daily
+    )
+
+    if args.daily and not args.remover and not configuracao.daily_horarios:
+        _log.error(
+            "A tabela [daily].horarios de %s está vazia: não há dia nem hora para "
+            'agendar. Preencha-a (por exemplo horarios = { segunda = "13:55" }) e '
+            "rode de novo.",
+            origem,
+        )
+        return 1
 
     try:
         if args.remover_legado:
@@ -787,6 +825,19 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     if removido
                     else "Não havia atalho do atendente."
                 )
+            if args.daily:
+                removida = automacao.desagendar_daily()
+                feitos.append(
+                    f"Tarefa '{automacao.NOME_DA_TAREFA_DA_DAILY}' removida do Agendador."
+                    if removida
+                    else "Não havia tarefa da daily agendada."
+                )
+                removido = automacao.desagendar_vigia()
+                feitos.append(
+                    f"Tarefa '{automacao.NOME_DA_TAREFA_DO_VIGIA}' removida do Agendador."
+                    if removido
+                    else "Não havia vigia agendado."
+                )
             if args.limpeza:
                 removida = automacao.desagendar_limpeza()
                 feitos.append(
@@ -794,6 +845,12 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     if removida
                     else "Não havia tarefa de limpeza agendada."
                 )
+                if removida and not args.daily:
+                    feitos.append(
+                        f"Se '{automacao.NOME_DA_TAREFA_DO_VIGIA}' estiver agendado, ele "
+                        f"continua vigiando a limpeza até você rodar 'whis windows --daily' "
+                        f"de novo."
+                    )
         elif not so_remover_legado:
             atalho = automacao.instalar_inicializacao()
             feitos.append(f"Atalho de inicialização criado em {atalho}")
@@ -815,6 +872,24 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"Limpeza diária agendada às {args.hora} como "
                     f"'{automacao.NOME_DA_TAREFA}' — apaga só o áudio já virado "
                     f"nota e vencido pelo prazo de retenção."
+                )
+            if args.daily:
+                automacao.agendar_daily(configuracao)
+                feitos.append(
+                    f"Daily agendada como '{automacao.NOME_DA_TAREFA_DA_DAILY}': "
+                    f"{_horarios_por_extenso(configuracao)}."
+                )
+                vigiadas = automacao.agendar_vigia(configuracao)
+                feitos.append(
+                    f"Vigia agendado como '{automacao.NOME_DA_TAREFA_DO_VIGIA}': "
+                    f"{automacao.ATRASO_DO_VIGIA.seconds // 60} minutos depois de cada "
+                    f"daily e todo dia às {automacao.HORA_DA_RONDA_DO_VIGIA} — avisa por "
+                    f"toast se {' ou '.join(vigiadas)} falhou ou a bandeja não está no ar."
+                )
+            if args.limpeza or args.daily:
+                feitos.append(
+                    "As tarefas rodam mesmo que o PC estivesse desligado na hora: assim "
+                    "que ele ligar, e acordando a máquina se estiver em suspensão."
                 )
     except automacao.ErroDeAutomacao as erro:
         _log.error("%s", erro)
@@ -1058,13 +1133,28 @@ def construir_parser() -> argparse.ArgumentParser:
 
     windows_cmd = subcomandos.add_parser(
         "windows",
-        help="faz a bandeja subir com o logon (e, opcionalmente, o atendente e a limpeza)",
+        help="faz a bandeja subir com o logon (e, opcionalmente, agenda a daily e a limpeza)",
+        description=(
+            "Amarra o Whis ao Windows. Sozinho, cria o atalho de logon da bandeja. "
+            "--daily agenda a daily nos dias e horas de [daily].horarios e o vigia que "
+            "avisa por toast quando uma peça do Whis não subiu; --limpeza agenda a "
+            "limpeza do áudio. As tarefas rodam mesmo que o PC estivesse desligado na "
+            "hora. --remover com os mesmos flags desfaz."
+        ),
     )
     _acrescentar_config(windows_cmd)
     windows_cmd.add_argument(
         "--atendente",
         action="store_true",
         help="também faz o agente da DM do Slack (atender) subir com o logon",
+    )
+    windows_cmd.add_argument(
+        "--daily",
+        action="store_true",
+        help=(
+            "também agenda a daily nos horários de [daily].horarios (tarefa Whis-Daily) "
+            "e o vigia (Whis-Vigia)"
+        ),
     )
     windows_cmd.add_argument(
         "--limpeza",
