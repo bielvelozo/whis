@@ -10,10 +10,19 @@ bandeja não pode conhecer o vault (é regra da spec, provada por teste).
 
 from __future__ import annotations
 
+import logging
+import os
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote
 
 from .configuracao import Configuracao
+
+_log = logging.getLogger("whis.obsidian")
+
+#: Quem lança um caminho ou URI no Windows (injetável em teste).
+Lancador = Callable[[str], None]
 
 
 def nome_do_vault(configuracao: Configuracao) -> str:
@@ -33,3 +42,23 @@ def uri_da_nota(configuracao: Configuracao, caminho_relativo: str) -> str:
         f"obsidian://open?vault={quote(nome_do_vault(configuracao), safe='')}"
         f"&file={quote(nota, safe='')}"
     )
+
+
+def lancar(alvo: str, *, iniciar=None, executar=subprocess.run) -> None:
+    """`ShellExecute` (via `os.startfile`), que aceita caminho e URI.
+
+    Se ele recusar a URI, `cmd /c start` é a segunda porta: é o mesmo
+    `ShellExecute`, mas com o `start` resolvendo o protocolo registrado.
+    """
+    iniciar = iniciar or getattr(os, "startfile", None)
+    if iniciar is None:  # outro sistema operacional — só no desenvolvimento
+        executar(["xdg-open", alvo], check=False)
+        return
+    try:
+        iniciar(alvo)
+    except OSError as erro:
+        if "://" in alvo:
+            _log.info("startfile recusou a URI (%s); tentando por 'start'.", erro)
+            executar(["cmd", "/c", "start", "", alvo], check=False)
+            return
+        _log.error("Não foi possível abrir %s: %s", alvo, erro)

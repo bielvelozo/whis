@@ -90,6 +90,14 @@ ruim. Vamos ter que construir uma interface pra ele."*
   contrato de comando, painel de configuração, vigia por toast, camada zero) mais o **conserto da
   daily** (nota viva, quatro seções, terceira zona de propriedade, carregar sem reescrever).
 
+- **Construção da entrega 4** (2026-09-12, `/rb-orchestrate`, tickets 07–12): as seis camadas
+  commitadas com a suíte em **1048 verdes** — a nota viva `daily/atual.md` com a regra de carregar
+  sem reescrever (provada byte a byte), agendamento pelo módulo `ScheduledTasks` com
+  `StartWhenAvailable`, o vigia fora do Whis, a palheta por `ctrl+alt+w` com contrato dispara-e-some,
+  o painel de configuração com escritor de TOML e backup, e o toast com botão que abre o Obsidian.
+  Sondas reais na máquina passaram (tarefa descartável, hotkey sob `pythonw`, toast, vigia). **Falta
+  a prova dele**: `docs/smoke-interface.md`, terminando numa daily real.
+
 ## Not yet specified
 
 - **Os seis comandos do assistente pessoal**, listados por ele no *grilling*: buscar vagas e

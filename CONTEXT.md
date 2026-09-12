@@ -33,7 +33,15 @@ _Avoid_: standup, resumo diário
 _Avoid_: painel, dashboard, `daily/hoje.md`, `notas/daily.md`
 
 **Zona de propriedade**:
-Divisão do vault em três contratos: as pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`, `daily/`); a zona do usuário (`notas/`), que o agente nunca toca; e a **Nota viva**, onde os dois escrevem, cada um nas suas seções. `notas/daily.md` foi aposentado em 2026-09-12 — nunca foi usado; o que era dele vive nas seções do usuário da nota viva.
+Divisão do vault em três contratos: as pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`, `daily/`, `respostas/`); a zona do usuário (`notas/`), que o agente nunca toca; e a **Nota viva**, onde os dois escrevem, cada um nas suas seções. `notas/daily.md` foi aposentado em 2026-09-12 — nunca foi usado; o que era dele vive nas seções do usuário da nota viva.
+
+**Palheta**:
+A janela de comandos do Whis, aberta por atalho global de teclado no PC: um campo de texto, o comando, e a janela some. Todo comando **dispara e some** — roda em segundo plano, o resultado vira nota no vault e um toast avisa quando fica pronto. Substitui a DM do Slack como o lugar de perguntar e anotar; a bandeja continua sendo o gesto de gravar reunião. Uma resposta de `perguntar` nasce em `respostas/`, zona do agente.
+_Avoid_: launcher, painel com abas, chat
+
+**Vigia**:
+Uma tarefa agendada fora do Whis (`Whis-Vigia`, um script PowerShell autossuficiente) que consulta o Agendador e a lista de processos e dispara um toast quando uma peça não subiu — a daily não nasceu, a limpeza falhou, a bandeja não está no ar. Existe porque quem avisa que o Whis caiu não pode ser o Whis.
+_Avoid_: watchdog, healthcheck
 
 **Tracer bullet**:
 A primeira fatia construível de ponta a ponta: "aperto um botão durante a reunião → nota transcrita/resumida aparece no vault".

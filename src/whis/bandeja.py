@@ -12,11 +12,18 @@ Como o usuário usa::
 
 - **Clique esquerdo** no ícone: começa a gravar; clicando de novo, para e o
   processamento dispara sozinho.
-- **Clique direito**: menu com o mesmo gesto, o estado por extenso, atalhos
-  para abrir a última nota e a pasta de gravações, e "Sair".
+- **Clique direito**: menu com o mesmo gesto, o estado por extenso, "Abrir a
+  palheta", atalhos para abrir a última nota e a pasta de gravações,
+  "Configurar" e "Sair".
 - O **ícone muda de cor** por estado — cinza parado, vermelho gravando, âmbar
   processando, vermelho escuro com risco quando falhou — e o tooltip diz a
   mesma coisa em português, porque cor sozinha é ambígua.
+
+A bandeja também **hospeda a palheta**: quando ela está presente, o Tk roda no
+thread principal (`mainloop`), o `pystray` vai para um thread secundário por
+`run_detached`, e o atalho global tem thread e fila de mensagens próprios —
+o arranjo provado pela sonda da camada 3. Sem palheta, `icone.run()` como
+sempre. O gesto de gravar não muda em nada.
 
 Falhas nunca somem: viram balão do Windows, item de menu, cor de ícone e linha
 no log em `%APPDATA%\\whis\\bandeja.log`. A gravação que falhou fica
@@ -26,19 +33,20 @@ retida, e o menu diz o comando que a completa (`reprocessar`).
 from __future__ import annotations
 
 import logging
-import os
-import subprocess
 import threading
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image, ImageDraw
 
+from . import avisos as _avisos
+from . import obsidian as _obsidian
 from . import registro as _registro
 from .coletor import Coletor, Estado, Situacao
 from .configuracao import Configuracao
 from .instancia import OutraInstancia, Trava, caminho_da_trava
-from .obsidian import uri_da_nota
+from .obsidian import Lancador, uri_da_nota
 
 _log = logging.getLogger("whis.bandeja")
 
@@ -98,10 +106,6 @@ def desenhar_icone(estado: Estado) -> Image.Image:
     return imagem
 
 
-#: Quem lança um caminho ou URI no Windows (injetável em teste).
-Lancador = Callable[[str], None]
-
-
 def alvo_para_abrir(caminho: Path, configuracao: Configuracao | None) -> str:
     """Uma nota do vault vira URI `obsidian://`; o resto continua caminho.
 
@@ -130,24 +134,30 @@ def abrir_no_windows(
     return alvo
 
 
-def _lancar(alvo: str, *, iniciar=None, executar=subprocess.run) -> None:
-    """`ShellExecute` (via `os.startfile`), que aceita caminho e URI.
+#: O lançador vive em `obsidian`, que a palheta também usa; o nome antigo fica
+#: para quem o conhece por aqui.
+_lancar = _obsidian.lancar
 
-    Se ele recusar a URI, `cmd /c start` é a segunda porta: é o mesmo
-    `ShellExecute`, mas com o `start` resolvendo o protocolo registrado.
+
+@dataclass(frozen=True)
+class ItemDoMenu:
+    """Uma linha do menu da bandeja, como dados — o `pystray` só a desenha.
+
+    `rotulo` pode ser função, para o texto acompanhar o estado; `habilitado`
+    idem. `acao` vazia com `separador` é a linha divisória.
     """
-    iniciar = iniciar or getattr(os, "startfile", None)
-    if iniciar is None:  # outro sistema operacional — só no desenvolvimento
-        executar(["xdg-open", alvo], check=False)
-        return
-    try:
-        iniciar(alvo)
-    except OSError as erro:
-        if "://" in alvo:
-            _log.info("startfile recusou a URI (%s); tentando por 'start'.", erro)
-            executar(["cmd", "/c", "start", "", alvo], check=False)
-            return
-        _log.error("Não foi possível abrir %s: %s", alvo, erro)
+
+    rotulo: str | Callable[[], str]
+    acao: Callable[..., object] | None = None
+    padrao: bool = False
+    habilitado: Callable[[], bool] | None = None
+    separador: bool = False
+
+
+SEPARADOR = ItemDoMenu("", separador=True)
+
+ROTULO_DA_PALHETA = "Abrir a palheta"
+ROTULO_DE_CONFIGURAR = "Configurar"
 
 
 class Bandeja:
@@ -156,11 +166,26 @@ class Bandeja:
     `icone` é injetável para o teste montar a bandeja sem bandeja nenhuma: o
     que se prova aqui é que os gestos chegam ao coletor e que cada estado vira
     o desenho, o texto e o balão certos.
+
+    `abrir_palheta`, `abrir_configuracao` e `ao_sair` são os ganchos de quem
+    hospeda a palheta: sem eles, o menu é o de sempre.
     """
 
-    def __init__(self, coletor: Coletor, *, icone=None, notificar: bool = True) -> None:
+    def __init__(
+        self,
+        coletor: Coletor,
+        *,
+        icone=None,
+        notificar: bool = True,
+        abrir_palheta: Callable[[], None] | None = None,
+        abrir_configuracao: Callable[[], None] | None = None,
+        ao_sair: Callable[[], None] | None = None,
+    ) -> None:
         self._coletor = coletor
         self._notificar = notificar
+        self._abrir_palheta = abrir_palheta
+        self._abrir_configuracao = abrir_configuracao
+        self._ao_sair = ao_sair
         self._parar_pedido = threading.Event()
         self._nota_avisada: Path | None = None
         self._aviso_mostrado: str | None = None
@@ -169,10 +194,19 @@ class Bandeja:
 
     # -- ciclo de vida ------------------------------------------------------
 
-    def executar(self) -> None:
-        """Mostra o ícone e devolve o controle só quando o usuário sai."""
+    def executar(self, hospedeiro=None) -> None:
+        """Mostra o ícone e devolve o controle só quando o usuário sai.
+
+        Com `hospedeiro` (a janela da palheta, dona do `mainloop`), o ícone
+        vai para um thread secundário e é o hospedeiro que segura o thread
+        principal até `encerrar`.
+        """
         self.atualizar(self._coletor.situacao())
-        self._icone.run()
+        if hospedeiro is None:
+            self._icone.run()
+            return
+        self._icone.run_detached()
+        hospedeiro.executar()
 
     def sair(self, *_ignorado) -> None:
         """Encerra: uma reunião em andamento é parada e processada antes de sumir."""
@@ -183,6 +217,16 @@ class Bandeja:
         self._coletor.encerrar()
         self._icone.visible = False
         self._icone.stop()
+        if self._ao_sair is not None:
+            self._ao_sair()
+
+    def abrir_palheta(self, *_ignorado) -> None:
+        if self._abrir_palheta is not None:
+            self._abrir_palheta()
+
+    def abrir_configuracao(self, *_ignorado) -> None:
+        if self._abrir_configuracao is not None:
+            self._abrir_configuracao()
 
     # -- gestos -------------------------------------------------------------
 
@@ -257,28 +301,48 @@ class Bandeja:
 
     # -- bastidores ---------------------------------------------------------
 
+    def itens_do_menu(self) -> tuple[ItemDoMenu, ...]:
+        """O menu como dados, na ordem em que aparece.
+
+        "Abrir a palheta" vem logo abaixo do gesto de gravar, e "Configurar"
+        antes de "Sair" — só quando quem hospeda a bandeja os ligou.
+        """
+        itens: list[ItemDoMenu] = [
+            ItemDoMenu(self._rotulo_do_gesto, self.alternar, padrao=True),
+            ItemDoMenu(lambda: self._coletor.situacao().descricao(), None, habilitado=lambda: False),
+        ]
+        if self._abrir_palheta is not None:
+            itens.append(ItemDoMenu(ROTULO_DA_PALHETA, self.abrir_palheta))
+        itens += [
+            SEPARADOR,
+            ItemDoMenu(
+                "Abrir a última nota",
+                self.abrir_ultima_nota,
+                habilitado=lambda: self._coletor.situacao().nota is not None,
+            ),
+            ItemDoMenu("Abrir a pasta de gravações", self.abrir_gravacoes),
+            SEPARADOR,
+        ]
+        if self._abrir_configuracao is not None:
+            itens.append(ItemDoMenu(ROTULO_DE_CONFIGURAR, self.abrir_configuracao))
+        itens.append(ItemDoMenu("Sair", self.sair))
+        return tuple(itens)
+
     def _construir_icone(self):
         import pystray  # importado aqui: o teste monta a bandeja sem tocar no Windows
+
+        def desenhar(item: ItemDoMenu):
+            if item.separador:
+                return pystray.Menu.SEPARATOR
+            rotulo = item.rotulo if isinstance(item.rotulo, str) else (lambda _i, r=item.rotulo: r())
+            habilitado = True if item.habilitado is None else (lambda _i, h=item.habilitado: h())
+            return pystray.MenuItem(rotulo, item.acao, default=item.padrao, enabled=habilitado)
 
         return pystray.Icon(
             "whis",
             icon=desenhar_icone(Estado.PARADO),
             title=TITULO,
-            menu=pystray.Menu(
-                pystray.MenuItem(
-                    self._rotulo_do_gesto, self.alternar, default=True
-                ),
-                pystray.MenuItem(lambda _: self._coletor.situacao().descricao(), None, enabled=False),
-                pystray.Menu.SEPARATOR,
-                pystray.MenuItem(
-                    "Abrir a última nota",
-                    self.abrir_ultima_nota,
-                    enabled=lambda _: self._coletor.situacao().nota is not None,
-                ),
-                pystray.MenuItem("Abrir a pasta de gravações", self.abrir_gravacoes),
-                pystray.Menu.SEPARATOR,
-                pystray.MenuItem("Sair", self.sair),
-            ),
+            menu=pystray.Menu(*(desenhar(item) for item in self.itens_do_menu())),
         )
 
     def _rotulo_do_gesto(self, _item=None) -> str:
@@ -315,12 +379,28 @@ def configurar_logs(configuracao: Configuracao, *, verboso: bool = False) -> Pat
     return _registro.acrescentar_arquivo(configuracao, verboso=verboso)
 
 
-def executar(configuracao: Configuracao, *, portas, verboso: bool = False) -> int:
+def executar(
+    configuracao: Configuracao,
+    *,
+    portas,
+    verboso: bool = False,
+    palheta=None,
+    atalho=None,
+    painel: Callable[[object], object] | None = None,
+) -> int:
     """Sobe a bandeja com o coletor de verdade. É o que o subcomando chama.
 
     A trava de instância única vem antes de qualquer coisa: duas bandejas
     disputando os mesmos dispositivos é como uma reunião acaba não sendo
     gravada por ninguém.
+
+    Com `palheta`, a bandeja passa a hospedá-la: cria a janela Tk no thread
+    principal, registra `atalho` (um `atalho_global.Atalho`) num thread
+    próprio, e liga o menu e a palheta a ela. `painel(raiz)` abre o painel de
+    configuração sobre o `Tk` da janela; sem ele, `configurar` avisa que não há
+    painel. Um atalho que o Windows recusa (já tomado por outro programa) vira
+    log e toast, e a bandeja sobe do mesmo jeito — o item de menu ainda abre
+    a palheta.
     """
     trava = Trava(caminho_da_trava(configuracao))
     try:
@@ -334,11 +414,68 @@ def executar(configuracao: Configuracao, *, portas, verboso: bool = False) -> in
     print(f"Whis na bandeja. Log em {destino}", flush=True)
     print("Clique no ícone para gravar; clique de novo para parar e processar.", flush=True)
 
-    bandeja = Bandeja(Coletor(configuracao, portas=portas))
+    coletor = Coletor(configuracao, portas=portas)
+    if palheta is None:
+        bandeja = Bandeja(coletor)
+        try:
+            bandeja.executar()
+        except KeyboardInterrupt:
+            bandeja.sair()
+        finally:
+            trava.liberar()
+        return 0
+
+    from .atalho_global import AtalhoGlobal
+    from .janela_da_palheta import JanelaDaPalheta
+
+    janela = JanelaDaPalheta()
+    janela.ao_enviar(palheta.despachar)
+
+    def abrir_palheta() -> None:
+        janela.pedir(janela.mostrar)
+
+    abrir_configuracao: Callable[[], None] | None = None
+    if painel is not None:
+
+        def abrir_configuracao() -> None:
+            janela.pedir(lambda: painel(janela.raiz))
+
+        palheta.abrir_painel = abrir_configuracao
+
+    hotkey = AtalhoGlobal(atalho, abrir_palheta) if atalho is not None else None
+
+    def encerrar() -> None:
+        if hotkey is not None:
+            hotkey.parar()
+        janela.pedir(janela.encerrar)
+
+    bandeja = Bandeja(
+        coletor,
+        abrir_palheta=abrir_palheta,
+        abrir_configuracao=abrir_configuracao,
+        ao_sair=encerrar,
+    )
+    if hotkey is not None:
+        if hotkey.iniciar():
+            print(f"Palheta no atalho {atalho.texto}.", flush=True)
+        else:
+            _log.error(
+                "O atalho %s da palheta não foi registrado — outro programa deve estar "
+                "usando a combinação. Troque [palheta].atalho na configuração; enquanto "
+                "isso, a palheta abre pelo menu da bandeja.",
+                atalho.texto,
+            )
+            _avisos.avisar(
+                "O atalho da palheta não registrou",
+                f"{atalho.texto} já está em uso por outro programa. A palheta abre pelo "
+                f"menu da bandeja; troque [palheta].atalho para ter o atalho de volta.",
+            )
     try:
-        bandeja.executar()
+        bandeja.executar(hospedeiro=janela)
     except KeyboardInterrupt:
         bandeja.sair()
     finally:
+        if hotkey is not None:
+            hotkey.parar()
         trava.liberar()
     return 0

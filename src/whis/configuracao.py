@@ -12,11 +12,20 @@ passivas continua carregando sem edição nenhuma.
 
 from __future__ import annotations
 
+import logging
 import os
+import re
+import shutil
 import tomllib
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
+from enum import Enum
 from pathlib import Path
 
+from .atalho_global import ATALHO_PADRAO, AtalhoInvalido, analisar_atalho
+
+_log = logging.getLogger("whis.configuracao")
 from .fontes import INICIO_DO_DIA_PADRAO, analisar_hora
 
 #: Variável de ambiente que sobrepõe o caminho padrão da configuração.
@@ -29,9 +38,130 @@ NOME_DO_ARQUIVO = "config.toml"
 #: Sem acento de propósito: é o que se digita num TOML sem pensar em escape.
 DIAS_DA_SEMANA = ("segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo")
 
+#: O `config.toml` que `whis init` escreve e que o painel regenera. Cada chave
+#: carrega o comentário que explica o que preencher: é a única documentação que
+#: o usuário lê na hora em que precisa. `{vault}` e `{gravacoes}` são os dois
+#: campos que `init` preenche com o perfil do usuário; as chaves da tabela de
+#: horários vão com chaves dobradas por causa do `format`.
+MODELO_DE_CONFIGURACAO = """\
+# Configuração do Whis. Use barras normais (/) nos caminhos:
+# no TOML a barra invertida é escape e quebra o arquivo.
+
+vault = "{vault}"            # a pasta do vault Obsidian: a memória durável do Whis
+gravacoes = "{gravacoes}"    # onde o áudio bruto das reuniões fica até virar nota
+retencao_dias = 7            # dias que o áudio bruto sobrevive depois de virar nota
+
+[deepgram]
+api_key = ""                 # crédito de US$ 200; sem ela o STT real não roda
+
+[claude]
+modelo = ""                  # vazio = o modelo padrão da sua conta
+
+[audio]
+dispositivo_microfone = ""   # vazio = microfone padrão do Windows
+dispositivo_sistema = ""     # vazio = loopback da saída padrão do Windows
+
+[diario]
+inicio_do_dia = "04:00"      # o diário de um dia vai desta hora à mesma hora do dia seguinte
+hora_da_tarefa = "19:00"     # quando a tarefa agendada gera o diário
+
+[daily]
+referencias_pessoais = []     # repositórios e canais que são seus, não do trabalho: ficam no vault mas fora do roteiro
+contexto_do_time = ""         # como o seu processo funciona, para o roteiro não inventar bloqueio
+horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:55", sexta = "10:25" }}  # hora em que a daily nasce em cada dia (segunda..domingo, sem acento); dia ausente = sem daily
+
+[palheta]
+atalho = "ctrl+alt+w"        # o atalho global que abre a palheta: ctrl, alt, shift, win e uma tecla (letra, dígito, space, f1..f12)
+
+[privacidade]
+excluir = []                 # trechos que nunca saem da máquina (substring, sem diferenciar maiúsculas)
+pastas_privadas = []         # pastas do vault que a busca nunca abre, relativas a ele (ex.: "notas/pessoal")
+
+[busca]
+maximo_de_notas = 40         # teto de notas lidas numa pergunta, para uma pergunta não varrer o vault
+
+[git]
+raiz = ""                    # pasta onde varrer repositórios; vazio = fonte desligada
+profundidade = 3             # quantos níveis de pasta a varredura desce a partir da raiz
+excluir = []                 # pastas ignoradas na varredura
+autores = []                 # vazio = deduz do git config user.email de cada repositório
+
+[linear]
+api_key = ""                 # Personal API Key read-only; vazio = fonte desligada
+
+[slack]
+user_token = ""              # user token xoxp da app interna; vazio = fonte desligada
+conversas_excluidas = []     # canais e DMs que o coletor nunca lê
+so_com_mencao = []           # canais em que só entra o que cita você (ex.: code review)
+bot_token = ""               # Bot User OAuth Token xoxb da mesma app: o atendente responde na DM com ele
+app_token = ""               # App-Level Token xapp com connections:write: a conexão do Socket Mode
+
+[obsidian]
+vault = "245833c11ad43e6e"   # o ID do vault (Copy vault ID no seletor de vaults) ou o nome da pasta; é o que o botão "Abrir no Obsidian" usa
+"""
+
 
 class ConfiguracaoInvalida(RuntimeError):
     """A configuração não existe, não é TOML válido ou não tem os caminhos."""
+
+
+class Tipo(Enum):
+    """Como uma chave se apresenta no painel e como é escrita no TOML."""
+
+    TEXTO = "texto"
+    SEGREDO = "segredo"
+    CAMINHO = "caminho"
+    INTEIRO = "inteiro"
+    HORA = "hora"
+    LISTA = "lista"
+    HORARIOS = "horarios"
+
+
+@dataclass(frozen=True)
+class Chave:
+    """Uma chave do `config.toml`: onde mora no arquivo e em `Configuracao`."""
+
+    secao: str
+    nome: str
+    atributo: str
+    tipo: Tipo
+
+    def caminho(self) -> str:
+        return f"[{self.secao}].{self.nome}" if self.secao else self.nome
+
+
+#: Toda chave do modelo, na ordem do arquivo. É o contrato entre o modelo, o
+#: escritor e o painel: uma chave nova entra aqui e no modelo, e o teste
+#: confere que os dois batem.
+CHAVES: tuple[Chave, ...] = (
+    Chave("", "vault", "vault", Tipo.CAMINHO),
+    Chave("", "gravacoes", "gravacoes", Tipo.CAMINHO),
+    Chave("", "retencao_dias", "retencao_dias", Tipo.INTEIRO),
+    Chave("deepgram", "api_key", "deepgram_api_key", Tipo.SEGREDO),
+    Chave("claude", "modelo", "claude_modelo", Tipo.TEXTO),
+    Chave("audio", "dispositivo_microfone", "dispositivo_microfone", Tipo.TEXTO),
+    Chave("audio", "dispositivo_sistema", "dispositivo_sistema", Tipo.TEXTO),
+    Chave("diario", "inicio_do_dia", "diario_inicio_do_dia", Tipo.HORA),
+    Chave("diario", "hora_da_tarefa", "diario_hora_da_tarefa", Tipo.HORA),
+    Chave("daily", "referencias_pessoais", "daily_referencias_pessoais", Tipo.LISTA),
+    Chave("daily", "contexto_do_time", "daily_contexto_do_time", Tipo.TEXTO),
+    Chave("daily", "horarios", "daily_horarios", Tipo.HORARIOS),
+    Chave("palheta", "atalho", "palheta_atalho", Tipo.TEXTO),
+    Chave("privacidade", "excluir", "privacidade_excluir", Tipo.LISTA),
+    Chave("privacidade", "pastas_privadas", "privacidade_pastas_privadas", Tipo.LISTA),
+    Chave("busca", "maximo_de_notas", "busca_maximo_de_notas", Tipo.INTEIRO),
+    Chave("git", "raiz", "git_raiz", Tipo.CAMINHO),
+    Chave("git", "profundidade", "git_profundidade", Tipo.INTEIRO),
+    Chave("git", "excluir", "git_excluir", Tipo.LISTA),
+    Chave("git", "autores", "git_autores", Tipo.LISTA),
+    Chave("linear", "api_key", "linear_api_key", Tipo.SEGREDO),
+    Chave("slack", "user_token", "slack_user_token", Tipo.SEGREDO),
+    Chave("slack", "conversas_excluidas", "slack_conversas_excluidas", Tipo.LISTA),
+    Chave("slack", "so_com_mencao", "slack_so_com_mencao", Tipo.LISTA),
+    Chave("slack", "bot_token", "slack_bot_token", Tipo.SEGREDO),
+    Chave("slack", "app_token", "slack_app_token", Tipo.SEGREDO),
+    Chave("obsidian", "vault", "obsidian_vault", Tipo.TEXTO),
+)
 
 
 @dataclass(frozen=True)
@@ -64,6 +194,9 @@ class Configuracao:
     ID (o que *Copy vault ID* copia) ou o nome da pasta. Vazio usa o nome da
     pasta de `vault`, que é o que o Obsidian usa quando o vault foi aberto
     pela pasta.
+
+    `palheta_atalho` é a combinação de teclas que abre a palheta, já validada
+    (`atalho_global.analisar_atalho` a entende); o padrão é `ctrl+alt+w`.
     """
 
     vault: Path
@@ -92,6 +225,7 @@ class Configuracao:
     slack_bot_token: str = ""
     slack_app_token: str = ""
     obsidian_vault: str = ""
+    palheta_atalho: str = ATALHO_PADRAO
     origem: Path | None = None
 
 
@@ -125,7 +259,16 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
             f"Crie o arquivo com as chaves 'vault' e 'gravacoes', ou aponte "
             f"{VARIAVEL_DE_AMBIENTE} para outro caminho."
         )
-    texto = arquivo.read_text(encoding="utf-8")
+    return carregar_texto(arquivo.read_text(encoding="utf-8"), origem=arquivo)
+
+
+def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
+    """Interpreta e valida o TOML já lido; `origem` é o arquivo que as mensagens citam.
+
+    É o que o painel usa para validar o que o usuário digitou **antes** de
+    escrever, com as mesmas mensagens que o arquivo daria.
+    """
+    arquivo = Path(origem)
     try:
         dados = tomllib.loads(texto)
     except tomllib.TOMLDecodeError as erro:
@@ -152,6 +295,7 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
     linear = dados.get("linear") or {}
     slack = dados.get("slack") or {}
     obsidian = dados.get("obsidian") or {}
+    palheta = dados.get("palheta") or {}
     raiz_do_git = str(git.get("raiz", "")).strip()
     return Configuracao(
         vault=Path(dados["vault"]),
@@ -188,8 +332,26 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
         slack_bot_token=_token_do_slack(slack.get("bot_token", ""), "bot_token", "xoxb-", arquivo),
         slack_app_token=_token_do_slack(slack.get("app_token", ""), "app_token", "xapp-", arquivo),
         obsidian_vault=str(obsidian.get("vault", "")).strip(),
+        palheta_atalho=_atalho(palheta.get("atalho", ATALHO_PADRAO), arquivo),
         origem=arquivo,
     )
+
+
+def _atalho(valor: object, arquivo: Path) -> str:
+    """Valida `[palheta].atalho` antes de a bandeja tentar registrá-lo.
+
+    Um atalho ilegível só se revelaria com a bandeja no ar e sem console; aqui
+    ele vira erro com o formato aceito.
+    """
+    texto = str(valor).strip() or ATALHO_PADRAO
+    try:
+        return analisar_atalho(texto).texto
+    except AtalhoInvalido as erro:
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '[palheta].atalho' precisa ser modificadores e "
+            f'uma tecla separados por "+" (por exemplo "ctrl+alt+space"), e veio {valor!r}: '
+            f"{erro}"
+        ) from None
 
 
 def _hora(valor: object, chave: str, arquivo: Path) -> str:
@@ -349,6 +511,131 @@ def _dias_de_retencao(valor: object, arquivo: Path) -> int:
             f"(veio {dias}). Use 0 para apagar o áudio assim que ele virar nota."
         )
     return dias
+
+
+# -- escrever ---------------------------------------------------------------
+
+#: Uma linha `chave = valor  # comentário` do modelo.
+_LINHA_DE_CHAVE = re.compile(r"^(?P<chave>\w+) = (?P<valor>.*?)(?P<comentario>\s+#.*)?$")
+_LINHA_DE_SECAO = re.compile(r"^\[(?P<secao>\w+)\]\s*$")
+
+
+def valores_de(configuracao: Configuracao) -> dict[Chave, object]:
+    """O valor de cada chave como `escrever` o escreve: caminhos em texto com `/`."""
+    valores: dict[Chave, object] = {}
+    for chave in CHAVES:
+        valor = getattr(configuracao, chave.atributo)
+        if chave.tipo is Tipo.CAMINHO:
+            valor = Path(valor).as_posix() if valor else ""
+        valores[chave] = valor
+    return valores
+
+
+def gerar_toml(valores: Mapping[Chave, object]) -> str:
+    """O `config.toml` inteiro, regenerado do modelo com os valores dados.
+
+    O modelo é a fonte dos comentários: cada linha `chave = valor  # ajuda`
+    ganha o valor novo e mantém a ajuda, alinhada como estava. Preço aceito e
+    registrado na spec: um comentário escrito à mão no arquivo se perde — o
+    backup guarda.
+    """
+    modelo = MODELO_DE_CONFIGURACAO.format(vault="", gravacoes="")
+    por_caminho = {(chave.secao, chave.nome): chave for chave in CHAVES}
+    linhas: list[str] = []
+    secao = ""
+    for linha in modelo.splitlines():
+        cabecalho = _LINHA_DE_SECAO.match(linha)
+        if cabecalho is not None:
+            secao = cabecalho["secao"]
+            linhas.append(linha)
+            continue
+        campo = _LINHA_DE_CHAVE.match(linha)
+        chave = por_caminho.get((secao, campo["chave"])) if campo else None
+        if campo is None or chave is None or chave not in valores:
+            linhas.append(linha)
+            continue
+        prefixo = f"{campo['chave']} = {_toml(valores[chave], chave.tipo)}"
+        comentario = campo["comentario"] or ""
+        if comentario:
+            coluna = len(campo["chave"]) + 3 + len(campo["valor"]) + len(comentario) - len(comentario.lstrip())
+            comentario = " " * max(2, coluna - len(prefixo)) + comentario.lstrip()
+        linhas.append(prefixo + comentario)
+    return "\n".join(linhas) + "\n"
+
+
+def escrever(configuracao: Configuracao, destino: Path, *, agora: datetime | None = None) -> Path:
+    """Grava a configuração em `destino`, com backup do que estava lá.
+
+    Escreve primeiro num `.tmp` ao lado e o relê com `carregar`: se o que
+    saiu não carrega, nada é trocado e o erro sobe. Só então o arquivo atual
+    vira `config.toml.bak-YYYYMMDD-HHMMSS` e o novo toma o lugar. UTF-8 sem
+    BOM e `\\n`, como `init` escreve. Nenhum valor vai ao log: cinco deles são
+    segredos.
+    """
+    destino = Path(destino)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    temporario = destino.with_name(destino.name + ".tmp")
+    with temporario.open("w", encoding="utf-8", newline="\n") as arquivo:
+        arquivo.write(gerar_toml(valores_de(configuracao)))
+    try:
+        carregar(temporario)
+    except ConfiguracaoInvalida:
+        temporario.unlink(missing_ok=True)
+        raise
+
+    if destino.exists():
+        momento = agora if agora is not None else datetime.now()
+        backup = destino.with_name(f"{destino.name}.bak-{momento:%Y%m%d-%H%M%S}")
+        shutil.copy2(destino, backup)
+        _log.info("Backup da configuração em %s", backup)
+    os.replace(temporario, destino)
+    _log.info("Configuração escrita em %s", destino)
+    return destino
+
+
+def _toml(valor: object, tipo: Tipo) -> str:
+    if tipo is Tipo.HORARIOS:
+        return _tabela_de_horarios(valor)
+    if tipo is Tipo.LISTA:
+        itens = [valor] if isinstance(valor, str) else list(valor or ())
+        return "[" + ", ".join(_texto_toml(str(item)) for item in itens) + "]"
+    if tipo is Tipo.INTEIRO and isinstance(valor, int) and not isinstance(valor, bool):
+        return str(valor)
+    if tipo is Tipo.CAMINHO and valor:
+        return _texto_toml(Path(str(valor)).as_posix())
+    return _texto_toml("" if valor is None else str(valor))
+
+
+def _tabela_de_horarios(valor: object) -> str:
+    pares: Sequence[tuple[str, str]]
+    if isinstance(valor, Mapping):
+        pares = [(str(dia), str(hora)) for dia, hora in valor.items()]
+    else:
+        pares = [(str(dia), str(hora)) for dia, hora in (valor or ())]
+    if not pares:
+        return "{}"
+    return "{ " + ", ".join(f"{dia} = {_texto_toml(hora)}" for dia, hora in pares) + " }"
+
+
+def _texto_toml(texto: str) -> str:
+    """Uma string básica do TOML: aspas e barra invertida escapadas, controle em `\\uXXXX`."""
+    partes: list[str] = []
+    for caractere in texto:
+        if caractere == "\\":
+            partes.append("\\\\")
+        elif caractere == '"':
+            partes.append('\\"')
+        elif caractere == "\n":
+            partes.append("\\n")
+        elif caractere == "\t":
+            partes.append("\\t")
+        elif caractere == "\r":
+            partes.append("\\r")
+        elif ord(caractere) < 0x20 or caractere == "\x7f":
+            partes.append(f"\\u{ord(caractere):04X}")
+        else:
+            partes.append(caractere)
+    return '"' + "".join(partes) + '"'
 
 
 def _dica_de_barra_invertida(texto: str) -> str:

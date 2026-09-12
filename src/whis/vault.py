@@ -35,6 +35,7 @@ from .nota_viva import (
 from .portas import Resumo, ResumoDoDia, Transcricao
 
 if TYPE_CHECKING:  # ambos importam este módulo em tempo de execução
+    from .busca import Resposta
     from .coleta import FalhaDeFonte
     from .daily import JanelaDaDaily
 
@@ -44,10 +45,18 @@ PASTA_REUNIOES = "reunioes"
 PASTA_TRANSCRICOES = "transcricoes"
 PASTA_DIARIO = "diario"
 PASTA_DAILY = "daily"
+PASTA_RESPOSTAS = "respostas"
 PASTA_NOTAS = "notas"
 
 #: Todas as pastas criadas na primeira execução.
-ESTRUTURA = (PASTA_REUNIOES, PASTA_TRANSCRICOES, PASTA_DIARIO, PASTA_DAILY, PASTA_NOTAS)
+ESTRUTURA = (
+    PASTA_REUNIOES,
+    PASTA_TRANSCRICOES,
+    PASTA_DIARIO,
+    PASTA_DAILY,
+    PASTA_RESPOSTAS,
+    PASTA_NOTAS,
+)
 
 #: As únicas pastas em que o coletor de reunião pode escrever.
 ZONAS_DE_ESCRITA = (PASTA_REUNIOES, PASTA_TRANSCRICOES)
@@ -57,6 +66,9 @@ ZONAS_DO_DIARIO = (PASTA_DIARIO,)
 
 #: A única pasta em que o coletor de daily pode escrever.
 ZONAS_DA_DAILY = (PASTA_DAILY,)
+
+#: A única pasta em que `perguntar` da palheta pode escrever.
+ZONAS_DAS_RESPOSTAS = (PASTA_RESPOSTAS,)
 
 #: A nota viva: a única nota que agente e usuário mantêm juntos.
 CAMINHO_DA_NOTA_VIVA = f"{PASTA_DAILY}/atual.md"
@@ -75,6 +87,12 @@ TIPO_REUNIAO = "reuniao"
 TIPO_TRANSCRICAO = "transcricao"
 TIPO_DIARIO = "diario"
 TIPO_DAILY = "daily"
+TIPO_RESPOSTA = "resposta"
+
+#: O callout recolhido com as fontes de uma resposta: a spec diz que a fonte
+#: não aparece por padrão — recolhida, ela não aparece e continua na nota
+#: para o "de onde?".
+CALLOUT_DAS_FONTES = "> [!info]- Fontes"
 
 _MESES = (
     "janeiro",
@@ -445,6 +463,48 @@ def _linhas_do_evento(evento: Evento) -> list[str]:
 def caminho_da_daily(data: date) -> str:
     """Caminho relativo da daily: um arquivo por dia, sem hora no nome."""
     return f"{PASTA_DAILY}/{data.isoformat()}.md"
+
+
+def caminho_da_resposta(momento: datetime, pergunta: str) -> str:
+    """`respostas/YYYY-MM-DD-HHMM-<slug>.md` — o mesmo slug das pastas de gravação.
+
+    O import é tardio porque o gravador puxa o PyAudio, que quem só lê o vault
+    não precisa carregar.
+    """
+    from .gravador import criar_slug
+
+    return f"{PASTA_RESPOSTAS}/{momento:%Y-%m-%d-%H%M}-{criar_slug(pergunta)}.md"
+
+
+def montar_resposta(*, pergunta: str, resposta: "Resposta") -> str:
+    """Monta a nota de uma resposta da palheta: a pergunta, a resposta e as fontes recolhidas.
+
+    Sem campo `data`: a Daily notes do Obsidian o transformaria em link para
+    uma nota inexistente na raiz (armadilha achada no ticket 04).
+    """
+    frontmatter = _frontmatter(
+        {
+            "tipo": TIPO_RESPOSTA,
+            "pergunta": " ".join(pergunta.split()),
+            "achou": "true" if resposta.achou else "false",
+        }
+    )
+    texto = resposta.texto.strip() or (
+        "Não achei nada no vault que responda a isso."
+        if not resposta.achou
+        else "_(a resposta veio vazia)_"
+    )
+    corpo = [f"# {' '.join(pergunta.split())}", "", texto, "", CALLOUT_DAS_FONTES]
+    if resposta.citacoes:
+        for citacao in resposta.citacoes:
+            trecho = f" — {citacao.trecho}" if citacao.trecho else ""
+            corpo.append(f"> - `{citacao.origem}`{trecho}")
+    elif resposta.achou:
+        corpo.append("> _(a resposta não cita nota nenhuma)_")
+    else:
+        corpo.append("> _(nenhuma: nenhuma nota do vault sustenta uma resposta)_")
+    corpo.append("")
+    return frontmatter + "\n".join(corpo)
 
 
 def ate_da_daily_anterior(vault: Path, antes_de: date) -> datetime | None:

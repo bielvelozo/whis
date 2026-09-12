@@ -48,14 +48,16 @@ import sys
 from datetime import date, datetime
 from pathlib import Path
 
-from . import avisos as _avisos
+from . import palheta as _palheta
 from . import registro as _registro
 from . import retencao as _retencao
 from . import vault as _vault
+from .atalho_global import analisar_atalho
 from .atendente import ErroDeDM, PortaDM
 from .busca import ErroDeBusca, PortaBusca, Resposta
 from .coleta import TodasAsFontesFalharam
 from .configuracao import (
+    MODELO_DE_CONFIGURACAO,
     Configuracao,
     ConfiguracaoInvalida,
     caminho_padrao,
@@ -75,6 +77,8 @@ from .fakes import (
 )
 from .fontes import PortaFonte, data_do_diario
 from .gravacao import GravacaoInvalida
+from .palheta import ROTULO_DO_BOTAO as ROTULO_DO_BOTAO_DA_DAILY  # noqa: F401 — reexport
+from .palheta import TITULO_DO_TOAST_DA_DAILY, texto_do_toast_da_daily  # noqa: F401 — reexport
 from .pergunta import PerguntaVazia, responder
 from .pipeline import processar
 from .portas import (
@@ -520,43 +524,15 @@ def _comando_daily(args: argparse.Namespace) -> int:
     )
 
 
-TITULO_DO_TOAST_DA_DAILY = "A daily está pronta"
-ROTULO_DO_BOTAO_DA_DAILY = "Abrir no Obsidian"
-
-
 def _avisar_que_a_daily_nasceu(configuracao: Configuracao, resultado: ResultadoDaDaily) -> None:
     """O toast com o botão que abre `daily/atual.md` no Obsidian.
 
     Quem chama `whis daily` na hora agendada não está olhando terminal nenhum;
-    o toast é o único sinal de que a nota nasceu. Falhar em avisar já é
-    tratado dentro de `avisar` — o código de saída continua sendo o da nota.
+    o toast é o único sinal de que a nota nasceu. É o mesmo toast que a
+    palheta dispara — montado num lugar só. Falhar em avisar já é tratado
+    dentro de `avisar`; o código de saída continua sendo o da nota.
     """
-    _avisos.avisar(
-        TITULO_DO_TOAST_DA_DAILY,
-        texto_do_toast_da_daily(resultado),
-        botao=(
-            ROTULO_DO_BOTAO_DA_DAILY,
-            _vault.uri_do_obsidian(configuracao, _vault.CAMINHO_DA_NOTA_VIVA),
-        ),
-    )
-
-
-def texto_do_toast_da_daily(resultado: ResultadoDaDaily) -> str:
-    """Uma linha: o que mudou na nota viva, ou por que nada mudou."""
-    if resultado.falha_do_roteiro:
-        return (
-            f"A nota nasceu parcial: {resultado.falha_do_roteiro}. "
-            f"A nota viva ficou como estava."
-        )
-    mudancas = resultado.mudancas
-    if mudancas is None or mudancas.vazia():
-        return "Nada mudou na nota viva."
-    partes: list[str] = []
-    if novos := len(mudancas.acrescentadas):
-        partes.append(f"{novos} {'item novo' if novos == 1 else 'itens novos'}")
-    if movidos := len(mudancas.movidas):
-        partes.append(f"{movidos} {'movido' if movidos == 1 else 'movidos'} para 'O que eu fiz'")
-    return " e ".join(partes) + "."
+    _palheta.avisar_resultado(configuracao, _palheta.resultado_da_daily(resultado))
 
 
 def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
@@ -689,77 +665,40 @@ def _comando_atender(args: argparse.Namespace) -> int:
 
 
 def _comando_bandeja(args: argparse.Namespace) -> int:
-    """Sobe o ícone na bandeja: o gesto da spec, um clique liga e outro desliga.
+    """Sobe o ícone na bandeja com a palheta hospedada nele.
 
     A bandeja é casca fina sobre o coletor; aqui só se decide de onde vêm as
     portas — reais por padrão, fakes com `--fakes` para ensaiar o gesto inteiro
-    sem gastar crédito.
+    sem gastar crédito. O `--fakes` vale também para os comandos da palheta:
+    `daily` e `perguntar` rodam com as mesmas fábricas dos subcomandos.
     """
     from . import bandeja as _bandeja
 
     configuracao = _configuracao(args)
+    fakes = args.fakes
+    comandos = _palheta.comandos_padrao(
+        fontes_da_daily=lambda atual: montar_fontes_da_daily(atual, fakes=fakes),
+        roteiro_da_daily=lambda atual: montar_roteiro_da_daily(atual, fakes=fakes),
+        busca=lambda atual: montar_busca(atual, fakes=fakes),
+    )
+    palheta = _palheta.Palheta(comandos, configuracao)
+
+    def painel(raiz) -> None:
+        from .painel import abrir_painel
+
+        abrir_painel(raiz, palheta, destino=configuracao.origem)
+
     return _bandeja.executar(
         configuracao,
-        portas=lambda: montar_portas(configuracao, fakes=args.fakes),
+        portas=lambda: montar_portas(configuracao, fakes=fakes),
         verboso=args.verboso,
+        palheta=palheta,
+        atalho=analisar_atalho(configuracao.palheta_atalho),
+        painel=painel,
     )
 
 
 # -- init -------------------------------------------------------------------
-
-MODELO_DE_CONFIGURACAO = """\
-# Configuração do Whis. Use barras normais (/) nos caminhos:
-# no TOML a barra invertida é escape e quebra o arquivo.
-
-vault = "{vault}"
-gravacoes = "{gravacoes}"
-retencao_dias = 7            # dias que o áudio bruto sobrevive depois de virar nota
-
-[deepgram]
-api_key = ""                 # crédito de US$ 200; sem ela o STT real não roda
-
-[claude]
-modelo = ""                  # vazio = o modelo padrão da sua conta
-
-[audio]
-dispositivo_microfone = ""   # vazio = microfone padrão do Windows
-dispositivo_sistema = ""     # vazio = loopback da saída padrão do Windows
-
-[diario]
-inicio_do_dia = "04:00"      # o diário de um dia vai desta hora à mesma hora do dia seguinte
-hora_da_tarefa = "19:00"     # quando a tarefa agendada gera o diário
-
-[daily]
-referencias_pessoais = []     # repositórios e canais que são seus, não do trabalho: ficam no vault mas fora do roteiro
-contexto_do_time = ""         # como o seu processo funciona, para o roteiro não inventar bloqueio
-horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:55", sexta = "10:25" }}  # hora em que a daily nasce em cada dia (segunda..domingo, sem acento); dia ausente = sem daily
-
-[privacidade]
-excluir = []                 # trechos que nunca saem da máquina (substring, sem diferenciar maiúsculas)
-pastas_privadas = []         # pastas do vault que a busca nunca abre, relativas a ele (ex.: "notas/pessoal")
-
-[busca]
-maximo_de_notas = 40         # teto de notas lidas numa pergunta, para uma pergunta não varrer o vault
-
-[git]
-raiz = ""                    # pasta onde varrer repositórios; vazio = fonte desligada
-profundidade = 3
-excluir = []                 # pastas ignoradas na varredura
-autores = []                 # vazio = deduz do git config user.email de cada repositório
-
-[linear]
-api_key = ""                 # Personal API Key read-only; vazio = fonte desligada
-
-[slack]
-user_token = ""              # user token xoxp da app interna; vazio = fonte desligada
-conversas_excluidas = []     # canais e DMs que o coletor nunca lê
-so_com_mencao = []           # canais em que só entra o que cita você (ex.: code review)
-bot_token = ""               # Bot User OAuth Token xoxb da mesma app: o atendente responde na DM com ele
-app_token = ""               # App-Level Token xapp com connections:write: a conexão do Socket Mode
-
-[obsidian]
-vault = "245833c11ad43e6e"   # o ID do vault (Copy vault ID no seletor de vaults) ou o nome da pasta; é o que o botão "Abrir no Obsidian" usa
-"""
 
 
 def _comando_init(args: argparse.Namespace) -> int:

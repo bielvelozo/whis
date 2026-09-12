@@ -10,6 +10,7 @@ dependencies = [
     "httpx>=0.27",              # chamadas HTTP (Deepgram batch)
     "claude-agent-sdk>=0.1.0",  # resumo via conta Claude do usuário (OAuth)
     "slack_sdk>=3.27",          # a DM do agente por Socket Mode (sem porta aberta)
+    "pywin32>=306",             # RegisterHotKey e o loop de mensagens do atalho da palheta
 ]
 
 [project.optional-dependencies]
