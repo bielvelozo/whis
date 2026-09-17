@@ -45,13 +45,14 @@ A entrega acrescentou chaves que o seu arquivo ainda não tem. Sem
 `[daily].horarios` o passo 3 recusa agendar a daily.
 
 O jeito da entrega é pelo painel: suba a bandeja num terminal, abra a palheta
-pelo atalho e digite `configurar`:
+pelo atalho e digite `settings`:
 
 ```
 python -m whis bandeja
 ```
 
-Aperte **Ctrl+Alt+W**, digite `configurar`, Enter. No painel:
+Aperte **Ctrl+Alt+W**, digite `settings`, Enter (ou clique em **Settings** na
+lista). No painel:
 
 - **Horários da daily**: segunda, terça e quinta `13:55`; quarta e sexta
   `10:25`. Dia vazio = sem daily.
@@ -113,16 +114,27 @@ bandeja não está no ar".
 
 ## Passo 5 — A palheta
 
-Com a bandeja no ar, aperte **Ctrl+Alt+W**. Uma janela pequena, sem
-borda, aparece no centro. Teste, um por vez (Esc fecha sem fazer nada):
+Com a bandeja no ar, aperte **Ctrl+Alt+W**. Um painel escuro de cantos
+arredondados aparece no alto da tela: um campo grande com "Type a command…" e,
+embaixo, a lista de ações — **Open note**, **Generate daily**, **Start
+recording** primeiro, depois Ask, Note, Doubt, Settings. ↑/↓ escolhem uma
+linha, Enter executa a escolhida (com o campo vazio), clicar também executa;
+digitar filtra a lista e a palavra do comando fica em roxo quando é um
+comando. Esc, ou clicar fora, fecha sem fazer nada. **Nenhuma janela de
+terminal deve piscar em nenhum comando** — se piscar, é falha.
+
+Teste, um por vez:
 
 | digite | o que deve acontecer |
 |---|---|
-| `ajuda` | a janela some e um toast lista os comandos |
-| `anotar testando a palheta` | toast "Anotado em Falar"; `daily/atual.md` ganha `- testando a palheta` no fim de *Falar* |
-| `abrir` | o Obsidian abre `daily/atual.md`. Teste **com o Obsidian fechado** também: o Windows deve lançá-lo e cair na nota |
-| `perguntar qual foi a decisão sobre retenção?` | a janela some; ~60 s depois um toast com o começo da resposta e o botão **Abrir no Obsidian**, que abre a nota nova em `respostas/`. Custa uma pergunta na sua conta (≈ US$ 0,56 equivalente) |
-| `daily` | ~40 s depois, toast "A daily está pronta" com o botão; `daily/atual.md` atualizada |
+| `note testando a palheta` | toast "Anotado em Pontos"; `daily/atual.md` ganha `- testando a palheta` no fim de *Pontos* (a seção nasce antes de *Falar* se a nota ainda não a tinha) |
+| `doubt o pix expira sozinho?` | toast "Anotado em Dúvidas"; a linha entra em *Dúvidas* |
+| `open` (ou clique em **Open note**) | o Obsidian abre `daily/atual.md`. Teste **com o Obsidian fechado** também: o Windows deve lançá-lo e cair na nota |
+| `ask qual foi a decisão sobre retenção?` | a janela some; ~60 s depois um toast com o começo da resposta e o botão **Abrir no Obsidian**, que abre a nota nova em `respostas/`. Custa uma pergunta na sua conta (≈ US$ 0,56 equivalente) |
+| `daily` (ou **Generate daily**) | ~40 s depois, toast "A daily está pronta" com o botão; `daily/atual.md` atualizada |
+| **Start recording** | o ícone da bandeja fica vermelho; abra a palheta de novo e a linha diz **Stop recording** — clique para parar e processar |
+| `settings` | o painel de configuração abre |
+| Enter com o campo vazio e nada selecionado, `vagas` | a janela só some; `vagas` dá o toast "Não entendi" com os sete comandos |
 
 O item **Abrir a palheta** no menu da bandeja faz o mesmo que o atalho. Se o
 atalho não responder, veja no `bandeja.log` se o registro do hotkey foi
@@ -174,7 +186,7 @@ e confira:
   estava, com os sub-itens;
 - o que é novo está agrupado por quem pediu e ancorado no sintoma, com o id da
   issue inline;
-- *Dúvidas* e *Falar* não mudaram um byte;
+- *Dúvidas*, *Pontos* e *Falar* não mudaram um byte;
 - a nota do dia, `daily/YYYY-MM-DD.md`, tem `## Mudanças na nota viva` e as
   listas cruas embaixo.
 

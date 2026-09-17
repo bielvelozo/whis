@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
+from . import sem_console as _sem_console
 from .configuracao import Configuracao, caminho_padrao
 from .fontes import analisar_hora
 
@@ -104,7 +105,9 @@ class ErroDeAutomacao(RuntimeError):
 
 
 def _rodar(comando: list[str]) -> subprocess.CompletedProcess:
-    return subprocess.run(comando, capture_output=True, text=True, check=False)
+    return subprocess.run(
+        comando, capture_output=True, text=True, check=False, **_sem_console.opcoes()
+    )
 
 
 # -- subir com o Windows ----------------------------------------------------

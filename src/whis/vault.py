@@ -25,9 +25,11 @@ from . import obsidian as _obsidian
 from .configuracao import Configuracao
 from .fontes import ORDEM_DAS_FONTES, Evento, Janela, nome_legivel
 from .nota_viva import (
+    SECAO_DUVIDAS,
     SECAO_FALAR,
     SECAO_FAZENDO,
     SECAO_FIZ,
+    SECAO_PONTOS,
     Mudancas,
     NotaViva,
     sem_brancos_nas_pontas,
@@ -567,17 +569,18 @@ def escrever_nota_viva(vault: Path, nota: NotaViva) -> Path:
     return escrever(vault, CAMINHO_DA_NOTA_VIVA, nota.texto(), zonas=ZONAS_DA_DAILY, literal=True)
 
 
-def anotar_ponto(vault: Path, texto: str) -> Path:
-    """Acrescenta `- texto` no fim de `## Falar` da nota viva.
+def anotar_ponto(vault: Path, texto: str, secao: str = SECAO_PONTOS) -> Path:
+    """Acrescenta `- texto` no fim de `## Pontos` (ou `## Dúvidas`) da nota viva.
 
     O único gesto do agente numa seção do usuário, e só a pedido explícito
-    (`daily --anotar`, ou `anotar` na DM). É **append-only**: todo byte fora
-    da linha nova continua onde estava, porque o que há ali foi digitado à mão.
+    (`daily --anotar`, `note`/`doubt` na palheta, `anotar` na DM). É
+    **append-only**: todo byte fora da linha nova continua onde estava, porque
+    o que há ali foi digitado à mão.
     """
     nota = ler_nota_viva(vault)
-    nota.anotar(texto)
+    nota.anotar(texto, secao)
     escrito = escrever_nota_viva(vault, nota)
-    _log.info("Ponto anotado em '%s' de %s", SECAO_FALAR, CAMINHO_DA_NOTA_VIVA)
+    _log.info("Ponto anotado em '%s' de %s", secao, CAMINHO_DA_NOTA_VIVA)
     return escrito
 
 

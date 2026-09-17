@@ -9,12 +9,15 @@ from __future__ import annotations
 
 import hashlib
 
+import pytest
+
 from whis.nota_viva import (
     MODELO_DA_NOTA_VIVA,
     SECAO_DUVIDAS,
     SECAO_FALAR,
     SECAO_FAZENDO,
     SECAO_FIZ,
+    SECAO_PONTOS,
     NotaViva,
     id_do_item,
 )
@@ -265,16 +268,37 @@ def test_acrescentar_numa_secao_que_nao_existe_a_cria_no_fim():
     )
 
 
-def test_anotar_e_append_only_em_falar():
+def test_anotar_e_append_only_em_pontos_que_nasce_antes_de_falar():
+    """A nota antiga não tem `## Pontos`: a seção entra antes de *Falar*, e nada mais muda."""
     nota = NotaViva.de_texto(NOTA)
 
     linha = nota.anotar("perguntar do skeleton")
 
     texto = nota.texto()
     assert linha == "- perguntar do skeleton"
-    assert texto.replace("- perguntar do skeleton\n", "", 1) == NOTA
-    assert trecho(texto, SECAO_FALAR).endswith(
-        "- avisar que sexta eu saio mais cedo\n- perguntar do skeleton\n"
+    assert texto.replace("## Pontos\n- perguntar do skeleton\n\n", "", 1) == NOTA
+    assert trecho(texto, SECAO_PONTOS).startswith("## Pontos\n- perguntar do skeleton\n")
+    assert trecho(texto, SECAO_FALAR) == trecho(NOTA, SECAO_FALAR)
+
+
+def test_anotar_em_duvidas_so_a_pedido_e_nunca_nas_secoes_do_agente_ou_em_falar():
+    nota = NotaViva.de_texto(NOTA)
+
+    nota.anotar("o pix expira?", SECAO_DUVIDAS)
+
+    assert "- o pix pendente expira sozinho?\n- o pix expira?\n" in trecho(nota.texto(), SECAO_DUVIDAS)
+    for proibida in (SECAO_FIZ, SECAO_FAZENDO, SECAO_FALAR):
+        with pytest.raises(ValueError):
+            nota.anotar("x", proibida)
+
+
+def test_a_secao_nova_entra_na_ordem_das_cinco_mesmo_sem_a_seguinte_imediata():
+    nota = NotaViva.de_texto("---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## Falar\n- x\n")
+
+    nota.anotar("dúvida", SECAO_DUVIDAS)
+
+    assert nota.texto() == (
+        "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## Dúvidas\n- dúvida\n\n## Falar\n- x\n"
     )
 
 
@@ -361,13 +385,13 @@ def test_aplicar_ignora_pai_inexistente_e_ainda_acrescenta_o_item(caplog):
 # -- o modelo ------------------------------------------------------------------
 
 
-def test_o_modelo_tem_as_quatro_secoes_na_ordem_e_explica_as_regras():
+def test_o_modelo_tem_as_cinco_secoes_na_ordem_e_nenhuma_explicacao():
+    """O usuário sabe o que cada seção é (ticket 13): só o frontmatter e os títulos."""
     nota = NotaViva.do_modelo()
 
-    assert [secao for secao, _ in nota.secoes()] == [SECAO_FIZ, SECAO_FAZENDO, SECAO_DUVIDAS, SECAO_FALAR]
+    assert [secao for secao, _ in nota.secoes()] == [SECAO_FIZ, SECAO_FAZENDO, SECAO_DUVIDAS, SECAO_PONTOS, SECAO_FALAR]
     assert all(linhas == () for _, linhas in nota.secoes())
     assert MODELO_DA_NOTA_VIVA.startswith("---\ntipo: daily-atual\n---\n")
     assert "\ndata:" not in MODELO_DA_NOTA_VIVA, "campo `data` vira link da Daily notes do Obsidian"
-    assert "> [!tip]" in MODELO_DA_NOTA_VIVA
-    assert "nunca escreve nelas" in MODELO_DA_NOTA_VIVA
-    assert "sem trocar uma letra" in MODELO_DA_NOTA_VIVA
+    assert ">" not in MODELO_DA_NOTA_VIVA
+    assert [linha for linha in MODELO_DA_NOTA_VIVA.splitlines() if linha and not linha.startswith(("##", "---", "tipo:"))] == []

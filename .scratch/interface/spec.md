@@ -14,6 +14,15 @@ Os fatos que sustentam cada decisão estão em [research/](research/), um arquiv
 > time. (4) **A DM do Slack — a entrega 3 inteira — vai dormir.** (5) O diário está **suspenso**.
 > Os documentos das entregas fechadas guardam as decisões antigas; são registro do que aconteceu.
 
+> **Revisão pós-prova, 2026-09-16.** O usuário provou a palheta na máquina dele e reprovou oito
+> pontos, que **substituem** o que está abaixo onde conflitam: (1) a nota viva sem callout de
+> explicação; (2) nenhuma janela de terminal para nenhum comando; (3) `anotar` vai para uma seção
+> nova *Pontos*, e *Dúvidas* só a pedido — cinco seções; (4) sem comando `ajuda`; (5) comandos em
+> **inglês** (`daily`, `note`, `doubt`, `ask`, `open`, `record`, `settings`) com a palavra do
+> comando em cor de destaque; (6) a janela traz as ações *Open note*, *Generate daily* e
+> *Start recording* clicáveis; (7) `ask` precisa funcionar sob `pythonw`; (8) visual estilo
+> Raycast. Ticket [13](issues/13-acabamento-da-palheta.md).
+
 ## Problem Statement
 
 O Whis funciona e **não está sendo usado**. Em 2026-09-11 não havia processo dele no ar: a bandeja

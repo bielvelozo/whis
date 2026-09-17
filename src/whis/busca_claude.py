@@ -47,7 +47,7 @@ from .busca import Citacao, ErroDeBusca, Resposta
 from .conversa import AGENTE, Turno
 from .ferramentas import Ferramentas, ForaDaFronteira, LimiteDeNotas
 from .fontes_ao_vivo import FontesAoVivo
-from .resumo_claude import VARIAVEIS_DE_API_PAGA
+from .resumo_claude import VARIAVEIS_DE_API_PAGA, registrar_stderr_do_cli
 
 _log = logging.getLogger("whis.busca")
 
@@ -463,6 +463,7 @@ def montar_opcoes(
         strict_mcp_config=True,
         permission_mode="dontAsk",
         max_turns=maximo_de_turnos,
+        stderr=registrar_stderr_do_cli,
     )
 
 

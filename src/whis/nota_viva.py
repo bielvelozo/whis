@@ -35,34 +35,32 @@ TIPO_NOTA_VIVA = "daily-atual"
 SECAO_FIZ = "O que eu fiz"
 SECAO_FAZENDO = "O que estou fazendo"
 SECAO_DUVIDAS = "Dúvidas"
+SECAO_PONTOS = "Pontos"
 SECAO_FALAR = "Falar"
 
-#: As quatro seções, na ordem em que a nota as tem.
-SECOES = (SECAO_FIZ, SECAO_FAZENDO, SECAO_DUVIDAS, SECAO_FALAR)
+#: As cinco seções, na ordem em que a nota as tem.
+SECOES = (SECAO_FIZ, SECAO_FAZENDO, SECAO_DUVIDAS, SECAO_PONTOS, SECAO_FALAR)
 
-#: As seções que o agente mantém — as únicas em que ele escreve.
+#: As seções que o agente mantém — as únicas em que ele escreve sozinho.
 SECOES_DO_AGENTE = (SECAO_FIZ, SECAO_FAZENDO)
 
-#: O arquivo que nasce quando ainda não há nota viva no vault.
-#:
-#: O callout é para quem lê no Obsidian: a nota é editada à mão, e as regras
-#: de quem escreve onde precisam estar na própria nota, não num manual.
+#: As seções do usuário em que `anotar` pode acrescentar, a pedido dele.
+SECOES_ANOTAVEIS = (SECAO_PONTOS, SECAO_DUVIDAS)
+
+#: O arquivo que nasce quando ainda não há nota viva no vault: só o
+#: frontmatter e os títulos. O usuário sabe o que cada seção é (ticket 13).
 MODELO_DA_NOTA_VIVA = f"""\
 ---
 tipo: {TIPO_NOTA_VIVA}
 ---
-
-> [!tip] Como esta nota funciona
-> É a sua daily, mantida a quatro mãos. Um item é uma linha de lista (`- `, `1.`); o que está indentado embaixo dele pertence a ele.
-> **O que eu fiz** e **O que estou fazendo** são do Whis: ele acrescenta o que é novo e, quando uma PR é mergeada ou uma issue vai para Done, move o item de uma seção para a outra com as suas palavras, sem trocar uma letra. Ele nunca reescreve nem apaga um item — corrija e apague à vontade, o que você escrever fica.
-> **Dúvidas** e **Falar** são só suas: o Whis lê para não repetir, e nunca escreve nelas. `whis daily --anotar "..."` acrescenta uma linha em *Falar*.
-> A cada daily nova, *O que eu fiz* é arquivado na nota do dia (`daily/AAAA-MM-DD.md`) e recomeça vazio.
 
 ## O que eu fiz
 
 ## O que estou fazendo
 
 ## Dúvidas
+
+## Pontos
 
 ## Falar
 """
@@ -330,9 +328,13 @@ class NotaViva:
         bloco.linhas[1:] = [""]
         return arquivado
 
-    def anotar(self, texto: str) -> str:
-        """`- texto` no fim de *Falar* — o único gesto do agente numa seção do usuário."""
-        return self.acrescentar(SECAO_FALAR, texto)[0]
+    def anotar(self, texto: str, secao: str = SECAO_PONTOS) -> str:
+        """`- texto` no fim de *Pontos* (ou *Dúvidas*) — o único gesto do agente numa seção do usuário."""
+        if _chave(secao) not in {_chave(anotavel) for anotavel in SECOES_ANOTAVEIS}:
+            raise ValueError(
+                f"Só se anota em {' ou '.join(SECOES_ANOTAVEIS)}; {secao!r} é seção do agente ou de fala."
+            )
+        return self.acrescentar(secao, texto)[0]
 
     # -- bastidores --------------------------------------------------------
 
@@ -344,7 +346,22 @@ class NotaViva:
         return None
 
     def _abrir_secao(self, titulo: str) -> _Bloco:
-        """Uma seção nova no fim da nota, mantendo o jeito como o arquivo termina."""
+        """Uma seção nova no lugar dela na ordem das cinco; no fim, se nenhuma vem depois.
+
+        Uma nota antiga sem `## Pontos` ganha a seção **antes de `## Falar`**,
+        e não no fim: a ordem de falar é a da nota. Só linhas inteiras entram
+        — uma em branco antes do título, quando a seção anterior não a tem.
+        """
+        seguinte = self._bloco_seguinte(titulo)
+        if seguinte is not None:
+            posicao = self._blocos.index(seguinte)
+            anterior = self._blocos[posicao - 1].linhas
+            if anterior and anterior[-1] != "":
+                anterior.append("")
+            bloco = _Bloco(titulo, [f"## {titulo}", ""])
+            self._blocos.insert(posicao, bloco)
+            return bloco
+
         ultimo = self._blocos[-1].linhas
         termina_em_quebra = bool(ultimo) and ultimo[-1] == ""
         if termina_em_quebra:
@@ -354,6 +371,17 @@ class NotaViva:
         bloco = _Bloco(titulo, [f"## {titulo}", ""] if termina_em_quebra else [f"## {titulo}"])
         self._blocos.append(bloco)
         return bloco
+
+    def _bloco_seguinte(self, titulo: str) -> _Bloco | None:
+        """O primeiro bloco existente que, na ordem das seções, vem depois de `titulo`."""
+        ordem = [_chave(secao) for secao in SECOES]
+        if _chave(titulo) not in ordem:
+            return None
+        for secao in SECOES[ordem.index(_chave(titulo)) + 1 :]:
+            bloco = self._bloco(secao)
+            if bloco is not None:
+                return bloco
+        return None
 
     def _itens_do_agente(self) -> dict[str, tuple[Item, ...]]:
         usados: set[str] = set()

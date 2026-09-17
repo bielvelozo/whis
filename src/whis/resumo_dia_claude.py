@@ -45,7 +45,7 @@ from claude_agent_sdk import (
 from .fontes import Evento
 from .nota_viva import SECAO_FAZENDO, SECAO_FIZ, SECOES, NotaViva
 from .portas import Daily, ErroDeDaily, ErroDeResumoDoDia, ItemNovo, ResumoDoDia
-from .resumo_claude import VARIAVEIS_DE_API_PAGA
+from .resumo_claude import VARIAVEIS_DE_API_PAGA, registrar_stderr_do_cli
 
 _log = logging.getLogger("whis.resumo_do_dia")
 
@@ -133,11 +133,11 @@ fala português com jargão técnico em inglês: preserve esses termos exatament
 como aparecem (deploy, rollback, review, sprint, issue, daily, branch, merge, PR, \
 bug, toast, modal, checkout). Nunca os traduza.
 
-A nota tem quatro seções. Você só escreve em duas:
+A nota tem cinco seções. Você só escreve em duas:
 - "O que eu fiz": o que fechou desde a última daily.
 - "O que estou fazendo": o que está aberto agora.
-- "Dúvidas" e "Falar" são do usuário. Chegam como contexto, para você não \
-repetir o que ele já anotou; você nunca escreve nelas.
+- "Dúvidas" e "Falar" são do usuário, e "Pontos" também. Chegam como contexto, \
+para você não repetir o que ele já anotou; você nunca escreve nelas.
 
 Cada item das duas listas suas chega com um identificador no fim da linha, \
 assim: "(id a1b2c3)". É por ele que você aponta um item existente — nunca pelo \
@@ -455,8 +455,8 @@ def _linhas_da_nota_viva(nota: NotaViva) -> list[str]:
     """
     linhas = [
         "A nota viva como está agora. Nas duas primeiras seções cada item traz o "
-        "id entre parênteses; \"Dúvidas\" e \"Falar\" são do usuário e vêm só para "
-        "você não repetir o que ele já anotou:",
+        "id entre parênteses; \"Dúvidas\" e \"Falar\" são do usuário, e \"Pontos\" "
+        "também — vêm só para você não repetir o que ele já anotou:",
         "",
     ]
     for secao in SECOES:
@@ -582,6 +582,7 @@ async def _conversar_async(
         strict_mcp_config=True,
         permission_mode="dontAsk",
         max_turns=1,
+        stderr=registrar_stderr_do_cli,
     )
 
     partes: list[str] = []

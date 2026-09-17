@@ -37,6 +37,18 @@ _log = logging.getLogger("whis.resumo")
 #: Variáveis de ambiente que fariam o Claude cobrar por fora da conta do usuário.
 VARIAVEIS_DE_API_PAGA = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
+
+def registrar_stderr_do_cli(linha: str) -> None:
+    """O stderr do CLI do Claude vai ao log, em vez de ser herdado do pai.
+
+    Sem este callback o SDK deixa o filho herdar o stderr do processo — e sob
+    `pythonw.exe` não há stderr: o Python entrega ao filho um pipe com a ponta
+    de leitura fechada, e um processo Node que escreva uma linha ali morre com
+    EPIPE no meio da pergunta (provado com `node -e` sob `pythonw`, ticket 13).
+    Com o callback, o SDK abre um pipe de verdade e lê o que vier.
+    """
+    _log.debug("claude: %s", linha.rstrip())
+
 #: Modelo usado na chamada. `None` = o padrão da conta/CLI do usuário.
 #:
 #: Fica em `None` de propósito: o coletor roda na máquina do usuário, contra a
@@ -229,6 +241,7 @@ async def _conversar_async(pergunta: str, *, modelo: str | None) -> str:
         strict_mcp_config=True,
         permission_mode="dontAsk",
         max_turns=1,
+        stderr=registrar_stderr_do_cli,
     )
 
     partes: list[str] = []

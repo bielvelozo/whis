@@ -426,10 +426,17 @@ def executar(
         return 0
 
     from .atalho_global import AtalhoGlobal
-    from .janela_da_palheta import JanelaDaPalheta
+    from .janela_da_palheta import Acao, JanelaDaPalheta
 
     janela = JanelaDaPalheta()
     janela.ao_enviar(palheta.despachar)
+    palheta.gravando = lambda: coletor.situacao().gravando
+    janela.definir_acoes(
+        [
+            Acao(comando.nome, comando.icone, comando.rotulo_atual, comando.descricao)
+            for comando in palheta.acoes()
+        ]
+    )
 
     def abrir_palheta() -> None:
         janela.pedir(janela.mostrar)
@@ -455,6 +462,7 @@ def executar(
         abrir_configuracao=abrir_configuracao,
         ao_sair=encerrar,
     )
+    palheta.gravar = bandeja.alternar
     if hotkey is not None:
         if hotkey.iniciar():
             print(f"Palheta no atalho {atalho.texto}.", flush=True)

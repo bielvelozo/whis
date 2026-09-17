@@ -17,6 +17,7 @@ from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import quote
 
+from . import sem_console as _sem_console
 from .configuracao import Configuracao
 
 _log = logging.getLogger("whis.obsidian")
@@ -59,6 +60,6 @@ def lancar(alvo: str, *, iniciar=None, executar=subprocess.run) -> None:
     except OSError as erro:
         if "://" in alvo:
             _log.info("startfile recusou a URI (%s); tentando por 'start'.", erro)
-            executar(["cmd", "/c", "start", "", alvo], check=False)
+            executar(["cmd", "/c", "start", "", alvo], check=False, **_sem_console.opcoes())
             return
         _log.error("Não foi possível abrir %s: %s", alvo, erro)

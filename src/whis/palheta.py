@@ -7,10 +7,13 @@ abrir. Nenhum comando cabe numa janela que se fica olhando: a pergunta leva um
 minuto e a daily quarenta segundos.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
-comandos é dados (`Comando`), `interpretar` lê o texto digitado, `Palheta`
-despacha e transforma `Resultado` em toast. As portas de verdade — as fontes,
-o roteiro, a busca — entram por `comandos_padrao`, e é por aí que `--fakes` da
-bandeja chega aqui.
+comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
+`note`, `doubt`, `ask`, `open`, `record`, `settings`), `interpretar` lê o
+texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
+portas de verdade — as fontes, o roteiro, a busca — entram por
+`comandos_padrao`, e é por aí que `--fakes` da bandeja chega aqui. `record` e
+`settings` são da própria `Palheta`, porque gravar e abrir o painel são de
+quem a hospeda: a bandeja injeta `gravar`/`gravando` e `abrir_painel`.
 
 Dois cuidados que vêm do custo: um comando custa dinheiro e minutos, então um
 despacho enquanto outro roda é **recusado** com um toast curto, e a falha de
@@ -32,7 +35,7 @@ from .configuracao import Configuracao
 from .conversa import Conversas
 from .daily import ResultadoDaDaily, gerar_daily
 from .fontes import PortaFonte
-from .nota_viva import SECAO_FALAR
+from .nota_viva import SECAO_DUVIDAS, SECAO_PONTOS
 from .obsidian import lancar as _lancar_no_windows
 from .obsidian import uri_da_nota
 from .pergunta import responder
@@ -48,13 +51,16 @@ TITULO_DO_TOAST_DA_DAILY = "A daily está pronta"
 TITULO_DA_DAILY_QUE_NAO_NASCEU = "A daily não nasceu"
 TITULO_DA_RESPOSTA = "Whis"
 TITULO_DE_NAO_ACHOU = "Não achei"
-TITULO_DA_AJUDA = "Comandos da palheta"
 TITULO_DE_OCUPADA = "Ainda estou no comando anterior"
 TITULO_DE_FALHA = "O comando falhou"
 TITULO_DE_NAO_ENTENDI = "Não entendi"
 
-NOME_DA_AJUDA = "ajuda"
-NOME_DE_CONFIGURAR = "configurar"
+NOME_DE_GRAVAR = "record"
+NOME_DE_CONFIGURAR = "settings"
+
+#: A ordem em que as ações aparecem na janela: as três que o usuário pediu
+#: primeiro, e existem mesmo com o campo vazio.
+ORDEM_DAS_ACOES = ("open", "daily", NOME_DE_GRAVAR, "ask", "note", "doubt", NOME_DE_CONFIGURAR)
 
 #: Quanto da resposta cabe no toast: o resto está na nota que o botão abre.
 LIMITE_DO_TEXTO_DO_TOAST = 240
@@ -80,15 +86,28 @@ Rodar = Callable[[str, Configuracao], "Resultado | None"]
 
 @dataclass(frozen=True)
 class Comando:
-    """Uma entrada do registro: o nome digitado, a ajuda e quem roda."""
+    """Uma entrada do registro: o nome digitado, o que a lista mostra e quem roda.
+
+    `rotulo` é o título da linha na janela (em inglês, como o comando) e pode
+    ser função, para "Start recording" virar "Stop recording"; `descricao` é a
+    frase curta embaixo; `icone` é um glifo em texto.
+    """
 
     nome: str
     ajuda: str
     rodar: Rodar
     parametro: str = ""
+    rotulo: str | Callable[[], str] = ""
+    descricao: str = ""
+    icone: str = ""
 
     def uso(self) -> str:
         return f"{self.nome} <{self.parametro}>" if self.parametro else self.nome
+
+    def rotulo_atual(self) -> str:
+        if callable(self.rotulo):
+            return self.rotulo()
+        return self.rotulo or self.nome.capitalize()
 
 
 class ComandoDesconhecido(ValueError):
@@ -96,17 +115,10 @@ class ComandoDesconhecido(ValueError):
 
 
 def interpretar(texto: str, comandos: Sequence[Comando]) -> tuple[Comando, str]:
-    """A primeira palavra é o comando (sem diferenciar maiúsculas); o resto é o argumento.
-
-    Texto vazio é `ajuda`, quando ela está no registro: Enter na palheta vazia
-    é a pergunta "o que você faz?".
-    """
+    """A primeira palavra é o comando (sem diferenciar maiúsculas); o resto é o argumento."""
     partes = texto.strip().split(None, 1)
     if not partes:
-        ajuda = _por_nome(comandos, NOME_DA_AJUDA)
-        if ajuda is None:
-            raise ComandoDesconhecido(f"Escreva um comando. {_lista(comandos)}")
-        return ajuda, ""
+        raise ComandoDesconhecido(f"Escreva um comando. {_lista(comandos)}")
 
     nome = partes[0].casefold()
     argumento = partes[1].strip() if len(partes) > 1 else ""
@@ -114,11 +126,6 @@ def interpretar(texto: str, comandos: Sequence[Comando]) -> tuple[Comando, str]:
     if comando is None:
         raise ComandoDesconhecido(f"Não conheço '{partes[0]}'. {_lista(comandos)}")
     return comando, argumento
-
-
-def ajuda(comandos: Sequence[Comando]) -> str:
-    """Uma linha por comando: `uso — ajuda`."""
-    return "\n".join(f"{comando.uso()} — {comando.ajuda}" for comando in comandos)
 
 
 def _por_nome(comandos: Sequence[Comando], nome: str) -> Comando | None:
@@ -141,9 +148,9 @@ class Palheta:
     """O despacho: lê o texto, roda o comando em segundo plano e avisa ao terminar.
 
     `configuracao` é atributo público de propósito: o painel a recarrega
-    depois de salvar, e o próximo comando já roda com a nova. `abrir_painel`
-    é preenchido por quem hospeda a palheta (a bandeja), porque abrir uma
-    janela é coisa do thread do Tk.
+    depois de salvar, e o próximo comando já roda com a nova. `abrir_painel`,
+    `gravar` e `gravando` são preenchidos por quem hospeda a palheta (a
+    bandeja): abrir uma janela é coisa do thread do Tk, e gravar é do coletor.
     """
 
     def __init__(
@@ -154,15 +161,33 @@ class Palheta:
         avisar: Callable[..., bool] | None = None,
         iniciar_thread: IniciarThread | None = None,
         abrir_painel: Callable[[], None] | None = None,
+        gravar: Callable[[], None] | None = None,
+        gravando: Callable[[], bool] | None = None,
     ) -> None:
         self.configuracao = configuracao
         self.abrir_painel = abrir_painel or self._painel_indisponivel
+        self.gravar = gravar or self._gravador_indisponivel
+        self.gravando = gravando or (lambda: False)
         self._avisar = avisar
         self._iniciar_thread = iniciar_thread or _em_thread
         self._ocupada = threading.Lock()
         proprios = [
-            Comando(NOME_DE_CONFIGURAR, "abre o painel de configuração", self._configurar),
-            Comando(NOME_DA_AJUDA, "esta lista", self._ajuda),
+            Comando(
+                NOME_DE_GRAVAR,
+                "começa a gravar a reunião, ou para e processa",
+                self._gravar,
+                rotulo=self._rotulo_de_gravar,
+                descricao="Toggle the meeting recorder in the tray",
+                icone="●",
+            ),
+            Comando(
+                NOME_DE_CONFIGURAR,
+                "abre o painel de configuração",
+                self._configurar,
+                rotulo="Settings",
+                descricao="Open the settings panel (all config keys)",
+                icone="⚙",
+            ),
         ]
         registrados = [comando.nome for comando in comandos]
         self.comandos: tuple[Comando, ...] = (
@@ -170,19 +195,29 @@ class Palheta:
             *(comando for comando in proprios if comando.nome not in registrados),
         )
 
+    def acoes(self) -> tuple[Comando, ...]:
+        """Os comandos na ordem da lista da janela: as três ações pedidas primeiro."""
+        posicao = {nome: indice for indice, nome in enumerate(ORDEM_DAS_ACOES)}
+        return tuple(
+            sorted(self.comandos, key=lambda comando: posicao.get(comando.nome, len(posicao)))
+        )
+
     def despachar(self, texto: str) -> bool:
         """Dispara o comando e devolve na hora. `False` quando outro ainda roda.
 
-        A recusa também vira toast, mas num thread próprio: quem chama é o
-        handler da janela, e mostrar um toast custa um processo do PowerShell.
+        Texto vazio não faz nada — Enter na palheta vazia só a esconde. A
+        recusa vira toast num thread próprio: quem chama é o handler da
+        janela, e mostrar um toast custa um processo do PowerShell.
         """
+        if not texto.strip():
+            return False
         if not self._ocupada.acquire(blocking=False):
             _log.info("Palheta ocupada; pedido recusado: %r", _resumido(texto))
             self._iniciar_thread(
                 lambda: self.avisar(
                     Resultado(
                         TITULO_DE_OCUPADA,
-                        f"Quando terminar eu aviso. Ficou de fora: {_resumido(texto) or '(vazio)'}",
+                        f"Quando terminar eu aviso. Ficou de fora: {_resumido(texto)}",
                     )
                 )
             )
@@ -215,16 +250,24 @@ class Palheta:
         _log.info("Palheta: %s %s", comando.nome, _resumido(argumento))
         return comando.rodar(argumento, self.configuracao)
 
-    def _ajuda(self, _argumento: str, _configuracao: Configuracao) -> Resultado:
-        return Resultado(TITULO_DA_AJUDA, ajuda(self.comandos))
-
     def _configurar(self, _argumento: str, _configuracao: Configuracao) -> None:
         self.abrir_painel()
         return None
 
+    def _gravar(self, _argumento: str, _configuracao: Configuracao) -> None:
+        self.gravar()
+        return None
+
+    def _rotulo_de_gravar(self) -> str:
+        return "Stop recording" if self.gravando() else "Start recording"
+
     @staticmethod
     def _painel_indisponivel() -> None:
         raise RuntimeError("O painel de configuração não está disponível nesta execução.")
+
+    @staticmethod
+    def _gravador_indisponivel() -> None:
+        raise RuntimeError("Gravar só funciona com a palheta hospedada na bandeja.")
 
 
 def avisar_resultado(
@@ -275,7 +318,7 @@ def resultado_da_daily(resultado: ResultadoDaDaily) -> Resultado:
 
 
 def resultado_da_resposta(resposta: Resposta, nota: str) -> Resultado:
-    """O toast de `perguntar`: o começo da resposta; a nota tem o resto e as fontes."""
+    """O toast de `ask`: o começo da resposta; a nota tem o resto e as fontes."""
     if not resposta.achou:
         texto = resposta.texto.strip() or "Nenhuma nota do vault sustenta uma resposta."
         return Resultado(TITULO_DE_NAO_ACHOU, _encurtar(texto), nota=nota)
@@ -290,11 +333,11 @@ def comandos_padrao(
     lancar: Callable[[str], None] | None = None,
     relogio: Callable[[], datetime] | None = None,
 ) -> tuple[Comando, ...]:
-    """Os quatro comandos que tocam o vault, com as portas injetadas.
+    """Os cinco comandos que tocam o vault, com as portas injetadas.
 
     As fábricas recebem a configuração a cada chamada — é o que faz uma
-    configuração recarregada valer no comando seguinte. `configurar` e `ajuda`
-    são da própria `Palheta`.
+    configuração recarregada valer no comando seguinte. `record` e
+    `settings` são da própria `Palheta`.
     """
     agora = relogio or (lambda: datetime.now().astimezone())
     lancar_alvo = lancar or _lancar_no_windows
@@ -308,18 +351,19 @@ def comandos_padrao(
         )
         return resultado_da_daily(resultado)
 
-    def anotar(texto: str, configuracao: Configuracao) -> Resultado:
-        if not texto.strip():
-            return Resultado("Anotar o quê?", "Escreva `anotar <o que você quer levantar na daily>`.")
-        raiz = _vault.preparar(configuracao.vault)
-        _vault.anotar_ponto(raiz, texto)
-        return Resultado(
-            f"Anotado em {SECAO_FALAR}", texto.strip(), nota=_vault.CAMINHO_DA_NOTA_VIVA
-        )
+    def anotar_em(secao: str, nome: str) -> Rodar:
+        def anotar(texto: str, configuracao: Configuracao) -> Resultado:
+            if not texto.strip():
+                return Resultado("Anotar o quê?", f"Escreva `{nome} <o texto>`.")
+            raiz = _vault.preparar(configuracao.vault)
+            _vault.anotar_ponto(raiz, texto, secao)
+            return Resultado(f"Anotado em {secao}", texto.strip(), nota=_vault.CAMINHO_DA_NOTA_VIVA)
+
+        return anotar
 
     def perguntar(pergunta: str, configuracao: Configuracao) -> Resultado:
         if not pergunta.strip():
-            return Resultado("Perguntar o quê?", "Escreva `perguntar <a pergunta>`.")
+            return Resultado("Perguntar o quê?", "Escreva `ask <a pergunta>`.")
         momento = agora()
         conversas = Conversas.de_configuracao(configuracao)
         conversa = conversas.abrir(FIO_DA_PALHETA, agora=momento)
@@ -347,15 +391,49 @@ def comandos_padrao(
         return None
 
     return (
-        Comando("daily", "gera a daily agora e mantém daily/atual.md", daily),
-        Comando("anotar", "acrescenta uma linha em Falar da nota viva", anotar, parametro="texto"),
         Comando(
-            "perguntar",
+            "open",
+            "abre daily/atual.md no Obsidian",
+            abrir,
+            rotulo="Open note",
+            descricao="daily/atual.md in Obsidian",
+            icone="▤",
+        ),
+        Comando(
+            "daily",
+            "gera a daily agora e mantém daily/atual.md",
+            daily,
+            rotulo="Generate daily",
+            descricao="Update daily/atual.md from git, Linear and Slack (~40 s)",
+            icone="☀",
+        ),
+        Comando(
+            "ask",
             "pergunta ao vault; a resposta vira nota em respostas/",
             perguntar,
-            parametro="pergunta",
+            parametro="question",
+            rotulo="Ask",
+            descricao="Ask the vault; the answer becomes a note in respostas/ (~60 s)",
+            icone="?",
         ),
-        Comando("abrir", "abre daily/atual.md no Obsidian", abrir),
+        Comando(
+            "note",
+            f"acrescenta uma linha em {SECAO_PONTOS} da nota viva",
+            anotar_em(SECAO_PONTOS, "note"),
+            parametro="text",
+            rotulo="Note",
+            descricao=f"Add a line to {SECAO_PONTOS} in daily/atual.md",
+            icone="✎",
+        ),
+        Comando(
+            "doubt",
+            f"acrescenta uma linha em {SECAO_DUVIDAS} da nota viva",
+            anotar_em(SECAO_DUVIDAS, "doubt"),
+            parametro="text",
+            rotulo="Doubt",
+            descricao=f"Add a line to {SECAO_DUVIDAS} in daily/atual.md",
+            icone="¿",
+        ),
     )
 
 

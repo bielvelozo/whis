@@ -4,8 +4,8 @@ Cada comando roda pela costura de verdade contra um vault temporário, com as
 portas fake (`DailyFake`, `BuscaFake`) e o thread de trabalho síncrono. O que
 se prova é o que sobra: a nota no vault, o fio em `conversas.json`, o toast
 montado (com e sem botão) e que nada escapa da zona `respostas/`. A janela
-entra por dublê; o Tk de verdade tem um teste próprio no fim, que pula onde
-não há tela.
+entra por dublê; o filtro e o destaque da lista são funções puras; o Tk de
+verdade tem um teste próprio no fim, que pula onde não há tela.
 """
 
 from __future__ import annotations
@@ -38,7 +38,9 @@ from whis.fakes import (
     STTFake,
     fontes_de_exemplo_da_daily,
 )
+from whis.janela_da_palheta import Acao, comando_destacado, filtrar
 from whis.palheta import (
+    ORDEM_DAS_ACOES,
     Comando,
     ComandoDesconhecido,
     Palheta,
@@ -53,6 +55,7 @@ FUSO = timezone(timedelta(hours=-3))
 MOMENTO = datetime(2026, 9, 12, 14, 3, tzinfo=FUSO)
 PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 NOTA_DA_RESPOSTA = "respostas/2026-09-12-1403-o-que-ficou-decidido-sobre-a-retencao-de-180-dias.md"
+COMANDOS = ("daily", "note", "doubt", "ask", "open", "record", "settings")
 
 
 class AvisoEspiao:
@@ -69,10 +72,11 @@ class AvisoEspiao:
 
 
 class JanelaDublê:
-    """A porta da janela sem Tk: guarda se está visível e o que foi enviado."""
+    """A porta da janela sem Tk: guarda se está visível, as ações e o que foi enviado."""
 
     def __init__(self) -> None:
         self.visivel = False
+        self.acoes: tuple[Acao, ...] = ()
         self._callback = None
 
     def mostrar(self) -> None:
@@ -84,10 +88,18 @@ class JanelaDublê:
     def ao_enviar(self, callback) -> None:
         self._callback = callback
 
+    def definir_acoes(self, acoes) -> None:
+        self.acoes = tuple(acoes)
+
     def digitar_e_enter(self, texto: str) -> None:
         """O que a janela de verdade faz no Enter: some e só então despacha."""
         self.esconder()
-        self._callback(texto)
+        if texto.strip():
+            self._callback(texto)
+
+    def clicar(self, nome: str) -> None:
+        self.esconder()
+        self._callback(nome)
 
     def esc(self) -> None:
         self.esconder()
@@ -102,7 +114,7 @@ def aviso() -> AvisoEspiao:
 def montar(configuracao_do_diario, aviso: AvisoEspiao):
     """Uma palheta com os comandos de verdade sobre as portas fake, síncrona."""
 
-    def construir(*, busca=None, roteiro=None, lancados=None, abrir_painel=None, extras=()):
+    def construir(*, busca=None, roteiro=None, lancados=None, abrir_painel=None, gravar=None, gravando=None, extras=()):
         configuracao = configuracao_do_diario()
         comandos = comandos_padrao(
             fontes_da_daily=lambda _atual: fontes_de_exemplo_da_daily(),
@@ -117,6 +129,8 @@ def montar(configuracao_do_diario, aviso: AvisoEspiao):
             avisar=aviso,
             iniciar_thread=lambda alvo: alvo(),
             abrir_painel=abrir_painel,
+            gravar=gravar,
+            gravando=gravando,
         )
 
     return construir
@@ -127,36 +141,31 @@ def montar(configuracao_do_diario, aviso: AvisoEspiao):
 
 REGISTRO = (
     Comando("daily", "gera", lambda a, c: None),
-    Comando("anotar", "anota", lambda a, c: None, parametro="texto"),
-    Comando("ajuda", "lista", lambda a, c: None),
+    Comando("note", "anota", lambda a, c: None, parametro="text"),
 )
 
 
 def test_interpretar_separa_o_comando_do_argumento():
-    comando, argumento = interpretar("anotar puxar a retenção  de 180 dias ", REGISTRO)
+    comando, argumento = interpretar("note puxar a retenção  de 180 dias ", REGISTRO)
 
-    assert comando.nome == "anotar"
+    assert comando.nome == "note"
     assert argumento == "puxar a retenção  de 180 dias"
 
 
 def test_interpretar_nao_diferencia_maiusculas():
     assert interpretar("DAILY", REGISTRO)[0].nome == "daily"
-    assert interpretar("  Anotar x", REGISTRO)[0].nome == "anotar"
+    assert interpretar("  Note x", REGISTRO)[0].nome == "note"
 
 
-def test_texto_vazio_e_ajuda():
-    comando, argumento = interpretar("   ", REGISTRO)
-
-    assert comando.nome == "ajuda" and argumento == ""
-
-
-def test_comando_desconhecido_lista_os_que_existem():
+def test_texto_vazio_e_comando_desconhecido_listam_os_que_existem():
+    with pytest.raises(ComandoDesconhecido, match="Escreva um comando"):
+        interpretar("   ", REGISTRO)
     with pytest.raises(ComandoDesconhecido) as erro:
         interpretar("voar alto", REGISTRO)
 
     mensagem = str(erro.value)
     assert "'voar'" in mensagem
-    assert "daily" in mensagem and "anotar <texto>" in mensagem and "ajuda" in mensagem
+    assert "daily" in mensagem and "note <text>" in mensagem
 
 
 # -- daily ----------------------------------------------------------------------
@@ -214,39 +223,66 @@ def _vazio():
     )
 
 
-# -- anotar -----------------------------------------------------------------
+# -- note e doubt -----------------------------------------------------------
 
 
-def test_anotar_escreve_em_falar_pelo_mesmo_caminho_do_subcomando(montar, caminho_do_vault: Path, aviso):
+def test_note_escreve_em_pontos_pelo_mesmo_caminho_do_subcomando(montar, caminho_do_vault: Path, aviso):
     palheta = montar()
 
-    palheta.despachar("anotar puxar a retenção de 180 dias")
+    palheta.despachar("note puxar a retenção de 180 dias")
 
     nota = (caminho_do_vault / "daily" / "atual.md").read_text(encoding="utf-8")
-    assert nota.endswith("## Falar\n- puxar a retenção de 180 dias\n")
+    assert nota.endswith("## Pontos\n- puxar a retenção de 180 dias\n\n## Falar\n")
     titulo, texto, botao = aviso.ultimo()
-    assert titulo == "Anotado em Falar"
+    assert titulo == "Anotado em Pontos"
     assert texto == "puxar a retenção de 180 dias"
     assert botao[1].endswith("&file=daily%2Fatual")
 
 
-def test_anotar_sem_texto_pede_o_texto_e_nao_escreve(montar, caminho_do_vault: Path, aviso):
+def test_doubt_escreve_em_duvidas_e_so_a_pedido(montar, caminho_do_vault: Path, aviso):
     palheta = montar()
 
-    palheta.despachar("anotar")
+    palheta.despachar("doubt o pix pendente expira sozinho?")
+
+    nota = (caminho_do_vault / "daily" / "atual.md").read_text(encoding="utf-8")
+    assert "## Dúvidas\n- o pix pendente expira sozinho?\n\n## Pontos\n" in nota
+    assert aviso.ultimo()[0] == "Anotado em Dúvidas"
+
+
+def test_nota_antiga_sem_pontos_ganha_a_secao_antes_de_falar(montar, caminho_do_vault: Path):
+    palheta = montar()
+    _vault.preparar(caminho_do_vault)
+    antiga = (
+        "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## O que estou fazendo\n\n"
+        "## Dúvidas\n\n- uma dúvida\n\n## Falar\n\n- ponto antigo\n"
+    )
+    (caminho_do_vault / "daily" / "atual.md").write_bytes(antiga.encode("utf-8"))
+
+    palheta.despachar("note ponto novo")
+
+    texto = (caminho_do_vault / "daily" / "atual.md").read_bytes().decode("utf-8")
+    assert texto.endswith("## Dúvidas\n\n- uma dúvida\n\n## Pontos\n- ponto novo\n\n## Falar\n\n- ponto antigo\n")
+    assert texto.replace("## Pontos\n- ponto novo\n\n", "", 1) == antiga
+
+
+@pytest.mark.parametrize("comando", ["note", "doubt"])
+def test_anotar_sem_texto_pede_o_texto_e_nao_escreve(montar, caminho_do_vault: Path, aviso, comando):
+    palheta = montar()
+
+    palheta.despachar(comando)
 
     assert not (caminho_do_vault / "daily" / "atual.md").exists()
-    titulo, _texto, botao = aviso.ultimo()
-    assert titulo == "Anotar o quê?" and botao is None
+    titulo, texto, botao = aviso.ultimo()
+    assert titulo == "Anotar o quê?" and comando in texto and botao is None
 
 
-# -- perguntar --------------------------------------------------------------
+# -- ask -----------------------------------------------------------------------
 
 
-def test_perguntar_vira_nota_em_respostas_com_as_fontes_recolhidas(montar, caminho_do_vault: Path, aviso):
+def test_ask_vira_nota_em_respostas_com_as_fontes_recolhidas(montar, caminho_do_vault: Path, aviso):
     palheta = montar()
 
-    palheta.despachar(f"perguntar {PERGUNTA}")
+    palheta.despachar(f"ask {PERGUNTA}")
 
     nota = caminho_do_vault / NOTA_DA_RESPOSTA
     assert nota.is_file()
@@ -263,7 +299,7 @@ def test_perguntar_vira_nota_em_respostas_com_as_fontes_recolhidas(montar, camin
 def test_o_toast_da_pergunta_traz_o_comeco_da_resposta_e_o_botao_da_nota(montar, caminho_do_vault: Path, aviso):
     palheta = montar()
 
-    palheta.despachar(f"perguntar {PERGUNTA}")
+    palheta.despachar(f"ask {PERGUNTA}")
 
     titulo, texto, botao = aviso.ultimo()
     assert titulo == "Whis"
@@ -279,7 +315,7 @@ def test_resposta_longa_e_encurtada_no_toast_mas_inteira_na_nota(montar, caminho
     longa = "Frase. " * 100
     palheta = montar(busca=BuscaFake(Resposta(texto=longa, citacoes=(Citacao("daily/x.md"),))))
 
-    palheta.despachar("perguntar conta tudo")
+    palheta.despachar("ask conta tudo")
 
     _titulo, texto, _botao = aviso.ultimo()
     assert len(texto) <= modulo.LIMITE_DO_TEXTO_DO_TOAST and texto.endswith("…")
@@ -289,7 +325,7 @@ def test_resposta_longa_e_encurtada_no_toast_mas_inteira_na_nota(montar, caminho
 def test_nao_achou_tambem_vira_nota_dizendo_que_nao_achou(montar, caminho_do_vault: Path, aviso):
     palheta = montar(busca=BuscaFake(Resposta(texto="", achou=False)))
 
-    palheta.despachar("perguntar cadê o link coringa")
+    palheta.despachar("ask cadê o link coringa")
 
     nota = caminho_do_vault / "respostas" / "2026-09-12-1403-cade-o-link-coringa.md"
     assert ler_frontmatter(nota)["achou"] == "false"
@@ -303,9 +339,9 @@ def test_nao_achou_tambem_vira_nota_dizendo_que_nao_achou(montar, caminho_do_vau
 def test_o_fio_da_palheta_guarda_a_pergunta_e_a_resposta(montar, caminho_do_vault: Path):
     busca = BuscaFake()
     palheta = montar(busca=busca)
-    palheta.despachar(f"perguntar {PERGUNTA}")
+    palheta.despachar(f"ask {PERGUNTA}")
 
-    palheta.despachar("perguntar e quem levantou isso?")
+    palheta.despachar("ask e quem levantou isso?")
 
     arquivo = palheta.configuracao.origem.parent / NOME_DO_ARQUIVO
     fios = json.loads(arquivo.read_text(encoding="utf-8"))["conversas"]
@@ -316,12 +352,12 @@ def test_o_fio_da_palheta_guarda_a_pergunta_e_a_resposta(montar, caminho_do_vaul
     assert not list(Path(caminho_do_vault).rglob(NOME_DO_ARQUIVO))
 
 
-def test_perguntar_so_escreve_em_respostas(montar, caminho_do_vault: Path):
+def test_ask_so_escreve_em_respostas(montar, caminho_do_vault: Path):
     palheta = montar()
     _vault.preparar(caminho_do_vault)
     antes = arquivos_do_vault(caminho_do_vault)
 
-    palheta.despachar(f"perguntar {PERGUNTA}")
+    palheta.despachar(f"ask {PERGUNTA}")
 
     assert arquivos_do_vault(caminho_do_vault) - antes == {NOTA_DA_RESPOSTA}
 
@@ -336,34 +372,59 @@ def test_a_zona_das_respostas_nao_alcanca_nenhuma_outra_pasta(caminho_do_vault: 
     assert _vault.escrever(raiz, "respostas/ok.md", "x", zonas=_vault.ZONAS_DAS_RESPOSTAS).is_file()
 
 
-def test_perguntar_sem_pergunta_nao_chama_a_busca(montar, aviso):
+def test_ask_sem_pergunta_nao_chama_a_busca(montar, aviso):
     busca = BuscaFake()
     palheta = montar(busca=busca)
 
-    palheta.despachar("perguntar")
+    palheta.despachar("ask")
 
     assert busca.perguntas_recebidas == []
     assert aviso.ultimo()[0] == "Perguntar o quê?"
 
 
-# -- abrir, configurar, ajuda ---------------------------------------------------
+# -- open, record, settings -----------------------------------------------------
 
 
-def test_abrir_lanca_a_uri_da_nota_viva_sem_toast(montar, caminho_do_vault: Path, aviso):
+def test_open_lanca_a_uri_da_nota_viva_sem_toast(montar, caminho_do_vault: Path, aviso):
     lancados: list[str] = []
     palheta = montar(lancados=lancados)
 
-    palheta.despachar("abrir")
+    palheta.despachar("open")
 
     assert lancados == [f"obsidian://open?vault={caminho_do_vault.name}&file=daily%2Fatual"]
     assert aviso.avisos == []
 
 
-def test_configurar_abre_o_painel_injetado_sem_toast(montar, aviso):
+def test_record_alterna_o_gravador_injetado_e_o_rotulo_segue_o_estado(montar, aviso):
+    estado = {"gravando": False}
+
+    def alternar() -> None:
+        estado["gravando"] = not estado["gravando"]
+
+    palheta = montar(gravar=alternar, gravando=lambda: estado["gravando"])
+    record = next(comando for comando in palheta.comandos if comando.nome == "record")
+    assert record.rotulo_atual() == "Start recording"
+
+    palheta.despachar("record")
+
+    assert estado["gravando"] is True
+    assert record.rotulo_atual() == "Stop recording"
+    assert aviso.avisos == []
+
+
+def test_record_sem_bandeja_vira_toast_de_falha(montar, aviso):
+    palheta = montar()
+
+    palheta.despachar("record")
+
+    assert aviso.ultimo()[0] == "O comando falhou"
+
+
+def test_settings_abre_o_painel_injetado_sem_toast(montar, aviso):
     aberturas: list[str] = []
     palheta = montar(abrir_painel=lambda: aberturas.append("painel"))
 
-    palheta.despachar("configurar")
+    palheta.despachar("settings")
 
     assert aberturas == ["painel"]
     assert aviso.avisos == []
@@ -371,45 +432,35 @@ def test_configurar_abre_o_painel_injetado_sem_toast(montar, aviso):
 
 def test_o_painel_e_preenchido_depois_por_quem_hospeda(montar, aviso):
     palheta = montar()
-    palheta.despachar("configurar")
+    palheta.despachar("settings")
     assert aviso.ultimo()[0] == "O comando falhou"
     aberturas: list[str] = []
 
     palheta.abrir_painel = lambda: aberturas.append("painel")
-    palheta.despachar("configurar")
+    palheta.despachar("settings")
 
     assert aberturas == ["painel"]
 
 
-def test_ajuda_lista_uma_linha_por_comando(montar, aviso):
+def test_texto_vazio_nao_faz_nada_e_comando_desconhecido_diz_o_que_existe(montar, aviso):
     palheta = montar()
 
-    palheta.despachar("ajuda")
-
-    titulo, texto, botao = aviso.ultimo()
-    assert titulo == "Comandos da palheta" and botao is None
-    linhas = texto.splitlines()
-    assert [linha.split(" — ")[0] for linha in linhas] == [
-        "daily", "anotar <texto>", "perguntar <pergunta>", "abrir", "configurar", "ajuda",
-    ]
-
-
-def test_enter_vazio_e_ajuda_e_comando_desconhecido_diz_o_que_existe(montar, aviso):
-    palheta = montar()
-
-    palheta.despachar("")
-    assert aviso.ultimo()[0] == "Comandos da palheta"
+    assert palheta.despachar("   ") is False
+    assert aviso.avisos == []
 
     palheta.despachar("vagas python remoto")
     titulo, texto, _ = aviso.ultimo()
     assert titulo == "Não entendi"
-    assert "'vagas'" in texto and "perguntar <pergunta>" in texto
+    assert "'vagas'" in texto and "ask <question>" in texto
 
 
-def test_nenhum_dos_comandos_futuros_esta_registrado(montar):
-    nomes = {comando.nome for comando in montar().comandos}
+def test_sao_os_sete_comandos_e_nenhum_futuro_nem_ajuda(montar):
+    palheta = montar()
 
-    assert nomes == {"daily", "anotar", "perguntar", "abrir", "configurar", "ajuda"}
+    assert {comando.nome for comando in palheta.comandos} == set(COMANDOS)
+    assert [acao.nome for acao in palheta.acoes()] == list(ORDEM_DAS_ACOES)
+    assert [acao.rotulo_atual() for acao in palheta.acoes()[:3]] == ["Open note", "Generate daily", "Start recording"]
+    assert all(acao.icone and acao.descricao for acao in palheta.acoes())
 
 
 # -- o contrato: um por vez, falha vira toast ----------------------------------
@@ -420,7 +471,7 @@ def test_um_despacho_enquanto_outro_roda_e_recusado_com_toast(montar, aviso):
     palheta = montar()
 
     def lento(_argumento, _configuracao):
-        resultados.append(palheta.despachar("ajuda"))
+        resultados.append(palheta.despachar("open"))
         assert palheta.ocupada()
         return Resultado("Lento", "terminei")
 
@@ -431,7 +482,7 @@ def test_um_despacho_enquanto_outro_roda_e_recusado_com_toast(montar, aviso):
     assert resultados == [False]
     titulos = [titulo for titulo, _, _ in aviso.avisos]
     assert titulos == ["Ainda estou no comando anterior", "Lento"]
-    assert "ajuda" in aviso.avisos[0][1]
+    assert "open" in aviso.avisos[0][1]
     assert not palheta.ocupada()
 
 
@@ -456,40 +507,93 @@ def test_a_falha_da_busca_chega_ao_usuario_pela_mensagem_dela(montar, aviso):
 
     palheta = montar(busca=BuscaFake(erro=ErroDeBusca("sem conta logada")))
 
-    palheta.despachar("perguntar x")
+    palheta.despachar("ask x")
 
     assert aviso.ultimo()[:2] == ("O comando falhou", "sem conta logada")
 
 
 # -- a janela -------------------------------------------------------------------
 
+ACOES = (
+    Acao("open", "▤", "Open note", "daily/atual.md in Obsidian"),
+    Acao("daily", "☀", "Generate daily"),
+    Acao("record", "●", lambda: "Start recording"),
+    Acao("ask", "?", "Ask"),
+    Acao("note", "✎", "Note"),
+    Acao("doubt", "¿", "Doubt"),
+    Acao("settings", "⚙", "Settings"),
+)
+
+
+def test_com_o_campo_vazio_todas_as_acoes_aparecem_nas_tres_pedidas_primeiro():
+    assert [acao.nome for acao in filtrar(ACOES, "")] == list(ORDEM_DAS_ACOES)
+    assert filtrar(ACOES, "  ")[:3] == ACOES[:3]
+
+
+def test_a_lista_filtra_pelo_comeco_da_primeira_palavra():
+    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "doubt"]
+    assert [acao.nome for acao in filtrar(ACOES, "Do")] == ["doubt"]
+    assert [acao.nome for acao in filtrar(ACOES, "ask qual foi")] == ["ask"]
+    assert filtrar(ACOES, "vagas") == ()
+
+
+def test_a_primeira_palavra_ganha_destaque_so_quando_e_um_comando():
+    nomes = [acao.nome for acao in ACOES]
+
+    assert comando_destacado("ask qual foi a decisão", nomes) == (0, 3)
+    assert comando_destacado("  Note  x", nomes) == (2, 6)
+    assert comando_destacado("daily", nomes) == (0, 5)
+    assert comando_destacado("dail", nomes) is None
+    assert comando_destacado("vagas python", nomes) is None
+    assert comando_destacado("", nomes) is None
+
+
+def test_o_rotulo_de_uma_acao_pode_ser_funcao():
+    assert ACOES[2].rotulo_atual() == "Start recording"
+
 
 def test_a_janela_some_no_enter_e_o_comando_e_despachado(montar, aviso):
-    palheta = montar()
+    palheta = montar(abrir_painel=lambda: None)
     janela = JanelaDublê()
     janela.ao_enviar(palheta.despachar)
     janela.mostrar()
 
-    janela.digitar_e_enter("ajuda")
+    janela.digitar_e_enter("ask cadê")
 
     assert not janela.visivel
-    assert aviso.ultimo()[0] == "Comandos da palheta"
+    assert aviso.ultimo()[0] == "Whis"
 
 
-def test_a_janela_some_no_esc_sem_despachar_nada(montar, aviso):
+def test_enter_vazio_so_esconde_e_esc_tambem(montar, aviso):
     palheta = montar()
     janela = JanelaDublê()
     janela.ao_enviar(palheta.despachar)
+
     janela.mostrar()
+    janela.digitar_e_enter("")
+    assert not janela.visivel
 
+    janela.mostrar()
     janela.esc()
-
     assert not janela.visivel
     assert aviso.avisos == []
 
 
-def test_a_janela_de_verdade_some_no_enter_e_no_esc():
-    """Tk de verdade, quando há tela: só o ciclo mostrar → Enter/Esc → sumir."""
+def test_clicar_numa_acao_despacha_o_nome_dela(montar, caminho_do_vault: Path, aviso):
+    lancados: list[str] = []
+    palheta = montar(lancados=lancados)
+    janela = JanelaDublê()
+    janela.ao_enviar(palheta.despachar)
+    janela.definir_acoes([Acao(c.nome, c.icone, c.rotulo_atual, c.descricao) for c in palheta.acoes()])
+
+    janela.clicar("open")
+
+    assert lancados and lancados[0].endswith("daily%2Fatual")
+    assert not janela.visivel
+
+
+def test_a_janela_de_verdade_filtra_destaca_e_some_no_enter_e_no_esc():
+    """Tk de verdade, quando há tela: digitar filtra e destaca; Enter/Esc/↓ fazem o que devem."""
     tk = pytest.importorskip("tkinter")
     from whis.janela_da_palheta import JanelaDaPalheta
 
@@ -499,19 +603,36 @@ def test_a_janela_de_verdade_some_no_enter_e_no_esc():
         pytest.skip(f"sem tela para o Tk: {erro}")
     enviados: list[str] = []
     janela.ao_enviar(enviados.append)
+    janela.definir_acoes(ACOES)
     try:
         janela.mostrar()
         janela.raiz.update()
         assert janela.visivel()
-        janela._campo.insert(0, "daily")
-        janela._enviar()
-        assert not janela.visivel() and enviados == ["daily"]
+        assert [acao.nome for acao in janela.acoes_visiveis()] == list(ORDEM_DAS_ACOES)
+        assert janela.selecionada().nome == "open"
+
+        janela.digitar("ask qual foi")
+        assert [acao.nome for acao in janela.acoes_visiveis()] == ["ask"]
+        assert janela._campo.tag_ranges("comando") and str(janela._campo.get("comando.first", "comando.last")) == "ask"
+
+        janela.digitar("vag")
+        assert janela.acoes_visiveis() == () and not janela._campo.tag_ranges("comando")
+
+        janela._enter()
+        assert not janela.visivel() and enviados == ["vag"]
+
+        janela.mostrar()
+        janela.raiz.update()
+        janela._mover_selecao(1)
+        assert janela.selecionada().nome == "daily"
+        janela._enter()
+        assert not janela.visivel() and enviados == ["vag", "daily"]
 
         janela.mostrar()
         janela.raiz.update()
         janela._campo.event_generate("<Escape>")
         janela.raiz.update()
-        assert not janela.visivel() and enviados == ["daily"]
+        assert not janela.visivel() and enviados == ["vag", "daily"]
 
         chamadas: list[str] = []
         janela.pedir(lambda: chamadas.append("de outro thread"))

@@ -42,7 +42,7 @@ def test_comando_daily_escreve_as_notas_e_imprime_a_nota_viva(
     assert ler_frontmatter(nota_de_hoje(caminho_do_vault))["tipo"] == "daily"
     assert ler_frontmatter(nota_viva(caminho_do_vault))["tipo"] == "daily-atual"
     assert "Cobre de" in saida and "até agora" in saida
-    for secao in ("O que eu fiz:", "O que estou fazendo:", "Dúvidas:", "Falar:"):
+    for secao in ("O que eu fiz:", "O que estou fazendo:", "Dúvidas:", "Pontos:", "Falar:"):
         assert secao in saida
     assert f"- {DAILY_PADRAO.fiz[0].texto}" in saida
     assert f"Nota viva: {nota_viva(caminho_do_vault)}" in saida
@@ -127,7 +127,7 @@ def test_comando_daily_deixa_rastro_no_arquivo_de_log(configuracao_do_diario):
 # -- --anotar: o único gesto do agente numa seção do usuário -----------------
 
 
-def test_anotar_faz_a_nota_viva_nascer_do_modelo_com_a_linha_em_falar(
+def test_anotar_faz_a_nota_viva_nascer_do_modelo_com_a_linha_em_pontos(
     configuracao_do_diario, caminho_do_vault: Path, capsys: pytest.CaptureFixture
 ):
     configuracao_do_diario()
@@ -137,11 +137,11 @@ def test_anotar_faz_a_nota_viva_nascer_do_modelo_com_a_linha_em_falar(
     texto = nota_viva(caminho_do_vault).read_text(encoding="utf-8")
     assert codigo == 0
     assert texto.startswith("---\ntipo: daily-atual\n---\n")
-    assert texto.endswith("## Falar\n- quero puxar a retenção de 180 dias\n")
+    assert texto.endswith("## Pontos\n- quero puxar a retenção de 180 dias\n\n## Falar\n")
     assert "Anotado em" in capsys.readouterr().out
 
 
-def test_anotar_so_acrescenta_em_falar_e_nao_muda_nenhum_outro_byte(
+def test_anotar_so_acrescenta_em_pontos_e_nao_muda_nenhum_outro_byte(
     configuracao_do_diario, caminho_do_vault: Path
 ):
     """Tudo naquele arquivo foi digitado à mão: ele é append-only."""
@@ -152,7 +152,8 @@ def test_anotar_so_acrescenta_em_falar_e_nao_muda_nenhum_outro_byte(
         "## O que eu fiz\n\n1. Planejei o pix \n\n"
         "## O que estou fazendo\n\n1. Correções do ribeiro\n\t1. FN-1786 \n\n"
         "## Dúvidas\n\n- uma dúvida minha\n\n"
-        "## Falar\n\n- ponto antigo\n\n"
+        "## Pontos\n\n- ponto antigo\n\n"
+        "## Falar\n\n- avisar da folga\n\n"
     )
     nota_viva(caminho_do_vault).write_bytes(original.encode("utf-8"))
     hash_do_original = hashlib.sha256(original.encode("utf-8")).hexdigest()
@@ -162,7 +163,7 @@ def test_anotar_so_acrescenta_em_falar_e_nao_muda_nenhum_outro_byte(
     texto = nota_viva(caminho_do_vault).read_bytes().decode("utf-8")
     assert texto.count("- ponto novo\n") == 1
     assert hashlib.sha256(texto.replace("- ponto novo\n", "", 1).encode("utf-8")).hexdigest() == hash_do_original
-    assert texto.endswith("## Falar\n\n- ponto antigo\n- ponto novo\n\n")
+    assert "## Pontos\n\n- ponto antigo\n- ponto novo\n\n## Falar\n\n- avisar da folga\n\n" in texto
 
 
 def test_anotar_nao_coleta_nem_escreve_daily(
@@ -189,9 +190,9 @@ def test_o_ponto_anotado_continua_em_falar_depois_da_daily(
     main(["daily", "--fakes"])
 
     saida = capsys.readouterr().out
-    assert "Falar:\n  - combinar a retenção de 180 dias" in saida
+    assert "Pontos:\n  - combinar a retenção de 180 dias" in saida
     assert nota_viva(caminho_do_vault).read_text(encoding="utf-8").endswith(
-        "## Falar\n- combinar a retenção de 180 dias\n"
+        "## Pontos\n- combinar a retenção de 180 dias\n\n## Falar\n"
     )
     assert "combinar a retenção" not in nota_de_hoje(caminho_do_vault).read_text(encoding="utf-8")
 

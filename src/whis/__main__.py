@@ -536,14 +536,14 @@ def _avisar_que_a_daily_nasceu(configuracao: Configuracao, resultado: ResultadoD
 
 
 def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
-    """Acrescenta uma linha em *Falar* de `daily/atual.md` e sai, sem coletar nada."""
+    """Acrescenta uma linha em *Pontos* de `daily/atual.md` e sai, sem coletar nada."""
     if not texto.strip():
         _log.error("Nada a anotar: --anotar precisa de um texto.")
         return 1
     raiz = _vault.preparar(configuracao.vault)
     arquivo = _vault.anotar_ponto(raiz, texto)
     print(f"Anotado em {arquivo}")
-    print(f"Está em '## {_vault.SECAO_FALAR}' da nota viva, e fica lá até você tirar.")
+    print(f"Está em '## {_vault.SECAO_PONTOS}' da nota viva, e fica lá até você tirar.")
     return 0
 
 
@@ -1045,7 +1045,7 @@ def construir_parser() -> argparse.ArgumentParser:
         "--anotar",
         metavar="TEXTO",
         default=None,
-        help="acrescenta uma linha em '## Falar' de daily/atual.md e sai, sem coletar nada",
+        help="acrescenta uma linha em '## Pontos' de daily/atual.md e sai, sem coletar nada",
     )
     daily_cmd.add_argument(
         "--fakes",
@@ -1168,6 +1168,12 @@ def construir_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    if sys.stdout is None:
+        # Sob `pythonw.exe` (bandeja, tarefas agendadas): sem isto cada `git`,
+        # PowerShell e CLI do Claude abriria um console próprio na tela.
+        from . import sem_console
+
+        sem_console.instalar()
     forcar_utf8_na_saida()
     parser = construir_parser()
     args = parser.parse_args(argv)
