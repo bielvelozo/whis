@@ -97,6 +97,11 @@ ruim. Vamos ter que construir uma interface pra ele."*
   o painel de configuração com escritor de TOML e backup, e o toast com botão que abre o Obsidian.
   Sondas reais na máquina passaram (tarefa descartável, hotkey sob `pythonw`, toast, vigia). **Falta
   a prova dele**: `docs/smoke-interface.md`, terminando numa daily real.
+- **Acabamento e ajustes da palheta** (2026-09-16 e 17, tickets 13 e 14): a segunda prova dele
+  aprovou ("ficou muito melhor") com quatro ajustes — `ctrl+space`, Tab completa o comando, o rótulo
+  filtra e executa, fundo acrílico do DWM com `-alpha` (neste build o DWM não amostra as janelas
+  atrás; sonda em `research/sonda-acrilico.py`). Suíte em **1071 verdes**; a bandeja dele
+  reiniciada com o config trocado. Faltam dele: `claude login` e os passos 6, 8 e 9 do roteiro.
 
 ## Not yet specified
 

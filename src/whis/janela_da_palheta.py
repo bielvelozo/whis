@@ -1,13 +1,19 @@
 """A janela da palheta, no estilo Raycast: campo grande, lista de ações, sem borda.
 
-Tk, que já vem com o Python. A janela é um `overrideredirect` com
-`-transparentcolor`: o que se vê é um painel escuro de cantos arredondados
-desenhado num canvas, com borda fina em cor de destaque; fora dele a janela é
-transparente. Dentro, um `Text` de uma linha (Segoe UI 18) com placeholder, em
-que a primeira palavra ganha cor quando é um comando, e abaixo a lista de
-ações — uma linha por comando, filtrada pelo que se digita, com a selecionada
-destacada. ↑/↓ escolhem; Enter executa o texto digitado ou, com o campo vazio,
-a ação selecionada; clicar numa linha executa; Esc e perder o foco escondem.
+Tk, que já vem com o Python. A janela é um `overrideredirect` vestida de
+acrílico pelo DWM (`acrilico.py`) com um `-alpha` leve por cima, para deixar
+ver o que está atrás, e cantos arredondados pelo próprio Windows 11; quando o
+Windows recusa o acrílico, volta ao painel de `-transparentcolor` com o
+`-alpha` um pouco mais opaco. O que se vê é um painel escuro desenhado num
+canvas, com borda fina em cor de destaque. Dentro, um `Text` de uma linha
+(Segoe UI 18) com placeholder, em que a primeira palavra ganha cor quando é um
+comando — ou o texto inteiro, quando é o rótulo de uma ação — e abaixo a lista
+de ações: uma linha por comando, filtrada pelo que se digita (pelo nome do
+comando e por qualquer palavra do rótulo), com a selecionada destacada. ↑/↓
+escolhem; Tab completa o campo com o comando da selecionada (e, já completo,
+passa à próxima); Enter executa o texto digitado — um rótulo inteiro vale como
+o comando — ou, com o campo vazio, a ação selecionada; clicar numa linha
+executa; Esc e perder o foco escondem.
 
 O Tk só aceita chamadas do thread que o criou. O atalho global e o menu da
 bandeja vivem em outros threads, então tudo que eles pedem entra por `pedir`,
@@ -44,8 +50,17 @@ BORDA = "#7c6cf2"
 DESTAQUE = "#7c6cf2"
 TEXTO = "#f2f2f2"
 TEXTO_APAGADO = "#8e8e93"
-#: Uma cor que nenhum pixel do painel usa: é o que o Windows torna transparente.
+#: Uma cor que nenhum pixel do painel usa: é o que o Windows torna transparente
+#: no fallback sem acrílico.
 COR_TRANSPARENTE = "#010203"
+
+#: A tinta do acrílico: o fundo do painel, com esta opacidade, sobre o material.
+OPACIDADE_DA_TINTA = 0xCC
+#: A janela inteira por cima do acrílico. É o que deixa ver o que está atrás —
+#: o DWM deste build só amostra o papel de parede — e a 92% o texto continua
+#: legível. Sem acrílico, um pouco mais opaca, porque não há material embaixo.
+ALPHA_SOBRE_O_ACRILICO = 0.92
+ALPHA_SEM_ACRILICO = 0.94
 
 PLACEHOLDER = "Type a command…"
 
@@ -59,34 +74,62 @@ ATRASO_DO_FOCO_MS = 150
 
 @dataclass(frozen=True)
 class Acao:
-    """Uma linha da lista: o nome do comando, o glifo, o título e a descrição."""
+    """Uma linha da lista: o nome do comando, o glifo, o título, a descrição e se leva argumento."""
 
     nome: str
     icone: str
     rotulo: str | Callable[[], str]
     descricao: str = ""
+    aceita_argumento: bool = False
 
     def rotulo_atual(self) -> str:
         return self.rotulo() if callable(self.rotulo) else self.rotulo
 
 
 def filtrar(acoes: Sequence[Acao], texto: str) -> tuple[Acao, ...]:
-    """As ações cujo nome começa com a primeira palavra digitada; todas com o campo vazio."""
-    palavras = texto.strip().split(None, 1)
+    """As ações que a primeira palavra digitada começa: pelo nome do comando primeiro, depois
+    por qualquer palavra do rótulo; todas com o campo vazio."""
+    palavras = texto.split()
     if not palavras:
         return tuple(acoes)
     prefixo = palavras[0].casefold()
-    return tuple(acao for acao in acoes if acao.nome.casefold().startswith(prefixo))
+    pelo_nome = tuple(acao for acao in acoes if acao.nome.casefold().startswith(prefixo))
+    pelo_rotulo = tuple(
+        acao
+        for acao in acoes
+        if acao not in pelo_nome
+        and any(palavra.startswith(prefixo) for palavra in acao.rotulo_atual().casefold().split())
+    )
+    return pelo_nome + pelo_rotulo
 
 
-def comando_destacado(texto: str, nomes: Sequence[str]) -> tuple[int, int] | None:
-    """`(inicio, fim)` da primeira palavra quando ela é exatamente um comando; senão `None`."""
+def comando_pelo_rotulo(texto: str, acoes: Sequence[Acao]) -> str | None:
+    """O nome do comando cujo rótulo é o texto digitado (sem diferenciar maiúsculas), ou `None`."""
+    procurado = " ".join(texto.split()).casefold()
+    if not procurado:
+        return None
+    return next((acao.nome for acao in acoes if acao.rotulo_atual().casefold() == procurado), None)
+
+
+def completar(acao: Acao) -> str:
+    """O que o Tab põe no campo: o comando, e um espaço quando ele aceita argumento."""
+    return f"{acao.nome} " if acao.aceita_argumento else acao.nome
+
+
+def comando_destacado(texto: str, acoes: Sequence[Acao]) -> tuple[int, int] | None:
+    """`(inicio, fim)` do destaque: a primeira palavra quando é exatamente um comando, ou o
+    texto inteiro quando é exatamente um rótulo; senão `None`."""
     sem_indentacao = texto.lstrip()
     inicio = len(texto) - len(sem_indentacao)
-    palavra = sem_indentacao.split(None, 1)[0] if sem_indentacao.strip() else ""
-    if not palavra or palavra.casefold() not in {nome.casefold() for nome in nomes}:
+    miolo = sem_indentacao.rstrip()
+    if not miolo:
         return None
-    return inicio, inicio + len(palavra)
+    palavra = miolo.split(None, 1)[0]
+    if palavra.casefold() in {acao.nome.casefold() for acao in acoes}:
+        return inicio, inicio + len(palavra)
+    if comando_pelo_rotulo(miolo, acoes) is not None:
+        return inicio, inicio + len(miolo)
+    return None
 
 
 class PortaJanela(Protocol):
@@ -112,13 +155,13 @@ class JanelaDaPalheta:
         raiz.title("Whis")
         raiz.overrideredirect(True)
         raiz.attributes("-topmost", True)
-        raiz.configure(background=COR_TRANSPARENTE)
+        raiz.configure(background=FUNDO)
         try:
-            raiz.attributes("-transparentcolor", COR_TRANSPARENTE)
-        except tk.TclError:  # fora do Windows os cantos ficam quadrados
+            raiz.attributes("-alpha", ALPHA_SOBRE_O_ACRILICO)
+        except tk.TclError:
             pass
 
-        tela = tk.Canvas(raiz, highlightthickness=0, bd=0, background=COR_TRANSPARENTE)
+        tela = tk.Canvas(raiz, highlightthickness=0, bd=0, background=FUNDO)
         tela.pack(fill="both", expand=True)
 
         campo = tk.Text(
@@ -142,7 +185,7 @@ class JanelaDaPalheta:
         campo.bind("<Escape>", lambda _evento: (self.esconder(), "break")[1])
         campo.bind("<Up>", lambda _evento: self._mover_selecao(-1))
         campo.bind("<Down>", lambda _evento: self._mover_selecao(1))
-        campo.bind("<Tab>", lambda _evento: self._mover_selecao(1))
+        campo.bind("<Tab>", self._tab)
         campo.bind("<KeyRelease>", lambda _evento: self._atualizar())
         campo.bind("<FocusOut>", self._ao_perder_o_foco)
 
@@ -167,6 +210,7 @@ class JanelaDaPalheta:
         self._selecionada = 0
         self._visivel = False
         self._encerrada = False
+        self._vestida = False
         self._desenhar(())
 
     @property
@@ -189,6 +233,7 @@ class JanelaDaPalheta:
         self._atualizar()
         self._raiz.deiconify()
         self._raiz.lift()
+        self._vestir()
         self._campo.focus_force()
         self._visivel = True
 
@@ -233,6 +278,26 @@ class JanelaDaPalheta:
 
     # -- o desenho ------------------------------------------------------------
 
+    def _vestir(self) -> None:
+        """Uma vez, com a janela já mapeada: só então existe o HWND que o DWM enxerga."""
+        if self._vestida:
+            return
+        self._vestida = True
+        from . import acrilico
+
+        hwnd = acrilico.hwnd_da_raiz(self._raiz)
+        if hwnd and acrilico.aplicar_acrilico(hwnd, acrilico.tinta_abgr(FUNDO, OPACIDADE_DA_TINTA)):
+            acrilico.arredondar_cantos(hwnd)
+            return
+        _log.warning("Sem acrílico: a palheta fica só translúcida (alpha %.2f).", ALPHA_SEM_ACRILICO)
+        self._raiz.configure(background=COR_TRANSPARENTE)
+        self._tela.configure(background=COR_TRANSPARENTE)
+        try:
+            self._raiz.attributes("-transparentcolor", COR_TRANSPARENTE)
+            self._raiz.attributes("-alpha", ALPHA_SEM_ACRILICO)
+        except self._tk.TclError:  # fora do Windows os cantos ficam quadrados
+            pass
+
     def _atualizar(self) -> None:
         """Refaz o destaque, o placeholder e a lista a partir do texto de agora."""
         texto = self.texto()
@@ -242,7 +307,7 @@ class JanelaDaPalheta:
             self._campo.insert("1.0", texto)
 
         self._campo.tag_remove("comando", "1.0", "end")
-        faixa = comando_destacado(texto, [acao.nome for acao in self._acoes])
+        faixa = comando_destacado(texto, self._acoes)
         if faixa is not None:
             self._campo.tag_add("comando", f"1.{faixa[0]}", f"1.{faixa[1]}")
 
@@ -346,10 +411,21 @@ class JanelaDaPalheta:
         if indice < len(self._visiveis):
             self._despachar(self._visiveis[indice].nome)
 
+    def _tab(self, _evento=None) -> str:
+        acao = self.selecionada()
+        if acao is None:
+            return "break"
+        if self.texto() == completar(acao):
+            self._mover_selecao(1)
+            acao = self.selecionada()
+        self.digitar(completar(acao))
+        self._campo.mark_set("insert", "end")
+        return "break"
+
     def _enter(self, _evento=None) -> str:
         texto = self.texto().strip()
         if texto:
-            self._despachar(texto)
+            self._despachar(comando_pelo_rotulo(texto, self._acoes) or texto)
         elif (acao := self.selecionada()) is not None:
             self._despachar(acao.nome)
         else:

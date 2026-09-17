@@ -51,7 +51,7 @@ pelo atalho e digite `settings`:
 python -m whis bandeja
 ```
 
-Aperte **Ctrl+Alt+W**, digite `settings`, Enter (ou clique em **Settings** na
+Aperte **Ctrl+Space**, digite `settings`, Enter (ou clique em **Settings** na
 lista). No painel:
 
 - **Horários da daily**: segunda, terça e quinta `13:55`; quarta e sexta
@@ -77,7 +77,7 @@ horarios = { segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:
 vault = "245833c11ad43e6e"
 
 [palheta]
-atalho = "ctrl+alt+w"
+atalho = "ctrl+space"
 ```
 
 ## Passo 3 — Instalar tudo com os nomes novos
@@ -114,14 +114,20 @@ bandeja não está no ar".
 
 ## Passo 5 — A palheta
 
-Com a bandeja no ar, aperte **Ctrl+Alt+W**. Um painel escuro de cantos
-arredondados aparece no alto da tela: um campo grande com "Type a command…" e,
-embaixo, a lista de ações — **Open note**, **Generate daily**, **Start
-recording** primeiro, depois Ask, Note, Doubt, Settings. ↑/↓ escolhem uma
-linha, Enter executa a escolhida (com o campo vazio), clicar também executa;
-digitar filtra a lista e a palavra do comando fica em roxo quando é um
-comando. Esc, ou clicar fora, fecha sem fazer nada. **Nenhuma janela de
-terminal deve piscar em nenhum comando** — se piscar, é falha.
+Com a bandeja no ar, aperte **Ctrl+Space** (se o seu `config.toml` ainda diz
+`ctrl+alt+w`, troque em `settings` e reinicie a bandeja). Um painel escuro
+translúcido, de cantos arredondados, aparece no alto da tela: um campo grande
+com "Type a command…" e, embaixo, a lista de ações — **Open note**, **Generate
+daily**, **Start recording** primeiro, depois Ask, Note, Doubt, Settings. ↑/↓
+escolhem uma linha, Enter executa a escolhida (com o campo vazio), clicar
+também executa; digitar filtra a lista pelo comando **e** pelo rótulo
+(`generate` acha *Generate daily*); a palavra do comando fica em roxo quando é
+um comando, e o rótulo inteiro fica em roxo quando é ele que casa — Enter em
+`generate daily` roda `daily`. **Tab** completa o campo com o comando da ação
+selecionada (`ask` ganha o espaço para a pergunta); Tab de novo, com o campo já
+completo, passa à próxima ação da lista. Esc, ou clicar fora, fecha sem fazer
+nada. **Nenhuma janela de terminal deve piscar em nenhum comando** — se
+piscar, é falha.
 
 Teste, um por vez:
 

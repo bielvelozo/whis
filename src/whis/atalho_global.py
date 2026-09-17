@@ -36,7 +36,7 @@ WM_HOTKEY = 0x0312
 #: O identificador que o Windows devolve em `wParam` — só temos um atalho.
 ID_DO_ATALHO = 1
 
-ATALHO_PADRAO = "ctrl+alt+w"
+ATALHO_PADRAO = "ctrl+space"
 
 _MODIFICADORES = {
     "ctrl": MOD_CONTROL,

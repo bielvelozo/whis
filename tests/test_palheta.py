@@ -38,7 +38,7 @@ from whis.fakes import (
     STTFake,
     fontes_de_exemplo_da_daily,
 )
-from whis.janela_da_palheta import Acao, comando_destacado, filtrar
+from whis.janela_da_palheta import Acao, comando_destacado, comando_pelo_rotulo, completar, filtrar
 from whis.palheta import (
     ORDEM_DAS_ACOES,
     Comando,
@@ -518,9 +518,9 @@ ACOES = (
     Acao("open", "▤", "Open note", "daily/atual.md in Obsidian"),
     Acao("daily", "☀", "Generate daily"),
     Acao("record", "●", lambda: "Start recording"),
-    Acao("ask", "?", "Ask"),
-    Acao("note", "✎", "Note"),
-    Acao("doubt", "¿", "Doubt"),
+    Acao("ask", "?", "Ask", aceita_argumento=True),
+    Acao("note", "✎", "Note", aceita_argumento=True),
+    Acao("doubt", "¿", "Doubt", aceita_argumento=True),
     Acao("settings", "⚙", "Settings"),
 )
 
@@ -537,15 +537,47 @@ def test_a_lista_filtra_pelo_comeco_da_primeira_palavra():
     assert filtrar(ACOES, "vagas") == ()
 
 
-def test_a_primeira_palavra_ganha_destaque_so_quando_e_um_comando():
-    nomes = [acao.nome for acao in ACOES]
+def test_o_rotulo_tambem_filtra_e_o_nome_do_comando_vem_primeiro():
+    assert [acao.nome for acao in filtrar(ACOES, "generate")] == ["daily"]
+    assert [acao.nome for acao in filtrar(ACOES, "generate daily")] == ["daily"]
+    assert [acao.nome for acao in filtrar(ACOES, "Open note")] == ["open"]
+    assert [acao.nome for acao in filtrar(ACOES, "start")] == ["record"]
+    assert [acao.nome for acao in filtrar(ACOES, "no")] == ["note", "open"]
+    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "doubt"]
 
-    assert comando_destacado("ask qual foi a decisão", nomes) == (0, 3)
-    assert comando_destacado("  Note  x", nomes) == (2, 6)
-    assert comando_destacado("daily", nomes) == (0, 5)
-    assert comando_destacado("dail", nomes) is None
-    assert comando_destacado("vagas python", nomes) is None
-    assert comando_destacado("", nomes) is None
+
+def test_a_primeira_palavra_ganha_destaque_so_quando_e_um_comando():
+    assert comando_destacado("ask qual foi a decisão", ACOES) == (0, 3)
+    assert comando_destacado("  Note  x", ACOES) == (2, 6)
+    assert comando_destacado("daily", ACOES) == (0, 5)
+    assert comando_destacado("dail", ACOES) is None
+    assert comando_destacado("vagas python", ACOES) is None
+    assert comando_destacado("", ACOES) is None
+
+
+def test_o_rotulo_inteiro_ganha_destaque_quando_e_ele_que_casa():
+    assert comando_destacado("generate daily", ACOES) == (0, 14)
+    assert comando_destacado("  Generate Daily ", ACOES) == (2, 16)
+    assert comando_destacado("start recording", ACOES) == (0, 15)
+    assert comando_destacado("generate daily agora", ACOES) is None
+    assert comando_destacado("generate", ACOES) is None
+
+
+def test_o_texto_igual_ao_rotulo_vira_o_comando():
+    assert comando_pelo_rotulo("generate daily", ACOES) == "daily"
+    assert comando_pelo_rotulo("  GENERATE   DAILY ", ACOES) == "daily"
+    assert comando_pelo_rotulo("Start recording", ACOES) == "record"
+    assert comando_pelo_rotulo("Ask", ACOES) == "ask"
+    assert comando_pelo_rotulo("daily", ACOES) is None
+    assert comando_pelo_rotulo("vagas", ACOES) is None
+    assert comando_pelo_rotulo("", ACOES) is None
+
+
+def test_tab_completa_o_comando_e_deixa_o_espaco_quando_ha_argumento():
+    assert completar(ACOES[1]) == "daily"
+    assert completar(ACOES[3]) == "ask "
+    assert completar(ACOES[4]) == "note "
+    assert completar(ACOES[6]) == "settings"
 
 
 def test_o_rotulo_de_uma_acao_pode_ser_funcao():
@@ -584,7 +616,7 @@ def test_clicar_numa_acao_despacha_o_nome_dela(montar, caminho_do_vault: Path, a
     palheta = montar(lancados=lancados)
     janela = JanelaDublê()
     janela.ao_enviar(palheta.despachar)
-    janela.definir_acoes([Acao(c.nome, c.icone, c.rotulo_atual, c.descricao) for c in palheta.acoes()])
+    janela.definir_acoes([Acao(c.nome, c.icone, c.rotulo_atual, c.descricao, bool(c.parametro)) for c in palheta.acoes()])
 
     janela.clicar("open")
 
@@ -593,7 +625,7 @@ def test_clicar_numa_acao_despacha_o_nome_dela(montar, caminho_do_vault: Path, a
 
 
 def test_a_janela_de_verdade_filtra_destaca_e_some_no_enter_e_no_esc():
-    """Tk de verdade, quando há tela: digitar filtra e destaca; Enter/Esc/↓ fazem o que devem."""
+    """Tk de verdade, quando há tela: digitar filtra e destaca; Enter/Esc/↓/Tab fazem o que devem."""
     tk = pytest.importorskip("tkinter")
     from whis.janela_da_palheta import JanelaDaPalheta
 
@@ -615,6 +647,10 @@ def test_a_janela_de_verdade_filtra_destaca_e_some_no_enter_e_no_esc():
         assert [acao.nome for acao in janela.acoes_visiveis()] == ["ask"]
         assert janela._campo.tag_ranges("comando") and str(janela._campo.get("comando.first", "comando.last")) == "ask"
 
+        janela.digitar("generate daily")
+        assert [acao.nome for acao in janela.acoes_visiveis()] == ["daily"]
+        assert str(janela._campo.get("comando.first", "comando.last")) == "generate daily"
+
         janela.digitar("vag")
         assert janela.acoes_visiveis() == () and not janela._campo.tag_ranges("comando")
 
@@ -623,16 +659,36 @@ def test_a_janela_de_verdade_filtra_destaca_e_some_no_enter_e_no_esc():
 
         janela.mostrar()
         janela.raiz.update()
-        janela._mover_selecao(1)
-        assert janela.selecionada().nome == "daily"
+        janela.digitar("Generate daily")
         janela._enter()
         assert not janela.visivel() and enviados == ["vag", "daily"]
 
         janela.mostrar()
         janela.raiz.update()
+        janela._tab()
+        assert janela.texto() == "open" and janela.selecionada().nome == "open"
+        janela.digitar("no")
+        assert [acao.nome for acao in janela.acoes_visiveis()] == ["note", "open"]
+        janela._tab()
+        assert janela.texto() == "note " and janela.selecionada().nome == "note"
+        janela._tab()
+        assert janela.texto() == "open" and [acao.nome for acao in janela.acoes_visiveis()] == ["open"]
         janela._campo.event_generate("<Escape>")
         janela.raiz.update()
         assert not janela.visivel() and enviados == ["vag", "daily"]
+
+        janela.mostrar()
+        janela.raiz.update()
+        janela._mover_selecao(1)
+        assert janela.selecionada().nome == "daily"
+        janela._enter()
+        assert not janela.visivel() and enviados == ["vag", "daily", "daily"]
+
+        janela.mostrar()
+        janela.raiz.update()
+        janela._campo.event_generate("<Escape>")
+        janela.raiz.update()
+        assert not janela.visivel() and enviados == ["vag", "daily", "daily"]
 
         chamadas: list[str] = []
         janela.pedir(lambda: chamadas.append("de outro thread"))
@@ -652,7 +708,7 @@ def _config_com(tmp_path: Path, corpo_do_toml: str) -> Path:
 
 
 def test_o_atalho_da_palheta_vem_da_configuracao_com_padrao(tmp_path: Path):
-    assert carregar(_config_com(tmp_path, "")).palheta_atalho == "ctrl+alt+w"
+    assert carregar(_config_com(tmp_path, "")).palheta_atalho == "ctrl+space"
     assert carregar(_config_com(tmp_path, '[palheta]\natalho = "Ctrl + Shift + K"\n')).palheta_atalho == "ctrl+shift+k"
 
 
@@ -666,7 +722,7 @@ def test_atalho_invalido_e_configuracao_invalida(tmp_path: Path):
 def test_o_modelo_traz_o_atalho_padrao_comentado():
     dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V", gravacoes="G"))
 
-    assert dados["palheta"]["atalho"] == "ctrl+alt+w"
+    assert dados["palheta"]["atalho"] == "ctrl+space"
     assert "# o atalho global" in MODELO_DE_CONFIGURACAO
 
 
@@ -772,7 +828,7 @@ def test_o_subcomando_bandeja_monta_a_palheta_com_os_fakes_e_o_atalho(configurac
     [extras] = chamadas
     palheta = extras["palheta"]
     assert isinstance(palheta, Palheta)
-    assert extras["atalho"].texto == "ctrl+alt+w"
+    assert extras["atalho"].texto == "ctrl+space"
     daily = next(comando for comando in palheta.comandos if comando.nome == "daily")
     resultado = daily.rodar("", palheta.configuracao)
     assert resultado.nota == "daily/atual.md"

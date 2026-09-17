@@ -71,7 +71,7 @@ contexto_do_time = ""         # como o seu processo funciona, para o roteiro nã
 horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:55", sexta = "10:25" }}  # hora em que a daily nasce em cada dia (segunda..domingo, sem acento); dia ausente = sem daily
 
 [palheta]
-atalho = "ctrl+alt+w"        # o atalho global que abre a palheta: ctrl, alt, shift, win e uma tecla (letra, dígito, space, f1..f12)
+atalho = "ctrl+space"        # o atalho global que abre a palheta: ctrl, alt, shift, win e uma tecla (letra, dígito, space, f1..f12)
 
 [privacidade]
 excluir = []                 # trechos que nunca saem da máquina (substring, sem diferenciar maiúsculas)
@@ -196,7 +196,7 @@ class Configuracao:
     pela pasta.
 
     `palheta_atalho` é a combinação de teclas que abre a palheta, já validada
-    (`atalho_global.analisar_atalho` a entende); o padrão é `ctrl+alt+w`.
+    (`atalho_global.analisar_atalho` a entende); o padrão é `ctrl+space`.
     """
 
     vault: Path

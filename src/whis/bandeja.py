@@ -433,7 +433,7 @@ def executar(
     palheta.gravando = lambda: coletor.situacao().gravando
     janela.definir_acoes(
         [
-            Acao(comando.nome, comando.icone, comando.rotulo_atual, comando.descricao)
+            Acao(comando.nome, comando.icone, comando.rotulo_atual, comando.descricao, bool(comando.parametro))
             for comando in palheta.acoes()
         ]
     )
