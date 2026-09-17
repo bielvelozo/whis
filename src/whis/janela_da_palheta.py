@@ -1,19 +1,22 @@
 """A janela da palheta, copiada do Raycast: campo grande, lista de ações, rodapé com as teclas.
 
-Tk, que já vem com o Python. A janela é um `overrideredirect` vestida de
-acrílico pelo DWM (`acrilico.py`), com cantos arredondados pelo próprio
-Windows 11; quando o Windows recusa o acrílico, volta ao painel de
-`-transparentcolor` com um `-alpha` leve. O desenho é o do Raycast de
-propósito, a pedido do usuário na terceira prova: painel quase preto e quase
-opaco (só o material do acrílico atravessa — um `-alpha` por cima deixava o
-texto de trás legível, e ele pediu preto), borda fina de 1 px, o campo em
-cima, uma linha por ação — glifo, título, descrição e, à direita, o nome do
-comando — com a selecionada num realce arredondado que não encosta na borda,
-e um rodapé com o nome e as teclas. O que é roxo é o que é do Whis.
+Tk, que já vem com o Python. A janela é um `overrideredirect` com cantos
+arredondados pelo DWM do Windows 11 (`dwm.py`; sem ele, `-transparentcolor`),
+e o fundo é o acrílico simulado de `fundo_desfocado.py`: a cada abertura, com
+a janela ainda escondida, a tela atrás dela é capturada, desfocada e
+escurecida, e vai como imagem embaixo de tudo — é o que deixa ver o que está
+atrás como manchas, como no Raycast, já que o DWM deste build não desfoca as
+janelas atrás de um popup e um `-alpha` mostraria o de trás nítido. O desenho
+é o do Raycast de propósito, a pedido do usuário: painel quase preto, borda
+fina de 1 px, o campo em cima, uma linha por ação — glifo, título, descrição
+e, à direita, o nome do comando — com a selecionada num realce arredondado
+que não encosta na borda, e um rodapé com o nome e as teclas. O que é roxo é o
+que é do Whis.
 
 Tudo é desenhado no canvas; o único widget dentro dele é o `Text` de uma linha
-(Segoe UI 18) com placeholder, em que a primeira palavra ganha cor quando é um
-comando — ou o texto inteiro, quando é o rótulo de uma ação. A lista é
+(Segoe UI 18) com placeholder — opaco, ele ganha a cor média da faixa
+desfocada embaixo dele — em que a primeira palavra ganha cor quando é um
+comando, ou o texto inteiro, quando é o rótulo de uma ação. A lista é
 filtrada pelo que se digita (pelo nome do comando e por qualquer palavra do
 rótulo). ↑/↓ escolhem; Tab completa o campo com o comando da selecionada (e,
 já completo, passa à próxima); Enter executa o texto digitado — um rótulo
@@ -63,16 +66,11 @@ TEXTO_APAGADO = "#8a8a92"
 TECLA = "#1c1c20"
 BORDA_DA_TECLA = "#36363c"
 #: Uma cor que nenhum pixel do painel usa: é o que o Windows torna transparente
-#: no fallback sem acrílico.
+#: nos cantos, no fallback sem os cantos do DWM.
 COR_TRANSPARENTE = "#010203"
 
-#: A tinta do acrílico: o fundo do painel, com esta opacidade, sobre o material.
-#: Alta de propósito — o material clareia com o papel de parede, e o painel
-#: tem que ler como preto. É a única translucidez: um `-alpha` na janela, por
-#: menor que fosse, deixava o texto de trás legível através do painel.
-OPACIDADE_DA_TINTA = 0xE8
-#: Sem acrílico, a janela inteira quase opaca, porque não há material embaixo.
-ALPHA_SEM_ACRILICO = 0.96
+#: Quanto o `FUNDO` cobre o desfoque do que está atrás: 1.0 é um painel opaco.
+OPACIDADE_DO_FUNDO = 0.84
 
 PLACEHOLDER = "Type a command…"
 
@@ -171,6 +169,8 @@ class JanelaDaPalheta:
 
         tela = tk.Canvas(raiz, highlightthickness=0, bd=0, background=FUNDO)
         tela.pack(fill="both", expand=True)
+        tela.bind("<Motion>", self._ao_mover_o_mouse)
+        tela.bind("<Button-1>", self._ao_clicar)
 
         campo = tk.Text(
             tela,
@@ -220,11 +220,15 @@ class JanelaDaPalheta:
         self._visiveis: tuple[Acao, ...] = ()
         #: Os realces das linhas desenhadas, um item do canvas por ação visível.
         self._linhas: list[int] = []
+        self._topo_das_linhas = 0
+        self._posicao = (0, 0)
+        self._altura = 0
+        #: A imagem de fundo precisa de uma referência viva, ou o Tk a solta.
+        self._foto = None
         self._selecionada = 0
         self._visivel = False
         self._encerrada = False
-        #: `None` até a primeira abertura; depois, se o Windows aceitou o acrílico.
-        self._acrilico: bool | None = None
+        self._vestida = False
         self._desenhar(())
 
     @property
@@ -248,6 +252,7 @@ class JanelaDaPalheta:
         # "Stop recording"): a lista é sempre redesenhada ao abrir.
         self._visiveis = ()
         self._atualizar()
+        self._pintar_o_fundo()
         self._raiz.deiconify()
         self._raiz.lift()
         self._vestir()
@@ -255,7 +260,6 @@ class JanelaDaPalheta:
         self._visivel = True
 
     def esconder(self) -> None:
-        self._despir()
         self._raiz.withdraw()
         self._visivel = False
 
@@ -300,39 +304,47 @@ class JanelaDaPalheta:
 
     # -- o desenho ------------------------------------------------------------
 
+    def _pintar_o_fundo(self) -> None:
+        """O acrílico simulado, antes de a janela aparecer: a tela atrás dela, desfocada e escurecida."""
+        from PIL import ImageTk
+
+        from . import fundo_desfocado
+
+        x, y = self._posicao
+        try:
+            atras = fundo_desfocado.capturar_atras(x, y, LARGURA, self._altura)
+        except Exception as erro:  # noqa: BLE001 — sem captura o painel é liso, nunca ausente
+            _log.debug("Sem o desfoque do fundo: %s", erro)
+            atras = fundo_desfocado.fundo_liso(LARGURA, self._altura, FUNDO)
+        imagem = fundo_desfocado.desfocar(
+            atras, cor=FUNDO, opacidade=OPACIDADE_DO_FUNDO, raio_dos_cantos=RAIO, cor_de_fora=COR_TRANSPARENTE
+        )
+        self._foto = ImageTk.PhotoImage(imagem, master=self._raiz)
+        self._tela.delete("fundo")
+        self._tela.create_image(0, 0, anchor="nw", image=self._foto, tags=("fundo",))
+        self._tela.tag_lower("fundo")
+        cor_do_campo = fundo_desfocado.cor_media(
+            imagem, (MARGEM, MARGEM, LARGURA - MARGEM, MARGEM + ALTURA_DO_CAMPO)
+        )
+        self._campo.configure(background=cor_do_campo)
+        self._placeholder.configure(background=cor_do_campo)
+
     def _vestir(self) -> None:
-        """A cada abertura, com a janela já mapeada (só então existe o HWND que o DWM enxerga).
-
-        A cada abertura, e não uma vez só, porque o DWM deste build esquece a
-        tinta quando a janela some e volta: `_despir` a tira ao esconder e aqui
-        ela volta inteira. Os cantos são pedidos uma vez.
-        """
-        if self._acrilico is False:
+        """Uma vez, com a janela já mapeada (só então existe o HWND que o DWM enxerga)."""
+        if self._vestida:
             return
-        from . import acrilico
+        self._vestida = True
+        from . import dwm
 
-        hwnd = acrilico.hwnd_da_raiz(self._raiz)
-        if hwnd and acrilico.aplicar_acrilico(hwnd, acrilico.tinta_abgr(FUNDO, OPACIDADE_DA_TINTA)):
-            if self._acrilico is None:
-                acrilico.arredondar_cantos(hwnd)
-            self._acrilico = True
+        if dwm.arredondar_cantos(dwm.hwnd_da_raiz(self._raiz)):
             return
-        self._acrilico = False
-        _log.warning("Sem acrílico: a palheta fica só translúcida (alpha %.2f).", ALPHA_SEM_ACRILICO)
+        # Sem o DWM, os cantos de fora da imagem de fundo (na cor-chave) somem por chave de cor.
         self._raiz.configure(background=COR_TRANSPARENTE)
         self._tela.configure(background=COR_TRANSPARENTE)
         try:
             self._raiz.attributes("-transparentcolor", COR_TRANSPARENTE)
-            self._raiz.attributes("-alpha", ALPHA_SEM_ACRILICO)
         except self._tk.TclError:  # fora do Windows os cantos ficam quadrados
             pass
-
-    def _despir(self) -> None:
-        if not self._acrilico:
-            return
-        from . import acrilico
-
-        acrilico.desligar_acrilico(acrilico.hwnd_da_raiz(self._raiz))
 
     def _atualizar(self) -> None:
         """Refaz o destaque, o placeholder e a lista a partir do texto de agora."""
@@ -367,14 +379,15 @@ class JanelaDaPalheta:
         self._painel(topo_da_lista + altura_da_lista + ALTURA_DO_RODAPE)
 
         self._linhas = []
+        self._topo_das_linhas = topo_da_lista + 4
         for indice, acao in enumerate(visiveis):
-            y = topo_da_lista + 4 + indice * ALTURA_DA_LINHA
+            y = self._topo_das_linhas + indice * ALTURA_DA_LINHA
             centro = y + ALTURA_DA_LINHA // 2
             marca = f"linha{indice}"
             realce = tela.create_polygon(
                 *_cantos_arredondados(RECUO_DA_LINHA, y, LARGURA - RECUO_DA_LINHA, y + ALTURA_DA_LINHA, 8),
                 smooth=True,
-                fill=FUNDO,
+                fill="",
                 outline="",
                 tags=(marca, "desenho"),
             )
@@ -408,9 +421,8 @@ class JanelaDaPalheta:
                 anchor="e",
                 tags=(marca, "desenho"),
             )
-            tela.tag_bind(marca, "<Button-1>", lambda _evento, i=indice: self._clicar(i))
-            tela.tag_bind(marca, "<Enter>", lambda _evento, i=indice: self._apontar(i))
             self._linhas.append(realce)
+        tela.tag_lower("fundo")
         self._pintar_selecao()
 
     def _painel(self, altura: int) -> None:
@@ -418,17 +430,18 @@ class JanelaDaPalheta:
         x = (raiz.winfo_screenwidth() - LARGURA) // 2
         y = raiz.winfo_screenheight() // 4
         raiz.geometry(f"{LARGURA}x{altura}+{x}+{y}")
+        self._posicao = (x, y)
+        self._altura = altura
         tela.configure(width=LARGURA, height=altura)
         tela.delete("desenho")
-        fundo = tela.create_polygon(
+        tela.create_polygon(
             *_cantos_arredondados(1, 1, LARGURA - 1, altura - 1, RAIO),
             smooth=True,
-            fill=FUNDO,
+            fill="",
             outline=BORDA,
             width=1,
             tags=("desenho",),
         )
-        tela.tag_lower(fundo)
         separador = MARGEM + ALTURA_DO_CAMPO + 7
         tela.create_line(1, separador, LARGURA - 1, separador, fill=SEPARADOR, tags=("desenho",))
         self._rodape(altura)
@@ -474,7 +487,7 @@ class JanelaDaPalheta:
 
     def _pintar_selecao(self) -> None:
         for indice, realce in enumerate(self._linhas):
-            cor = FUNDO_SELECIONADO if indice == self._selecionada else FUNDO
+            cor = FUNDO_SELECIONADO if indice == self._selecionada else ""
             self._tela.itemconfigure(realce, fill=cor)
 
     # -- os gestos ------------------------------------------------------------
@@ -484,6 +497,24 @@ class JanelaDaPalheta:
             self._selecionada = (self._selecionada + passo) % len(self._visiveis)
             self._pintar_selecao()
         return "break"
+
+    def _linha_em(self, y: int) -> int | None:
+        """A linha da lista sob a coordenada `y` do canvas, ou `None` fora dela."""
+        deslocamento = y - self._topo_das_linhas
+        if deslocamento < 0:
+            return None
+        indice = deslocamento // ALTURA_DA_LINHA
+        return indice if indice < len(self._visiveis) else None
+
+    def _ao_mover_o_mouse(self, evento) -> None:
+        indice = self._linha_em(evento.y)
+        if indice is not None and indice != self._selecionada:
+            self._apontar(indice)
+
+    def _ao_clicar(self, evento) -> None:
+        indice = self._linha_em(evento.y)
+        if indice is not None:
+            self._clicar(indice)
 
     def _apontar(self, indice: int) -> None:
         self._selecionada = indice

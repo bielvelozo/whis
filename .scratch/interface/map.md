@@ -106,6 +106,10 @@ ruim. Vamos ter que construir uma interface pra ele."*
   desenho do Raycast com os detalhes em roxo — janela redesenhada no canvas (painel quase preto e
   quase opaco, borda fina, realce arredondado, nome do comando à direita, rodapé com as teclas) e o
   rótulo de `record` passando a *Stop recording* ao reabrir. Suíte em **1071 verdes**.
+- **A transparência de verdade** (2026-09-17, ticket 16): "fundo todo preto mas não está
+  transparente" — como o DWM deste build não desfoca as janelas atrás de um popup, a palheta faz o
+  acrílico em casa: captura a tela atrás dela ao abrir, desfoca e escurece, e usa como fundo
+  (`fundo_desfocado.py`). Suíte em **1072 verdes**.
 
 ## Not yet specified
 

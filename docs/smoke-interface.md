@@ -117,7 +117,8 @@ bandeja não está no ar".
 Com a bandeja no ar, aperte **Ctrl+Space** (se o seu `config.toml` ainda diz
 `ctrl+alt+w`, troque em `settings` e reinicie a bandeja). Um painel quase
 preto, de cantos arredondados e borda fina, aparece no alto da tela, no
-desenho do Raycast: um campo grande com "Type a command…", embaixo a lista de
+desenho do Raycast, com o que está atrás dele aparecendo desfocado por
+trás: um campo grande com "Type a command…", embaixo a lista de
 ações — **Open note**, **Generate daily**, **Start recording** primeiro, depois
 Ask, Note, Doubt, Settings — cada uma com o nome do comando em roxo à direita,
 e um rodapé com **Run ↵** e **Complete Tab**. ↑/↓ escolhem uma linha, Enter
