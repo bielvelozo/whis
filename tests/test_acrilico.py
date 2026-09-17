@@ -12,6 +12,7 @@ import ctypes
 import logging
 
 from whis.acrilico import (
+    ACCENT_DISABLED,
     ACCENT_ENABLE_ACRYLICBLURBEHIND,
     DWMWA_WINDOW_CORNER_PREFERENCE,
     DWMWCP_ROUND,
@@ -19,6 +20,7 @@ from whis.acrilico import (
     AccentPolicy,
     aplicar_acrilico,
     arredondar_cantos,
+    desligar_acrilico,
     tinta_abgr,
 )
 
@@ -39,6 +41,19 @@ def test_o_acrilico_pede_a_politica_certa_ao_dwm():
 
     assert aplicar_acrilico(4242, 0xCC1E1C1C, chamar=chamar) is True
     assert chamadas == [(4242, WCA_ACCENT_POLICY, ACCENT_ENABLE_ACRYLICBLURBEHIND, 0xCC1E1C1C)]
+
+
+def test_desligar_manda_a_politica_desligada_pelo_mesmo_caminho():
+    chamadas: list[tuple[int, int, int]] = []
+
+    def chamar(hwnd: int, dados) -> int:
+        politica = ctypes.cast(dados.Data, ctypes.POINTER(AccentPolicy)).contents
+        chamadas.append((hwnd, dados.Attribute, politica.AccentState))
+        return 1
+
+    assert desligar_acrilico(4242, chamar=chamar) is True
+    assert chamadas == [(4242, WCA_ACCENT_POLICY, ACCENT_DISABLED)]
+    assert desligar_acrilico(4242, chamar=lambda _hwnd, _dados: 0) is False
 
 
 def test_recusa_e_excecao_do_windows_viram_false_com_aviso(caplog):

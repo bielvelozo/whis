@@ -30,6 +30,7 @@ from collections.abc import Callable
 _log = logging.getLogger("whis.acrilico")
 
 WCA_ACCENT_POLICY = 19
+ACCENT_DISABLED = 0
 ACCENT_ENABLE_ACRYLICBLURBEHIND = 4
 DWMWA_WINDOW_CORNER_PREFERENCE = 33
 DWMWCP_ROUND = 2
@@ -66,14 +67,23 @@ def hwnd_da_raiz(raiz) -> int:
     return int(ctypes.windll.user32.GetParent(filho)) or filho
 
 
-def aplicar_acrilico(
-    hwnd: int,
-    tinta: int,
-    *,
-    chamar: Callable[[int, WindowCompositionAttributeData], int] | None = None,
-) -> bool:
+Chamada = Callable[[int, WindowCompositionAttributeData], int]
+
+
+def aplicar_acrilico(hwnd: int, tinta: int, *, chamar: Chamada | None = None) -> bool:
     """Pede o acrílico ao DWM para `hwnd`, com a tinta por cima. `False` quando o Windows recusa."""
-    politica = AccentPolicy(ACCENT_ENABLE_ACRYLICBLURBEHIND, 2, tinta, 0)
+    return _politica(hwnd, AccentPolicy(ACCENT_ENABLE_ACRYLICBLURBEHIND, 2, tinta, 0), chamar)
+
+
+def desligar_acrilico(hwnd: int, *, chamar: Chamada | None = None) -> bool:
+    """Tira o acrílico de `hwnd`. Neste build o DWM esquece a tinta quando a janela some e
+    volta — a maior parte do painel reaparece cinza-azulado — e reaplicar a política sobre a
+    antiga não conserta: só desligar ao esconder e ligar de novo ao mostrar (repro em
+    `.scratch/interface/research/sonda-acrilico-reexibir.py`)."""
+    return _politica(hwnd, AccentPolicy(ACCENT_DISABLED, 0, 0, 0), chamar)
+
+
+def _politica(hwnd: int, politica: AccentPolicy, chamar: Chamada | None) -> bool:
     dados = WindowCompositionAttributeData(
         WCA_ACCENT_POLICY, ctypes.addressof(politica), ctypes.sizeof(politica)
     )

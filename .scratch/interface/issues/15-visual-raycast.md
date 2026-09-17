@@ -53,3 +53,17 @@ nome à esquerda e as ações à direita com as teclas desenhadas como teclas (`
 - Suíte: **1071 verdes / 8 desselecionados** (o teste da janela de verdade ganhou o rótulo dinâmico).
   Capturas finais no scratchpad da sessão (`provaFinal/`): vazia, `generate daily`, `note ` + Tab,
   Tab de novo — todas com a janela mapeada e o foco no campo.
+
+**Correção depois da prova dele** (2026-09-17, "o fundo está bugado", com print: parte do painel preta,
+parte cinza-azulada em faixas retangulares).
+
+- Reproduzido na janela de verdade sob `pythonw` medindo quatro cantos do painel
+  (`research/sonda-acrilico-reexibir.py`): na primeira abertura os quatro dão (28, 28, 32); ao
+  esconder e mostrar de novo, três viram (66, 75, 79) — o material do DWM **sem a tinta**. É o DWM
+  deste build esquecendo a política do acrílico quando a janela some e volta; o que ele viu em
+  faixas é a recomposição parcial forçada por outras janelas por cima.
+- Testadas três saídas: reaplicar a política ao mostrar (não resolve), `SetWindowPos` com
+  `SWP_FRAMECHANGED` (não resolve), **desligar o acrílico ao esconder e ligar de novo ao mostrar**
+  (resolve: as três aberturas dão (28, 28, 32)). É o que `esconder`/`mostrar` fazem agora
+  (`_despir`/`_vestir`; `acrilico.desligar_acrilico`), com os cantos pedidos uma vez só.
+- Suíte: **1072 verdes / 8 desselecionados** (+1 em `test_acrilico.py`). Bandeja dele reiniciada.

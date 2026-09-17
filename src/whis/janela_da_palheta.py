@@ -223,7 +223,8 @@ class JanelaDaPalheta:
         self._selecionada = 0
         self._visivel = False
         self._encerrada = False
-        self._vestida = False
+        #: `None` até a primeira abertura; depois, se o Windows aceitou o acrílico.
+        self._acrilico: bool | None = None
         self._desenhar(())
 
     @property
@@ -254,6 +255,7 @@ class JanelaDaPalheta:
         self._visivel = True
 
     def esconder(self) -> None:
+        self._despir()
         self._raiz.withdraw()
         self._visivel = False
 
@@ -299,16 +301,23 @@ class JanelaDaPalheta:
     # -- o desenho ------------------------------------------------------------
 
     def _vestir(self) -> None:
-        """Uma vez, com a janela já mapeada: só então existe o HWND que o DWM enxerga."""
-        if self._vestida:
+        """A cada abertura, com a janela já mapeada (só então existe o HWND que o DWM enxerga).
+
+        A cada abertura, e não uma vez só, porque o DWM deste build esquece a
+        tinta quando a janela some e volta: `_despir` a tira ao esconder e aqui
+        ela volta inteira. Os cantos são pedidos uma vez.
+        """
+        if self._acrilico is False:
             return
-        self._vestida = True
         from . import acrilico
 
         hwnd = acrilico.hwnd_da_raiz(self._raiz)
         if hwnd and acrilico.aplicar_acrilico(hwnd, acrilico.tinta_abgr(FUNDO, OPACIDADE_DA_TINTA)):
-            acrilico.arredondar_cantos(hwnd)
+            if self._acrilico is None:
+                acrilico.arredondar_cantos(hwnd)
+            self._acrilico = True
             return
+        self._acrilico = False
         _log.warning("Sem acrílico: a palheta fica só translúcida (alpha %.2f).", ALPHA_SEM_ACRILICO)
         self._raiz.configure(background=COR_TRANSPARENTE)
         self._tela.configure(background=COR_TRANSPARENTE)
@@ -317,6 +326,13 @@ class JanelaDaPalheta:
             self._raiz.attributes("-alpha", ALPHA_SEM_ACRILICO)
         except self._tk.TclError:  # fora do Windows os cantos ficam quadrados
             pass
+
+    def _despir(self) -> None:
+        if not self._acrilico:
+            return
+        from . import acrilico
+
+        acrilico.desligar_acrilico(acrilico.hwnd_da_raiz(self._raiz))
 
     def _atualizar(self) -> None:
         """Refaz o destaque, o placeholder e a lista a partir do texto de agora."""
