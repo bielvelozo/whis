@@ -1,7 +1,7 @@
 """A nota viva `daily/atual.md`: o texto que agente e usuário mantêm juntos.
 
 Este módulo só conhece texto. Ele lê a nota como uma sequência de linhas,
-acha as quatro seções e os itens de lista dentro delas, e faz as três únicas
+acha as seis seções e os itens de lista dentro delas, e faz as três únicas
 coisas que o agente pode fazer ali: **acrescentar** um item, **mover** um item
 de *O que estou fazendo* para *O que eu fiz* e **arquivar** *O que eu fiz*
 quando a janela da daily muda. Quem decide o quê é a costura (`daily.py`);
@@ -34,18 +34,25 @@ TIPO_NOTA_VIVA = "daily-atual"
 
 SECAO_FIZ = "O que eu fiz"
 SECAO_FAZENDO = "O que estou fazendo"
+SECAO_FAZER = "Fazer"
 SECAO_DUVIDAS = "Dúvidas"
 SECAO_PONTOS = "Pontos"
 SECAO_FALAR = "Falar"
 
-#: As cinco seções, na ordem em que a nota as tem.
-SECOES = (SECAO_FIZ, SECAO_FAZENDO, SECAO_DUVIDAS, SECAO_PONTOS, SECAO_FALAR)
+#: As seis seções, na ordem em que a nota as tem.
+SECOES = (SECAO_FIZ, SECAO_FAZENDO, SECAO_FAZER, SECAO_DUVIDAS, SECAO_PONTOS, SECAO_FALAR)
 
 #: As seções que o agente mantém — as únicas em que ele escreve sozinho.
 SECOES_DO_AGENTE = (SECAO_FIZ, SECAO_FAZENDO)
 
 #: As seções do usuário em que `anotar` pode acrescentar, a pedido dele.
-SECOES_ANOTAVEIS = (SECAO_PONTOS, SECAO_DUVIDAS)
+SECOES_ANOTAVEIS = (SECAO_PONTOS, SECAO_DUVIDAS, SECAO_FAZER)
+
+#: As seções cujo item nasce com a caixa de marcar; quem marca é o usuário.
+SECOES_COM_CAIXA = (SECAO_FAZER,)
+
+#: A caixa vazia que abre um item de *Fazer*.
+CAIXA = "[ ] "
 
 #: O arquivo que nasce quando ainda não há nota viva no vault: só o
 #: frontmatter e os títulos. O usuário sabe o que cada seção é (ticket 13).
@@ -57,6 +64,8 @@ tipo: {TIPO_NOTA_VIVA}
 ## O que eu fiz
 
 ## O que estou fazendo
+
+## Fazer
 
 ## Dúvidas
 
@@ -161,7 +170,7 @@ class NotaViva:
         return sem_brancos_nas_pontas(_corpo(bloco)) if bloco else ()
 
     def secoes(self) -> tuple[tuple[str, tuple[str, ...]], ...]:
-        """As quatro seções da nota, na ordem de falar, com o conteúdo de cada uma."""
+        """As seis seções da nota, na ordem de falar, com o conteúdo de cada uma."""
         return tuple((secao, self.conteudo(secao)) for secao in SECOES)
 
     def itens(self, titulo: str) -> tuple[Item, ...]:
@@ -329,12 +338,18 @@ class NotaViva:
         return arquivado
 
     def anotar(self, texto: str, secao: str = SECAO_PONTOS) -> str:
-        """`- texto` no fim de *Pontos* (ou *Dúvidas*) — o único gesto do agente numa seção do usuário."""
+        """`- texto` no fim de uma seção do usuário — o único gesto do agente ali.
+
+        Em *Fazer* o item nasce `- [ ] texto`: a caixa é dele, e marcá-la é o
+        gesto que fecha a tarefa. O agente escreve a caixa vazia e nunca mais
+        volta nessa linha.
+        """
         if _chave(secao) not in {_chave(anotavel) for anotavel in SECOES_ANOTAVEIS}:
             raise ValueError(
                 f"Só se anota em {' ou '.join(SECOES_ANOTAVEIS)}; {secao!r} é seção do agente ou de fala."
             )
-        return self.acrescentar(secao, texto)[0]
+        com_caixa = _chave(secao) in {_chave(secao_marcavel) for secao_marcavel in SECOES_COM_CAIXA}
+        return self.acrescentar(secao, f"{CAIXA}{texto.strip()}" if com_caixa else texto)[0]
 
     # -- bastidores --------------------------------------------------------
 
@@ -346,7 +361,7 @@ class NotaViva:
         return None
 
     def _abrir_secao(self, titulo: str) -> _Bloco:
-        """Uma seção nova no lugar dela na ordem das cinco; no fim, se nenhuma vem depois.
+        """Uma seção nova no lugar dela na ordem das seis; no fim, se nenhuma vem depois.
 
         Uma nota antiga sem `## Pontos` ganha a seção **antes de `## Falar`**,
         e não no fim: a ordem de falar é a da nota. Só linhas inteiras entram

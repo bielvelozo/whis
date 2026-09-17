@@ -110,6 +110,11 @@ ruim. Vamos ter que construir uma interface pra ele."*
   transparente" — como o DWM deste build não desfoca as janelas atrás de um popup, a palheta faz o
   acrílico em casa: captura a tela atrás dela ao abrir, desfoca e escurece, e usa como fundo
   (`fundo_desfocado.py`). Suíte em **1072 verdes**.
+- **O comando `do` e a seção *Fazer*** (2026-09-17, ticket 17): usando a palheta todo dia, ele pediu
+  a lista de tarefas dentro da nota viva — `do <texto>` acrescenta `- [ ] texto` numa seção nova
+  *Fazer*, entre *O que estou fazendo* e *Dúvidas*, e a caixa é dele: ninguém marca nem move a linha
+  depois, nem quando a janela da daily vira. Seis seções, oito comandos; o nome exato passou a
+  liderar a lista filtrada (senão `do` + Tab completava `doubt`). Suíte em **1077 verdes**.
 
 ## Not yet specified
 

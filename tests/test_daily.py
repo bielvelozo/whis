@@ -21,7 +21,15 @@ from whis.configuracao import Configuracao
 from whis.daily import gerar_daily
 from whis.fakes import DAILY_PADRAO, ITEM_ABERTO_DE_EXEMPLO, DailyFake, FonteFake
 from whis.fontes import ErroDeFonte, Evento
-from whis.nota_viva import SECAO_DUVIDAS, SECAO_FALAR, SECAO_FAZENDO, SECAO_FIZ, SECAO_PONTOS, NotaViva
+from whis.nota_viva import (
+    SECAO_DUVIDAS,
+    SECAO_FALAR,
+    SECAO_FAZENDO,
+    SECAO_FAZER,
+    SECAO_FIZ,
+    SECAO_PONTOS,
+    NotaViva,
+)
 from whis.portas import Daily, ErroDeDaily, ItemNovo
 
 QUINTA = date(2026, 9, 3)
@@ -756,7 +764,7 @@ def test_o_claude_recebe_as_reunioes_da_janela(
     assert roteiro.reunioes_recebidas == ("reunioes/2026-09-04-0830-daily-do-time.md",)
 
 
-def test_o_resultado_traz_as_quatro_secoes_como_ficaram(gerar, caminho_do_vault: Path):
+def test_o_resultado_traz_as_seis_secoes_como_ficaram(gerar, caminho_do_vault: Path):
     """É o que o terminal imprime: a nota viva depois da execução, na ordem de falar."""
     abrir_a_janela(gerar, SEXTA)
     escrever_nota_viva(caminho_do_vault, NOTA_DO_USUARIO)
@@ -769,7 +777,7 @@ def test_o_resultado_traz_as_quatro_secoes_como_ficaram(gerar, caminho_do_vault:
     )
 
     secoes = dict(resultado.secoes)
-    assert list(secoes) == [SECAO_FIZ, SECAO_FAZENDO, SECAO_DUVIDAS, SECAO_PONTOS, SECAO_FALAR]
+    assert list(secoes) == [SECAO_FIZ, SECAO_FAZENDO, SECAO_FAZER, SECAO_DUVIDAS, SECAO_PONTOS, SECAO_FALAR]
     assert secoes[SECAO_FIZ] == (
         "1. Planejei e ativei o pix transparente da AppMax no checkout",
         "- fechei a camada 07",

@@ -570,10 +570,11 @@ def escrever_nota_viva(vault: Path, nota: NotaViva) -> Path:
 
 
 def anotar_ponto(vault: Path, texto: str, secao: str = SECAO_PONTOS) -> Path:
-    """Acrescenta `- texto` no fim de `## Pontos` (ou `## Dúvidas`) da nota viva.
+    """Acrescenta uma linha no fim de `## Pontos`, `## Dúvidas` ou `## Fazer` da nota viva.
 
     O único gesto do agente numa seção do usuário, e só a pedido explícito
-    (`daily --anotar`, `note`/`doubt` na palheta, `anotar` na DM). É
+    (`daily --anotar`, `note`/`doubt`/`do` na palheta, `anotar` na DM). Em
+    *Fazer* a linha nasce `- [ ] texto`, e quem marca é ele. É
     **append-only**: todo byte fora da linha nova continua onde estava, porque
     o que há ali foi digitado à mão.
     """

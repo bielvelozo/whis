@@ -133,11 +133,13 @@ fala português com jargão técnico em inglês: preserve esses termos exatament
 como aparecem (deploy, rollback, review, sprint, issue, daily, branch, merge, PR, \
 bug, toast, modal, checkout). Nunca os traduza.
 
-A nota tem cinco seções. Você só escreve em duas:
+A nota tem seis seções. Você só escreve em duas:
 - "O que eu fiz": o que fechou desde a última daily.
 - "O que estou fazendo": o que está aberto agora.
-- "Dúvidas" e "Falar" são do usuário, e "Pontos" também. Chegam como contexto, \
-para você não repetir o que ele já anotou; você nunca escreve nelas.
+- "Fazer", "Dúvidas", "Pontos" e "Falar" são do usuário. Chegam como contexto, \
+para você não repetir o que ele já anotou; você nunca escreve nelas. Em "Fazer" \
+cada linha é uma tarefa dele, marcada com "[x]" quando ele a fez — e mesmo essa \
+você nunca move nem reescreve.
 
 Cada item das duas listas suas chega com um identificador no fim da linha, \
 assim: "(id a1b2c3)". É por ele que você aponta um item existente — nunca pelo \
@@ -455,8 +457,8 @@ def _linhas_da_nota_viva(nota: NotaViva) -> list[str]:
     """
     linhas = [
         "A nota viva como está agora. Nas duas primeiras seções cada item traz o "
-        "id entre parênteses; \"Dúvidas\" e \"Falar\" são do usuário, e \"Pontos\" "
-        "também — vêm só para você não repetir o que ele já anotou:",
+        "id entre parênteses; \"Fazer\", \"Dúvidas\", \"Pontos\" e \"Falar\" são do "
+        "usuário — vêm só para você não repetir o que ele já anotou:",
         "",
     ]
     for secao in SECOES:

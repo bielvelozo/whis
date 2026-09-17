@@ -67,7 +67,7 @@ class ResultadoDaDaily:
     roteiro: Daily | None
     #: `daily/atual.md`, quando ela existe ao fim da execução.
     nota_viva: Path | None
-    #: As quatro seções da nota viva como ficaram — o que se lê em voz alta.
+    #: As seis seções da nota viva como ficaram — o que se lê em voz alta.
     secoes: tuple[tuple[str, tuple[str, ...]], ...]
     #: O que esta execução acrescentou e moveu; `None` se a nota viva não foi tocada.
     mudancas: Mudancas | None

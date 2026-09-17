@@ -55,7 +55,7 @@ FUSO = timezone(timedelta(hours=-3))
 MOMENTO = datetime(2026, 9, 12, 14, 3, tzinfo=FUSO)
 PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 NOTA_DA_RESPOSTA = "respostas/2026-09-12-1403-o-que-ficou-decidido-sobre-a-retencao-de-180-dias.md"
-COMANDOS = ("daily", "note", "doubt", "ask", "open", "record", "settings")
+COMANDOS = ("daily", "note", "doubt", "do", "ask", "open", "record", "settings")
 
 
 class AvisoEspiao:
@@ -265,7 +265,20 @@ def test_nota_antiga_sem_pontos_ganha_a_secao_antes_de_falar(montar, caminho_do_
     assert texto.replace("## Pontos\n- ponto novo\n\n", "", 1) == antiga
 
 
-@pytest.mark.parametrize("comando", ["note", "doubt"])
+def test_do_escreve_a_caixa_em_fazer_para_ele_marcar(montar, caminho_do_vault: Path, aviso):
+    palheta = montar()
+
+    palheta.despachar("do responder o ribeiro")
+
+    nota = (caminho_do_vault / "daily" / "atual.md").read_text(encoding="utf-8")
+    assert "## Fazer\n- [ ] responder o ribeiro\n\n## Dúvidas\n" in nota
+    titulo, texto, botao = aviso.ultimo()
+    assert titulo == "Anotado em Fazer"
+    assert texto == "responder o ribeiro"
+    assert botao[1].endswith("&file=daily%2Fatual")
+
+
+@pytest.mark.parametrize("comando", ["note", "doubt", "do"])
 def test_anotar_sem_texto_pede_o_texto_e_nao_escreve(montar, caminho_do_vault: Path, aviso, comando):
     palheta = montar()
 
@@ -454,7 +467,7 @@ def test_texto_vazio_nao_faz_nada_e_comando_desconhecido_diz_o_que_existe(montar
     assert "'vagas'" in texto and "ask <question>" in texto
 
 
-def test_sao_os_sete_comandos_e_nenhum_futuro_nem_ajuda(montar):
+def test_sao_os_oito_comandos_e_nenhum_futuro_nem_ajuda(montar):
     palheta = montar()
 
     assert {comando.nome for comando in palheta.comandos} == set(COMANDOS)
@@ -521,6 +534,7 @@ ACOES = (
     Acao("ask", "?", "Ask", aceita_argumento=True),
     Acao("note", "✎", "Note", aceita_argumento=True),
     Acao("doubt", "¿", "Doubt", aceita_argumento=True),
+    Acao("do", "☐", "To-do", aceita_argumento=True),
     Acao("settings", "⚙", "Settings"),
 )
 
@@ -531,8 +545,14 @@ def test_com_o_campo_vazio_todas_as_acoes_aparecem_nas_tres_pedidas_primeiro():
 
 
 def test_a_lista_filtra_pelo_comeco_da_primeira_palavra():
-    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "doubt"]
-    assert [acao.nome for acao in filtrar(ACOES, "Do")] == ["doubt"]
+    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "doubt", "do"]
+    assert [acao.nome for acao in filtrar(ACOES, "Do")] == ["do", "doubt"]
+
+
+def test_o_nome_exato_vem_na_frente_de_quem_so_comeca_igual():
+    """Digitar `do` e apertar Tab tem que completar `do `, não `doubt `."""
+    assert [acao.nome for acao in filtrar(ACOES, "do")] == ["do", "doubt"]
+    assert completar(filtrar(ACOES, "do")[0]) == "do "
     assert [acao.nome for acao in filtrar(ACOES, "ask qual foi")] == ["ask"]
     assert filtrar(ACOES, "vagas") == ()
 
@@ -543,7 +563,7 @@ def test_o_rotulo_tambem_filtra_e_o_nome_do_comando_vem_primeiro():
     assert [acao.nome for acao in filtrar(ACOES, "Open note")] == ["open"]
     assert [acao.nome for acao in filtrar(ACOES, "start")] == ["record"]
     assert [acao.nome for acao in filtrar(ACOES, "no")] == ["note", "open"]
-    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "doubt"]
+    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "doubt", "do"]
 
 
 def test_a_primeira_palavra_ganha_destaque_so_quando_e_um_comando():
@@ -577,7 +597,8 @@ def test_tab_completa_o_comando_e_deixa_o_espaco_quando_ha_argumento():
     assert completar(ACOES[1]) == "daily"
     assert completar(ACOES[3]) == "ask "
     assert completar(ACOES[4]) == "note "
-    assert completar(ACOES[6]) == "settings"
+    assert completar(ACOES[6]) == "do "
+    assert completar(ACOES[7]) == "settings"
 
 
 def test_o_rotulo_de_uma_acao_pode_ser_funcao():

@@ -42,7 +42,7 @@ def test_comando_daily_escreve_as_notas_e_imprime_a_nota_viva(
     assert ler_frontmatter(nota_de_hoje(caminho_do_vault))["tipo"] == "daily"
     assert ler_frontmatter(nota_viva(caminho_do_vault))["tipo"] == "daily-atual"
     assert "Cobre de" in saida and "até agora" in saida
-    for secao in ("O que eu fiz:", "O que estou fazendo:", "Dúvidas:", "Pontos:", "Falar:"):
+    for secao in ("O que eu fiz:", "O que estou fazendo:", "Fazer:", "Dúvidas:", "Pontos:", "Falar:"):
         assert secao in saida
     assert f"- {DAILY_PADRAO.fiz[0].texto}" in saida
     assert f"Nota viva: {nota_viva(caminho_do_vault)}" in saida

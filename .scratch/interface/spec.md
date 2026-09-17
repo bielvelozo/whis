@@ -23,6 +23,14 @@ Os fatos que sustentam cada decisão estão em [research/](research/), um arquiv
 > *Start recording* clicáveis; (7) `ask` precisa funcionar sob `pythonw`; (8) visual estilo
 > Raycast. Ticket [13](issues/13-acabamento-da-palheta.md).
 
+> **Revisão de uso, 2026-09-17.** Usando a palheta todo dia, ele pediu uma seção a mais e um
+> comando a mais: *"incluir uma nova seção de nota que vai ser **Fazer**: o comando vai ser **`do`**
+> e vai ser registrado na daily atual com um `[ ]` checkmark pra mim marcar quando eu fizer"*. A
+> nota viva passa a ter **seis** seções — *Fazer* entra depois de *O que estou fazendo* —, e a
+> palheta, **oito** comandos. A caixa é dele: o agente escreve `- [ ] texto` e nunca mais toca
+> nessa linha, nem quando a janela da daily vira. Ticket
+> [17](issues/17-o-comando-do.md).
+
 ## Problem Statement
 
 O Whis funciona e **não está sendo usado**. Em 2026-09-11 não havia processo dele no ar: a bandeja

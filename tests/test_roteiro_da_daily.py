@@ -188,9 +188,10 @@ def test_prompt_segue_a_regua_das_dailies_a_mao():
     assert "roteiro seco, sem personalidade" in PROMPT_DA_DAILY
 
 
-def test_prompt_diz_que_duvidas_e_falar_sao_do_usuario():
-    assert '"Dúvidas" e "Falar" são do usuário' in PROMPT_DA_DAILY
+def test_prompt_diz_que_as_secoes_dele_sao_dele_inclusive_o_fazer():
+    assert '"Fazer", "Dúvidas", "Pontos" e "Falar" são do usuário' in PROMPT_DA_DAILY
     assert "você nunca escreve nelas" in PROMPT_DA_DAILY
+    assert "nunca move nem reescreve" in PROMPT_DA_DAILY
 
 
 def test_prompt_poe_o_que_espera_outra_pessoa_dentro_do_item():

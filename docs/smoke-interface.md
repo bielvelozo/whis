@@ -120,7 +120,7 @@ preto, de cantos arredondados e borda fina, aparece no alto da tela, no
 desenho do Raycast, com o que está atrás dele aparecendo desfocado por
 trás: um campo grande com "Type a command…", embaixo a lista de
 ações — **Open note**, **Generate daily**, **Start recording** primeiro, depois
-Ask, Note, Doubt, Settings — cada uma com o nome do comando em roxo à direita,
+Ask, Note, Doubt, To-do, Settings — cada uma com o nome do comando em roxo à direita,
 e um rodapé com **Run ↵** e **Complete Tab**. ↑/↓ escolhem uma linha, Enter
 executa a escolhida (com o campo vazio), clicar também executa; digitar filtra
 a lista pelo comando **e** pelo rótulo
@@ -138,12 +138,13 @@ Teste, um por vez:
 |---|---|
 | `note testando a palheta` | toast "Anotado em Pontos"; `daily/atual.md` ganha `- testando a palheta` no fim de *Pontos* (a seção nasce antes de *Falar* se a nota ainda não a tinha) |
 | `doubt o pix expira sozinho?` | toast "Anotado em Dúvidas"; a linha entra em *Dúvidas* |
+| `do responder o ribeiro` | toast "Anotado em Fazer"; `daily/atual.md` ganha `- [ ] responder o ribeiro` no fim de *Fazer* (a seção nasce entre *O que estou fazendo* e *Dúvidas*). Marque o `[x]` no Obsidian: ninguém mexe nessa linha depois |
 | `open` (ou clique em **Open note**) | o Obsidian abre `daily/atual.md`. Teste **com o Obsidian fechado** também: o Windows deve lançá-lo e cair na nota |
 | `ask qual foi a decisão sobre retenção?` | a janela some; ~60 s depois um toast com o começo da resposta e o botão **Abrir no Obsidian**, que abre a nota nova em `respostas/`. Custa uma pergunta na sua conta (≈ US$ 0,56 equivalente) |
 | `daily` (ou **Generate daily**) | ~40 s depois, toast "A daily está pronta" com o botão; `daily/atual.md` atualizada |
 | **Start recording** | o ícone da bandeja fica vermelho; abra a palheta de novo e a linha diz **Stop recording** — clique para parar e processar |
 | `settings` | o painel de configuração abre |
-| Enter com o campo vazio e nada selecionado, `vagas` | a janela só some; `vagas` dá o toast "Não entendi" com os sete comandos |
+| Enter com o campo vazio e nada selecionado, `vagas` | a janela só some; `vagas` dá o toast "Não entendi" com os oito comandos |
 
 O item **Abrir a palheta** no menu da bandeja faz o mesmo que o atalho. Se o
 atalho não responder, veja no `bandeja.log` se o registro do hotkey foi

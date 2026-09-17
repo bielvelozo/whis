@@ -98,12 +98,21 @@ class Acao:
 
 def filtrar(acoes: Sequence[Acao], texto: str) -> tuple[Acao, ...]:
     """As ações que a primeira palavra digitada começa: pelo nome do comando primeiro, depois
-    por qualquer palavra do rótulo; todas com o campo vazio."""
+    por qualquer palavra do rótulo; todas com o campo vazio.
+
+    O nome exato passa à frente de quem só começa igual — senão `do` + Tab
+    completaria `doubt`, que é o que a lista traria selecionado.
+    """
     palavras = texto.split()
     if not palavras:
         return tuple(acoes)
     prefixo = palavras[0].casefold()
-    pelo_nome = tuple(acao for acao in acoes if acao.nome.casefold().startswith(prefixo))
+    pelo_nome = tuple(
+        sorted(
+            (acao for acao in acoes if acao.nome.casefold().startswith(prefixo)),
+            key=lambda acao: acao.nome.casefold() != prefixo,
+        )
+    )
     pelo_rotulo = tuple(
         acao
         for acao in acoes

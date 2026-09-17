@@ -35,7 +35,7 @@ from .configuracao import Configuracao
 from .conversa import Conversas
 from .daily import ResultadoDaDaily, gerar_daily
 from .fontes import PortaFonte
-from .nota_viva import SECAO_DUVIDAS, SECAO_PONTOS
+from .nota_viva import SECAO_DUVIDAS, SECAO_FAZER, SECAO_PONTOS
 from .obsidian import lancar as _lancar_no_windows
 from .obsidian import uri_da_nota
 from .pergunta import responder
@@ -60,7 +60,7 @@ NOME_DE_CONFIGURAR = "settings"
 
 #: A ordem em que as ações aparecem na janela: as três que o usuário pediu
 #: primeiro, e existem mesmo com o campo vazio.
-ORDEM_DAS_ACOES = ("open", "daily", NOME_DE_GRAVAR, "ask", "note", "doubt", NOME_DE_CONFIGURAR)
+ORDEM_DAS_ACOES = ("open", "daily", NOME_DE_GRAVAR, "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR)
 
 #: Quanto da resposta cabe no toast: o resto está na nota que o botão abre.
 LIMITE_DO_TEXTO_DO_TOAST = 240
@@ -333,7 +333,7 @@ def comandos_padrao(
     lancar: Callable[[str], None] | None = None,
     relogio: Callable[[], datetime] | None = None,
 ) -> tuple[Comando, ...]:
-    """Os cinco comandos que tocam o vault, com as portas injetadas.
+    """Os seis comandos que tocam o vault, com as portas injetadas.
 
     As fábricas recebem a configuração a cada chamada — é o que faz uma
     configuração recarregada valer no comando seguinte. `record` e
@@ -433,6 +433,15 @@ def comandos_padrao(
             rotulo="Doubt",
             descricao=f"Add a line to {SECAO_DUVIDAS} in daily/atual.md",
             icone="¿",
+        ),
+        Comando(
+            "do",
+            f"acrescenta uma tarefa com caixa em {SECAO_FAZER} da nota viva",
+            anotar_em(SECAO_FAZER, "do"),
+            parametro="text",
+            rotulo="To-do",
+            descricao=f"Add a to-do to {SECAO_FAZER} in daily/atual.md; you tick it yourself",
+            icone="☐",
         ),
     )
 

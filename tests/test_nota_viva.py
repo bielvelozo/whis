@@ -16,6 +16,7 @@ from whis.nota_viva import (
     SECAO_DUVIDAS,
     SECAO_FALAR,
     SECAO_FAZENDO,
+    SECAO_FAZER,
     SECAO_FIZ,
     SECAO_PONTOS,
     NotaViva,
@@ -281,6 +282,34 @@ def test_anotar_e_append_only_em_pontos_que_nasce_antes_de_falar():
     assert trecho(texto, SECAO_FALAR) == trecho(NOTA, SECAO_FALAR)
 
 
+def test_anotar_em_fazer_escreve_a_caixa_e_a_secao_nasce_depois_de_fazendo():
+    """O `do`: a linha entra com `[ ]` para ele marcar, e a seção nova entra na ordem."""
+    nota = NotaViva.de_texto(NOTA)
+
+    linha = nota.anotar("responder o ribeiro", SECAO_FAZER)
+
+    texto = nota.texto()
+    assert linha == "- [ ] responder o ribeiro"
+    assert "2. Testando no android  \n\n\t   \n\n## Fazer\n- [ ] responder o ribeiro\n\n## Dúvidas\n" in texto
+    assert texto.replace("## Fazer\n- [ ] responder o ribeiro\n\n", "", 1) == NOTA
+
+
+def test_o_que_ele_marcou_a_mao_em_fazer_fica_como_esta_quando_a_janela_vira():
+    """A caixa é dele: nem `anotar` nem o arquivamento de *O que eu fiz* tocam o que está lá."""
+    nota = NotaViva.de_texto(
+        "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## O que estou fazendo\n\n"
+        "## Fazer\n\n- [x] liguei para o contador\n- [ ] responder o ribeiro\n\n## Falar\n"
+    )
+
+    nota.anotar("marcar a consulta", SECAO_FAZER)
+    arquivado = nota.arquivar_fiz()
+
+    assert arquivado == ("- feito",)
+    assert trecho(nota.texto(), SECAO_FAZER) == (
+        "## Fazer\n\n- [x] liguei para o contador\n- [ ] responder o ribeiro\n- [ ] marcar a consulta\n"
+    )
+
+
 def test_anotar_em_duvidas_so_a_pedido_e_nunca_nas_secoes_do_agente_ou_em_falar():
     nota = NotaViva.de_texto(NOTA)
 
@@ -385,11 +414,18 @@ def test_aplicar_ignora_pai_inexistente_e_ainda_acrescenta_o_item(caplog):
 # -- o modelo ------------------------------------------------------------------
 
 
-def test_o_modelo_tem_as_cinco_secoes_na_ordem_e_nenhuma_explicacao():
+def test_o_modelo_tem_as_seis_secoes_na_ordem_e_nenhuma_explicacao():
     """O usuário sabe o que cada seção é (ticket 13): só o frontmatter e os títulos."""
     nota = NotaViva.do_modelo()
 
-    assert [secao for secao, _ in nota.secoes()] == [SECAO_FIZ, SECAO_FAZENDO, SECAO_DUVIDAS, SECAO_PONTOS, SECAO_FALAR]
+    assert [secao for secao, _ in nota.secoes()] == [
+        SECAO_FIZ,
+        SECAO_FAZENDO,
+        SECAO_FAZER,
+        SECAO_DUVIDAS,
+        SECAO_PONTOS,
+        SECAO_FALAR,
+    ]
     assert all(linhas == () for _, linhas in nota.secoes())
     assert MODELO_DA_NOTA_VIVA.startswith("---\ntipo: daily-atual\n---\n")
     assert "\ndata:" not in MODELO_DA_NOTA_VIVA, "campo `data` vira link da Daily notes do Obsidian"
