@@ -1,19 +1,24 @@
-"""A janela da palheta, no estilo Raycast: campo grande, lista de ações, sem borda.
+"""A janela da palheta, copiada do Raycast: campo grande, lista de ações, rodapé com as teclas.
 
 Tk, que já vem com o Python. A janela é um `overrideredirect` vestida de
-acrílico pelo DWM (`acrilico.py`) com um `-alpha` leve por cima, para deixar
-ver o que está atrás, e cantos arredondados pelo próprio Windows 11; quando o
-Windows recusa o acrílico, volta ao painel de `-transparentcolor` com o
-`-alpha` um pouco mais opaco. O que se vê é um painel escuro desenhado num
-canvas, com borda fina em cor de destaque. Dentro, um `Text` de uma linha
+acrílico pelo DWM (`acrilico.py`), com cantos arredondados pelo próprio
+Windows 11; quando o Windows recusa o acrílico, volta ao painel de
+`-transparentcolor` com um `-alpha` leve. O desenho é o do Raycast de
+propósito, a pedido do usuário na terceira prova: painel quase preto e quase
+opaco (só o material do acrílico atravessa — um `-alpha` por cima deixava o
+texto de trás legível, e ele pediu preto), borda fina de 1 px, o campo em
+cima, uma linha por ação — glifo, título, descrição e, à direita, o nome do
+comando — com a selecionada num realce arredondado que não encosta na borda,
+e um rodapé com o nome e as teclas. O que é roxo é o que é do Whis.
+
+Tudo é desenhado no canvas; o único widget dentro dele é o `Text` de uma linha
 (Segoe UI 18) com placeholder, em que a primeira palavra ganha cor quando é um
-comando — ou o texto inteiro, quando é o rótulo de uma ação — e abaixo a lista
-de ações: uma linha por comando, filtrada pelo que se digita (pelo nome do
-comando e por qualquer palavra do rótulo), com a selecionada destacada. ↑/↓
-escolhem; Tab completa o campo com o comando da selecionada (e, já completo,
-passa à próxima); Enter executa o texto digitado — um rótulo inteiro vale como
-o comando — ou, com o campo vazio, a ação selecionada; clicar numa linha
-executa; Esc e perder o foco escondem.
+comando — ou o texto inteiro, quando é o rótulo de uma ação. A lista é
+filtrada pelo que se digita (pelo nome do comando e por qualquer palavra do
+rótulo). ↑/↓ escolhem; Tab completa o campo com o comando da selecionada (e,
+já completo, passa à próxima); Enter executa o texto digitado — um rótulo
+inteiro vale como o comando — ou, com o campo vazio, a ação selecionada;
+clicar numa linha executa; Esc e perder o foco escondem.
 
 O Tk só aceita chamadas do thread que o criou. O atalho global e o menu da
 bandeja vivem em outros threads, então tudo que eles pedem entra por `pedir`,
@@ -21,7 +26,7 @@ numa fila que o thread do Tk esvazia a cada 50 ms — o arranjo provado pela
 sonda da camada 3. Nada longo roda no handler: quem despacha devolve na hora.
 
 `PortaJanela` é o que a palheta e a bandeja enxergam; o teste monta um dublê.
-O filtro e o destaque são funções puras, testadas sem Tk.
+O filtro, o destaque e o completar são funções puras, testadas sem Tk.
 """
 
 from __future__ import annotations
@@ -34,33 +39,40 @@ from typing import Protocol
 
 _log = logging.getLogger("whis.janela_da_palheta")
 
-LARGURA = 680
-RAIO = 14
+LARGURA = 720
+RAIO = 12
 MARGEM = 12
-ALTURA_DO_CAMPO = 56
+ALTURA_DO_CAMPO = 52
 ALTURA_DA_LINHA = 40
+ALTURA_DO_RODAPE = 40
+#: O realce da linha selecionada fica este tanto para dentro da borda do painel.
+RECUO_DA_LINHA = 8
 FONTE = ("Segoe UI", 18)
 FONTE_DA_LINHA = ("Segoe UI", 11)
 FONTE_DA_DESCRICAO = ("Segoe UI", 9)
-FONTE_DO_ICONE = ("Segoe UI", 13)
+FONTE_DO_ICONE = ("Segoe UI", 12)
+FONTE_DO_RODAPE = ("Segoe UI", 9)
 
-FUNDO = "#1c1c1e"
-FUNDO_SELECIONADO = "#2c2c30"
-BORDA = "#7c6cf2"
-DESTAQUE = "#7c6cf2"
+FUNDO = "#0e0e10"
+FUNDO_SELECIONADO = "#232327"
+SEPARADOR = "#222226"
+BORDA = "#4a4380"
+DESTAQUE = "#8b7cf6"
 TEXTO = "#f2f2f2"
-TEXTO_APAGADO = "#8e8e93"
+TEXTO_APAGADO = "#8a8a92"
+TECLA = "#1c1c20"
+BORDA_DA_TECLA = "#36363c"
 #: Uma cor que nenhum pixel do painel usa: é o que o Windows torna transparente
 #: no fallback sem acrílico.
 COR_TRANSPARENTE = "#010203"
 
 #: A tinta do acrílico: o fundo do painel, com esta opacidade, sobre o material.
-OPACIDADE_DA_TINTA = 0xCC
-#: A janela inteira por cima do acrílico. É o que deixa ver o que está atrás —
-#: o DWM deste build só amostra o papel de parede — e a 92% o texto continua
-#: legível. Sem acrílico, um pouco mais opaca, porque não há material embaixo.
-ALPHA_SOBRE_O_ACRILICO = 0.92
-ALPHA_SEM_ACRILICO = 0.94
+#: Alta de propósito — o material clareia com o papel de parede, e o painel
+#: tem que ler como preto. É a única translucidez: um `-alpha` na janela, por
+#: menor que fosse, deixava o texto de trás legível através do painel.
+OPACIDADE_DA_TINTA = 0xE8
+#: Sem acrílico, a janela inteira quase opaca, porque não há material embaixo.
+ALPHA_SEM_ACRILICO = 0.96
 
 PLACEHOLDER = "Type a command…"
 
@@ -156,10 +168,6 @@ class JanelaDaPalheta:
         raiz.overrideredirect(True)
         raiz.attributes("-topmost", True)
         raiz.configure(background=FUNDO)
-        try:
-            raiz.attributes("-alpha", ALPHA_SOBRE_O_ACRILICO)
-        except tk.TclError:
-            pass
 
         tela = tk.Canvas(raiz, highlightthickness=0, bd=0, background=FUNDO)
         tela.pack(fill="both", expand=True)
@@ -194,19 +202,24 @@ class JanelaDaPalheta:
         )
         placeholder.bind("<Button-1>", lambda _evento: campo.focus_set())
 
-        lista = tk.Frame(tela, background=FUNDO)
+        # O campo entra no canvas uma vez só: apagá-lo a cada redesenho desmontaria
+        # o widget, e com ele o foco e o cursor.
+        janela_do_campo = tela.create_window(
+            MARGEM, MARGEM, anchor="nw", window=campo, width=LARGURA - 2 * MARGEM, height=ALTURA_DO_CAMPO
+        )
 
         self._tk = tk
         self._raiz = raiz
         self._tela = tela
         self._campo = campo
+        self._janela_do_campo = janela_do_campo
         self._placeholder = placeholder
-        self._lista = lista
         self._fila: queue.Queue[Callable[[], object]] = queue.Queue()
         self._callback: Callable[[str], object] | None = None
         self._acoes: tuple[Acao, ...] = ()
         self._visiveis: tuple[Acao, ...] = ()
-        self._linhas: list[tk.Frame] = []
+        #: Os realces das linhas desenhadas, um item do canvas por ação visível.
+        self._linhas: list[int] = []
         self._selecionada = 0
         self._visivel = False
         self._encerrada = False
@@ -230,6 +243,9 @@ class JanelaDaPalheta:
     def mostrar(self) -> None:
         self._campo.delete("1.0", "end")
         self._selecionada = 0
+        # Um rótulo pode ter mudado com a janela escondida ("Start recording" →
+        # "Stop recording"): a lista é sempre redesenhada ao abrir.
+        self._visiveis = ()
         self._atualizar()
         self._raiz.deiconify()
         self._raiz.lift()
@@ -249,6 +265,10 @@ class JanelaDaPalheta:
 
     def acoes_visiveis(self) -> tuple[Acao, ...]:
         return self._visiveis
+
+    def titulos_desenhados(self) -> list[str]:
+        """Os títulos como estão na tela agora (para o teste ver um rótulo dinâmico mudar)."""
+        return [self._tela.itemcget(item, "text") for item in self._tela.find_withtag("titulo")]
 
     def selecionada(self) -> Acao | None:
         if not self._visiveis:
@@ -325,37 +345,56 @@ class JanelaDaPalheta:
             self._pintar_selecao()
 
     def _desenhar(self, visiveis: Sequence[Acao]) -> None:
-        tk = self._tk
-        for linha in self._linhas:
-            linha.destroy()
+        tela = self._tela
+        topo_da_lista = MARGEM + ALTURA_DO_CAMPO + 14
+        altura_da_lista = len(visiveis) * ALTURA_DA_LINHA + 8 if visiveis else 0
+        self._painel(topo_da_lista + altura_da_lista + ALTURA_DO_RODAPE)
+
         self._linhas = []
         for indice, acao in enumerate(visiveis):
-            linha = tk.Frame(self._lista, background=FUNDO, height=ALTURA_DA_LINHA)
-            linha.pack(fill="x")
-            linha.pack_propagate(False)
-            icone = tk.Label(
-                linha, text=acao.icone, width=3, font=FONTE_DO_ICONE, background=FUNDO, foreground=DESTAQUE
+            y = topo_da_lista + 4 + indice * ALTURA_DA_LINHA
+            centro = y + ALTURA_DA_LINHA // 2
+            marca = f"linha{indice}"
+            realce = tela.create_polygon(
+                *_cantos_arredondados(RECUO_DA_LINHA, y, LARGURA - RECUO_DA_LINHA, y + ALTURA_DA_LINHA, 8),
+                smooth=True,
+                fill=FUNDO,
+                outline="",
+                tags=(marca, "desenho"),
             )
-            icone.pack(side="left", padx=(6, 2))
-            rotulo = tk.Label(
-                linha, text=acao.rotulo_atual(), font=FONTE_DA_LINHA, background=FUNDO, foreground=TEXTO
+            tela.create_text(
+                RECUO_DA_LINHA + 22, centro, text=acao.icone, font=FONTE_DO_ICONE, fill=DESTAQUE, tags=(marca, "desenho")
             )
-            rotulo.pack(side="left")
-            descricao = tk.Label(
-                linha,
+            titulo = tela.create_text(
+                RECUO_DA_LINHA + 44,
+                centro,
+                text=acao.rotulo_atual(),
+                font=FONTE_DA_LINHA,
+                fill=TEXTO,
+                anchor="w",
+                tags=(marca, "titulo", "desenho"),
+            )
+            tela.create_text(
+                tela.bbox(titulo)[2] + 12,
+                centro + 1,
                 text=acao.descricao,
                 font=FONTE_DA_DESCRICAO,
-                background=FUNDO,
-                foreground=TEXTO_APAGADO,
+                fill=TEXTO_APAGADO,
+                anchor="w",
+                tags=(marca, "desenho"),
             )
-            descricao.pack(side="left", padx=(10, 0))
-            for widget in (linha, icone, rotulo, descricao):
-                widget.bind("<Button-1>", lambda _evento, i=indice: self._clicar(i))
-                widget.bind("<Enter>", lambda _evento, i=indice: self._apontar(i))
-            self._linhas.append(linha)
-
-        altura = MARGEM * 2 + ALTURA_DO_CAMPO + (len(visiveis) * ALTURA_DA_LINHA + 6 if visiveis else 0)
-        self._painel(altura)
+            tela.create_text(
+                LARGURA - RECUO_DA_LINHA - 16,
+                centro,
+                text=acao.nome,
+                font=FONTE_DA_DESCRICAO,
+                fill=DESTAQUE,
+                anchor="e",
+                tags=(marca, "desenho"),
+            )
+            tela.tag_bind(marca, "<Button-1>", lambda _evento, i=indice: self._clicar(i))
+            tela.tag_bind(marca, "<Enter>", lambda _evento, i=indice: self._apontar(i))
+            self._linhas.append(realce)
         self._pintar_selecao()
 
     def _painel(self, altura: int) -> None:
@@ -364,36 +403,63 @@ class JanelaDaPalheta:
         y = raiz.winfo_screenheight() // 4
         raiz.geometry(f"{LARGURA}x{altura}+{x}+{y}")
         tela.configure(width=LARGURA, height=altura)
-        tela.delete("all")
-        tela.create_polygon(
-            *_cantos_arredondados(1, 1, LARGURA - 2, altura - 2, RAIO),
+        tela.delete("desenho")
+        fundo = tela.create_polygon(
+            *_cantos_arredondados(1, 1, LARGURA - 1, altura - 1, RAIO),
             smooth=True,
             fill=FUNDO,
             outline=BORDA,
-            width=2,
+            width=1,
+            tags=("desenho",),
         )
-        tela.create_window(
-            MARGEM, MARGEM, anchor="nw", window=self._campo, width=LARGURA - 2 * MARGEM, height=ALTURA_DO_CAMPO
+        tela.tag_lower(fundo)
+        separador = MARGEM + ALTURA_DO_CAMPO + 7
+        tela.create_line(1, separador, LARGURA - 1, separador, fill=SEPARADOR, tags=("desenho",))
+        self._rodape(altura)
+
+    def _rodape(self, altura: int) -> None:
+        tela = self._tela
+        topo = altura - ALTURA_DO_RODAPE
+        centro = topo + ALTURA_DO_RODAPE // 2
+        tela.create_line(1, topo, LARGURA - 1, topo, fill=SEPARADOR, tags=("desenho",))
+        tela.create_text(MARGEM + 6, centro, text="◆", font=FONTE_DO_RODAPE, fill=DESTAQUE, anchor="w", tags=("desenho",))
+        tela.create_text(MARGEM + 22, centro, text="Whis", font=FONTE_DO_RODAPE, fill=TEXTO_APAGADO, anchor="w", tags=("desenho",))
+
+        x = LARGURA - MARGEM - 6
+        x = self._tecla(x, centro, "Tab")
+        x = self._dica(x, centro, "Complete")
+        tela.create_line(x, centro - 8, x, centro + 8, fill=BORDA_DA_TECLA, tags=("desenho",))
+        x = self._tecla(x - 12, centro, "↵")
+        self._dica(x, centro, "Run")
+
+    def _tecla(self, x_direita: int, centro: int, texto: str) -> int:
+        """Uma tecla desenhada como no Raycast, encostada em `x_direita`; devolve onde a próxima acaba."""
+        tela = self._tela
+        item = tela.create_text(
+            x_direita - 7, centro, text=texto, font=FONTE_DO_RODAPE, fill=TEXTO_APAGADO, anchor="e", tags=("desenho",)
         )
-        if self._linhas:
-            tela.create_line(
-                MARGEM, MARGEM + ALTURA_DO_CAMPO + 2, LARGURA - MARGEM, MARGEM + ALTURA_DO_CAMPO + 2, fill="#2c2c30"
-            )
-            tela.create_window(
-                MARGEM,
-                MARGEM + ALTURA_DO_CAMPO + 6,
-                anchor="nw",
-                window=self._lista,
-                width=LARGURA - 2 * MARGEM,
-                height=len(self._linhas) * ALTURA_DA_LINHA,
-            )
+        esquerda = tela.bbox(item)[0] - 7
+        caixa = tela.create_polygon(
+            *_cantos_arredondados(esquerda, centro - 10, x_direita, centro + 10, 4),
+            smooth=True,
+            fill=TECLA,
+            outline=BORDA_DA_TECLA,
+            width=1,
+            tags=("desenho",),
+        )
+        tela.tag_lower(caixa, item)
+        return esquerda - 6
+
+    def _dica(self, x_direita: int, centro: int, texto: str) -> int:
+        item = self._tela.create_text(
+            x_direita, centro, text=texto, font=FONTE_DO_RODAPE, fill=TEXTO, anchor="e", tags=("desenho",)
+        )
+        return self._tela.bbox(item)[0] - 12
 
     def _pintar_selecao(self) -> None:
-        for indice, linha in enumerate(self._linhas):
+        for indice, realce in enumerate(self._linhas):
             cor = FUNDO_SELECIONADO if indice == self._selecionada else FUNDO
-            linha.configure(background=cor)
-            for filho in linha.winfo_children():
-                filho.configure(background=cor)
+            self._tela.itemconfigure(realce, fill=cor)
 
     # -- os gestos ------------------------------------------------------------
 

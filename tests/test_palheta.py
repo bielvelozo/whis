@@ -694,6 +694,20 @@ def test_a_janela_de_verdade_filtra_destaca_e_some_no_enter_e_no_esc():
         janela.pedir(lambda: chamadas.append("de outro thread"))
         janela._sondar()
         assert chamadas == ["de outro thread"]
+
+        gravando = {"sim": False}
+        janela.definir_acoes(
+            (*ACOES[:2], Acao("record", "●", lambda: "Stop recording" if gravando["sim"] else "Start recording"))
+        )
+        janela.mostrar()
+        janela.raiz.update()
+        assert janela.titulos_desenhados() == ["Open note", "Generate daily", "Start recording"]
+        janela._clicar(2)
+        assert enviados[-1] == "record"
+        gravando["sim"] = True
+        janela.mostrar()
+        janela.raiz.update()
+        assert janela.titulos_desenhados() == ["Open note", "Generate daily", "Stop recording"]
     finally:
         janela.raiz.destroy()
 

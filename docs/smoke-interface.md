@@ -115,12 +115,14 @@ bandeja não está no ar".
 ## Passo 5 — A palheta
 
 Com a bandeja no ar, aperte **Ctrl+Space** (se o seu `config.toml` ainda diz
-`ctrl+alt+w`, troque em `settings` e reinicie a bandeja). Um painel escuro
-translúcido, de cantos arredondados, aparece no alto da tela: um campo grande
-com "Type a command…" e, embaixo, a lista de ações — **Open note**, **Generate
-daily**, **Start recording** primeiro, depois Ask, Note, Doubt, Settings. ↑/↓
-escolhem uma linha, Enter executa a escolhida (com o campo vazio), clicar
-também executa; digitar filtra a lista pelo comando **e** pelo rótulo
+`ctrl+alt+w`, troque em `settings` e reinicie a bandeja). Um painel quase
+preto, de cantos arredondados e borda fina, aparece no alto da tela, no
+desenho do Raycast: um campo grande com "Type a command…", embaixo a lista de
+ações — **Open note**, **Generate daily**, **Start recording** primeiro, depois
+Ask, Note, Doubt, Settings — cada uma com o nome do comando em roxo à direita,
+e um rodapé com **Run ↵** e **Complete Tab**. ↑/↓ escolhem uma linha, Enter
+executa a escolhida (com o campo vazio), clicar também executa; digitar filtra
+a lista pelo comando **e** pelo rótulo
 (`generate` acha *Generate daily*); a palavra do comando fica em roxo quando é
 um comando, e o rótulo inteiro fica em roxo quando é ele que casa — Enter em
 `generate daily` roda `daily`. **Tab** completa o campo com o comando da ação

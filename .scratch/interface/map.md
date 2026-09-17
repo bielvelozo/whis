@@ -102,6 +102,10 @@ ruim. Vamos ter que construir uma interface pra ele."*
   filtra e executa, fundo acrílico do DWM com `-alpha` (neste build o DWM não amostra as janelas
   atrás; sonda em `research/sonda-acrilico.py`). Suíte em **1071 verdes**; a bandeja dele
   reiniciada com o config trocado. Faltam dele: `claude login` e os passos 6, 8 e 9 do roteiro.
+- **O visual do Raycast** (2026-09-17, ticket 15): na terceira prova ele pediu o fundo mais preto e o
+  desenho do Raycast com os detalhes em roxo — janela redesenhada no canvas (painel quase preto e
+  quase opaco, borda fina, realce arredondado, nome do comando à direita, rodapé com as teclas) e o
+  rótulo de `record` passando a *Stop recording* ao reabrir. Suíte em **1071 verdes**.
 
 ## Not yet specified
 

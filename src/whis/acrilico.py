@@ -11,8 +11,10 @@ luminosidade do papel de parede), mas o DWM **não amostra as janelas atrás** d
 um popup — nem por esta chamada nem pela documentada
 `DWMWA_SYSTEMBACKDROP_TYPE`. O conteúdo GDI do Tk entra com alpha 0: preto vira
 só material, as outras cores somam por cima, e o texto claro continua claro. O
-que deixa ver o que está atrás é o `-alpha` da janela inteira, por cima do
-material; a janela da palheta combina os dois.
+que deixaria ver o que está atrás é um `-alpha` na janela inteira, por cima do
+material — mas mesmo a 95% ele deixa o texto de trás legível através do
+painel, e o usuário pediu preto como o Raycast: a palheta usa só o material,
+com a tinta quase opaca.
 
 Os cantos são do DWM (`DWMWCP_ROUND`, Windows 11): o `-transparentcolor` que os
 fazia antes é uma janela em camadas com chave de cor, e ela esconde o material.
