@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from fixtures.gravacao import criar_pasta_de_gravacao
-from whis import pipeline
+from whis import avisos, pipeline
 from whis.configuracao import VARIAVEL_DE_AMBIENTE, Configuracao, carregar
 from whis.fakes import ResumoFake, STTFake
 
@@ -142,3 +142,31 @@ def processar_gravacao(configuracao: Configuracao, stt: STTFake, resumo: ResumoF
         )
 
     return executar
+
+
+#: O `avisar` de verdade, guardado antes de a fixture autouse abaixo trocá-lo:
+#: quem testa o disparo em si (com `subprocess.run` espionado) chama por aqui.
+AVISAR_DE_VERDADE = avisos.avisar
+
+
+@pytest.fixture(autouse=True)
+def toasts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, tuple[str, str] | None]]:
+    """Nenhum teste mostra um toast de verdade na máquina de quem roda a suíte.
+
+    `main(["daily"])` e a bandeja chamam `avisos.avisar`, que dispara o
+    PowerShell e deixa uma notificação na central do Windows. Com dezenas de
+    testes nesse caminho, uma execução da suíte enchia a central do usuário —
+    e as notificações ficam três dias lá. Quem quer observar o toast troca esta
+    função pela sua (`AvisoEspiao`), e o `avisar` de verdade continua testado
+    com o executor injetado.
+    """
+    mostrados: list[tuple[str, str, tuple[str, str] | None]] = []
+
+    def fingir(titulo: str, texto: str, *, botao=None, executar=None) -> bool:
+        if executar is not None:
+            return AVISAR_DE_VERDADE(titulo, texto, botao=botao, executar=executar)
+        mostrados.append((titulo, texto, botao))
+        return True
+
+    monkeypatch.setattr(avisos, "avisar", fingir)
+    return mostrados

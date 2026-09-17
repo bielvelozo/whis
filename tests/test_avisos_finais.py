@@ -216,6 +216,21 @@ def test_a_nota_parcial_avisa_que_ficou_como_estava(
     assert botao[0] == "Abrir no Obsidian"
 
 
+def test_a_suite_nunca_mostra_um_toast_de_verdade(configuracao_do_diario, toasts):
+    """A fixture autouse do `conftest` intercepta: rodar a suíte não enche a central de avisos.
+
+    Sem ela, cada `main(["daily", ...])` dos testes chamava o PowerShell de
+    `avisar` e deixava uma notificação real no Windows de quem roda a suíte —
+    dezenas por execução, guardadas três dias.
+    """
+    configuracao_do_diario()
+
+    main(["daily", "--fakes"])
+
+    assert [titulo for titulo, _, _ in toasts] == ["A daily está pronta"]
+    assert avisos.avisar.__module__ == "conftest", "o `avisar` de verdade não pode estar no caminho"
+
+
 def test_o_toast_que_nao_saiu_nao_muda_o_codigo_de_saida(configuracao_do_diario, monkeypatch):
     configuracao_do_diario()
     monkeypatch.setattr(avisos, "avisar", AvisoEspiao(saiu=False))

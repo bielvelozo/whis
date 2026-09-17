@@ -13,7 +13,8 @@ import sys
 
 import pytest
 
-from whis import automacao, avisos, obsidian, sem_console
+from whis import automacao, obsidian, sem_console
+from conftest import AVISAR_DE_VERDADE
 
 so_windows = pytest.mark.skipif(sys.platform != "win32", reason="flags do Windows")
 
@@ -62,7 +63,7 @@ def test_o_powershell_do_toast_e_do_agendador_nasce_sem_console(monkeypatch):
     monkeypatch.setattr(automacao.subprocess, "run", run)
 
     automacao._rodar(["powershell", "-File", "x.ps1"])
-    avisos.avisar("t", "x")
+    AVISAR_DE_VERDADE("t", "x")
 
     assert len(recebidos) == 2
     assert all(kw["creationflags"] & subprocess.CREATE_NO_WINDOW for kw in recebidos)
