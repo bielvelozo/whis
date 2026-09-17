@@ -20,3 +20,10 @@ Unregister-ScheduledTask -TaskName Whis-Sonda -Confirm:$false   # a bandeja lan�
 
 Antes de matar a bandeja: conferir que não há gravação em andamento (`whis-gravacoes` sem arquivo
 recente). Nunca simular o atalho real dela.
+
+**Ordem importa (aprendido em 2026-09-17 13:15):** espere a tarefa de parar sair do estado `Running`
+antes de lançar a bandeja. Com uma espera fixa curta, a bandeja nova subiu com a antiga ainda viva,
+achou a trava e saiu (`LastTaskResult` 0xFFFFFFFF), e a antiga foi morta logo depois — ficou sem
+bandeja nenhuma. O laço certo: `Start-ScheduledTask`; `do { sleep 2 } while (State -eq 'Running')`;
+só então `Unregister` e a próxima tarefa. Para a bandeja (que fica `Running` para sempre), espera
+fixa e conferência do processo.
