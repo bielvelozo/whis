@@ -48,6 +48,7 @@ inicio_do_dia = "05:00"
 hora_da_tarefa = "18:30"
 
 [daily]
+ativa = false
 referencias_pessoais = ["whis", "meu-blog"]
 contexto_do_time = "Ele disse \\"ok\\".\\nSegunda linha com \\\\ e acento: ação"
 horarios = { segunda = "13:55", quarta = "10:25", domingo = "09:00" }
@@ -107,6 +108,7 @@ def test_ida_e_volta_devolve_a_mesma_configuracao(completo, tmp_path: Path):
     assert dados["daily"]["contexto_do_time"] == 'Ele disse "ok".\nSegunda linha com \\ e acento: ação'
     assert dados["privacidade"]["excluir"] == ["senha", 'a"b', "c\\d"]
     assert dados["daily"]["horarios"] == {"segunda": "13:55", "quarta": "10:25", "domingo": "09:00"}
+    assert dados["daily"]["ativa"] is False
     assert sem_origem(carregar(destino)) == sem_origem(completo)
 
 
@@ -155,7 +157,7 @@ def test_toda_chave_do_modelo_e_escrita_e_nenhuma_a_mais(completo):
     gerado = tomllib.loads(gerar_toml(valores_de(completo)))
 
     assert _achatar(gerado).keys() == _achatar(do_modelo).keys()
-    assert len(CHAVES) == len(_achatar(do_modelo)) == 27
+    assert len(CHAVES) == len(_achatar(do_modelo)) == 28
 
 
 def _achatar(dados: dict) -> dict[str, object]:

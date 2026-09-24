@@ -66,6 +66,7 @@ inicio_do_dia = "04:00"      # o diário de um dia vai desta hora à mesma hora 
 hora_da_tarefa = "19:00"     # quando a tarefa agendada gera o diário
 
 [daily]
+ativa = true                  # false = sem daily: a tarefa agendada não gera e a palheta esconde "Generate daily"
 referencias_pessoais = []     # repositórios e canais que são seus, não do trabalho: ficam no vault mas fora do roteiro
 contexto_do_time = ""         # como o seu processo funciona, para o roteiro não inventar bloqueio
 horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:55", sexta = "10:25" }}  # hora em que a daily nasce em cada dia (segunda..domingo, sem acento); dia ausente = sem daily
@@ -115,6 +116,7 @@ class Tipo(Enum):
     HORA = "hora"
     LISTA = "lista"
     HORARIOS = "horarios"
+    BOOLEANO = "booleano"
 
 
 @dataclass(frozen=True)
@@ -143,6 +145,7 @@ CHAVES: tuple[Chave, ...] = (
     Chave("audio", "dispositivo_sistema", "dispositivo_sistema", Tipo.TEXTO),
     Chave("diario", "inicio_do_dia", "diario_inicio_do_dia", Tipo.HORA),
     Chave("diario", "hora_da_tarefa", "diario_hora_da_tarefa", Tipo.HORA),
+    Chave("daily", "ativa", "daily_ativa", Tipo.BOOLEANO),
     Chave("daily", "referencias_pessoais", "daily_referencias_pessoais", Tipo.LISTA),
     Chave("daily", "contexto_do_time", "daily_contexto_do_time", Tipo.TEXTO),
     Chave("daily", "horarios", "daily_horarios", Tipo.HORARIOS),
@@ -190,6 +193,11 @@ class Configuracao:
     como pares `(dia, "HH:MM")` na ordem segunda→domingo. Dia ausente é dia sem
     daily; tabela vazia é nada agendado — a tarefa do Windows nasce daqui.
 
+    `daily_ativa` falso desliga a daily: a tarefa `Whis-Daily` continua no
+    Agendador, mas sai sem gerar nada, e a palheta esconde `daily`. Desligar
+    pelo painel vale na hora, sem mexer no Windows. `whis daily` no terminal
+    não olha isto — é o jeito de gerar uma com ela desligada.
+
     `obsidian_vault` é como o Obsidian chama o vault na URI `obsidian://` — o
     ID (o que *Copy vault ID* copia) ou o nome da pasta. Vazio usa o nome da
     pasta de `vault`, que é o que o Obsidian usa quando o vault foi aberto
@@ -208,6 +216,7 @@ class Configuracao:
     dispositivo_sistema: str = ""
     diario_inicio_do_dia: str = INICIO_DO_DIA_PADRAO
     diario_hora_da_tarefa: str = "19:00"
+    daily_ativa: bool = True
     daily_referencias_pessoais: tuple[str, ...] = ()
     daily_contexto_do_time: str = ""
     daily_horarios: tuple[tuple[str, str], ...] = ()
@@ -313,6 +322,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         diario_hora_da_tarefa=_hora(
             diario.get("hora_da_tarefa", "19:00"), "[diario].hora_da_tarefa", arquivo
         ),
+        daily_ativa=_booleano(daily.get("ativa", True), "[daily].ativa", arquivo),
         daily_referencias_pessoais=_textos(daily.get("referencias_pessoais")),
         daily_contexto_do_time=str(daily.get("contexto_do_time", "")).strip(),
         daily_horarios=_horarios_da_daily(daily.get("horarios"), arquivo),
@@ -365,6 +375,15 @@ def _hora(valor: object, chave: str, arquivo: Path) -> str:
             f"HH:MM em 24 horas (por exemplo \"04:00\"), e veio {valor!r}."
         ) from None
     return texto.strip()
+
+
+def _booleano(valor: object, chave: str, arquivo: Path) -> bool:
+    if not isinstance(valor, bool):
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '{chave}' precisa ser true ou false, sem aspas, "
+            f"e veio {valor!r}."
+        )
+    return valor
 
 
 def _horarios_da_daily(valor: object, arquivo: Path) -> tuple[tuple[str, str], ...]:
@@ -596,6 +615,8 @@ def escrever(configuracao: Configuracao, destino: Path, *, agora: datetime | Non
 def _toml(valor: object, tipo: Tipo) -> str:
     if tipo is Tipo.HORARIOS:
         return _tabela_de_horarios(valor)
+    if tipo is Tipo.BOOLEANO and isinstance(valor, bool):
+        return "true" if valor else "false"
     if tipo is Tipo.LISTA:
         itens = [valor] if isinstance(valor, str) else list(valor or ())
         return "[" + ", ".join(_texto_toml(str(item)) for item in itens) + "]"

@@ -12,7 +12,7 @@ para a busca no vault::
     python -m whis reprocessar [<pasta> ...]
     python -m whis limpar [--simular]
     python -m whis diario [YYYY-MM-DD] [--simular]
-    python -m whis daily [--anotar TEXTO] [--simular]
+    python -m whis daily [--anotar TEXTO] [--simular] [--agendada]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -502,6 +502,13 @@ def _comando_daily(args: argparse.Namespace) -> int:
         return _anotar_ponto(configuracao, args.anotar)
 
     _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    if args.agendada and not configuracao.daily_ativa:
+        _log.info(
+            "Daily desligada em [daily].ativa de %s — a tarefa agendada "
+            "não gerou nada.",
+            configuracao.origem,
+        )
+        return 0
     fontes = montar_fontes_da_daily(configuracao, fakes=args.fakes)
     # Em simulação o roteiro não é pedido; o fake entra como marcador para que
     # conferir o filtro não dependa de credencial nem do adaptador do Claude.
@@ -1056,6 +1063,11 @@ def construir_parser() -> argparse.ArgumentParser:
         "--simular",
         action="store_true",
         help="mostra o que entraria na daily, sem enviar ao Claude e sem escrever",
+    )
+    daily_cmd.add_argument(
+        "--agendada",
+        action="store_true",
+        help="é como a tarefa Whis-Daily chama: sai sem gerar nada se [daily].ativa = false",
     )
     daily_cmd.set_defaults(funcao=_comando_daily)
 

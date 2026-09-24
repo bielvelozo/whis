@@ -138,7 +138,9 @@ def test_a_daily_ganha_um_gatilho_semanal_por_dia_da_tabela(tmp_path: Path):
         "Monday=13:55,Tuesday=13:55,Wednesday=10:25,Thursday=13:55,Friday=10:25"
     )
     assert "python" in parametro(comando, "-Executavel").lower()
-    assert parametro(comando, "-Argumentos") == f'-m whis daily --config "{tmp_path / "config.toml"}"'
+    assert parametro(comando, "-Argumentos") == (
+        f'-m whis daily --agendada --config "{tmp_path / "config.toml"}"'
+    )
     assert Path(parametro(comando, "-Diretorio")).is_dir()
 
 

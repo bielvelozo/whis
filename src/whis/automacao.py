@@ -12,7 +12,8 @@ Este módulo faz poucas coisas, todas **explícitas e reversíveis**:
   no Menu Iniciar com a AUMID — sem esse segundo, o Windows recusa qualquer
   toast de um app não empacotado;
 - `agendar_daily()` registra a tarefa `Whis-Daily`, com um gatilho semanal por
-  dia da tabela `[daily].horarios`, rodando `whis daily`;
+  dia da tabela `[daily].horarios`, rodando `whis daily --agendada` (que sai
+  sem gerar nada quando `[daily].ativa` é falso);
 - `agendar_limpeza()` registra a tarefa diária `Whis-Limpeza` rodando
   `whis limpar`;
 - `agendar_vigia()` registra `Whis-Vigia`, um script PowerShell autossuficiente
@@ -418,7 +419,9 @@ def agendar_daily(configuracao: Configuracao, *, executar: Executor = _rodar) ->
     _registrar_tarefa(
         NOME_DA_TAREFA_DA_DAILY,
         executavel=str(interpretador_sem_console()),
-        argumentos=_argumentos_do_whis("daily", configuracao.origem or caminho_padrao()),
+        argumentos=_argumentos_do_whis(
+            "daily --agendada", configuracao.origem or caminho_padrao()
+        ),
         gatilhos=gatilhos,
         executar=executar,
     )

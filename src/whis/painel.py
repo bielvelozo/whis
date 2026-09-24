@@ -1,4 +1,4 @@
-"""O painel de configuração: as 27 chaves do `config.toml`, segredos inclusive.
+"""O painel de configuração: as 28 chaves do `config.toml`, segredos inclusive.
 
 Não fere a regra da entrega 3: o valor de um segredo vai do teclado do
 usuário para o arquivo, sem passar por modelo nenhum — e nunca por log. O
@@ -118,9 +118,12 @@ def texto_do_valor(configuracao: Configuracao, campo: Campo) -> str | dict[str, 
     """O valor de um campo como o formulário o mostra.
 
     Lista é uma entrada por linha; a tabela de horários é um texto por dia
-    (vazio = sem daily naquele dia); caminho vazio é `""`.
+    (vazio = sem daily naquele dia); caminho vazio é `""`; booleano é `true`
+    ou `false`, como no TOML.
     """
     valor = getattr(configuracao, campo.chave.atributo)
+    if campo.tipo is Tipo.BOOLEANO:
+        return "true" if valor else "false"
     if campo.tipo is Tipo.HORARIOS:
         horas = dict(valor)
         return {dia: horas.get(dia, "") for dia in DIAS_DA_SEMANA}
@@ -155,6 +158,9 @@ def valor_do_texto(campo: Campo, texto: str | Mapping[str, str]) -> object:
         return texto.strip().replace("\\", "/")
     if campo.tipo is Tipo.SEGREDO:
         return texto.strip()
+    if campo.tipo is Tipo.BOOLEANO:
+        limpo = texto.strip().lower()
+        return {"true": True, "false": False}.get(limpo, limpo)
     return texto
 
 
@@ -241,7 +247,8 @@ class FormularioTk:
     """A tela: um `Toplevel` rolável com uma linha por chave.
 
     `Entry(show="•")` para os segredos, botão de pasta para os caminhos,
-    `Text` para as listas, sete campos `HH:MM` para os horários. Nada aqui
+    `Text` para as listas, sete campos `HH:MM` para os horários, caixa de
+    marcar para os booleanos. Nada aqui
     decide nada: ler e mostrar, e chamar o painel nos botões.
     """
 
@@ -327,6 +334,10 @@ class FormularioTk:
                 entrada.grid(row=1, column=coluna, padx=2)
                 entradas[dia] = entrada
             return entradas
+        if campo.tipo is Tipo.BOOLEANO:
+            marcado = tk.BooleanVar(pai, value=texto == "true")
+            ttk.Checkbutton(pai, variable=marcado).grid(row=linha, column=1, sticky="w")
+            return marcado
         if campo.tipo is Tipo.LISTA:
             caixa = tk.Text(pai, height=3, width=60, font=("Segoe UI", 9))
             caixa.insert("1.0", texto)
@@ -361,6 +372,8 @@ class FormularioTk:
                 textos[campo] = {dia: e.get() for dia, e in entrada.items()}
             elif campo.tipo is Tipo.LISTA:
                 textos[campo] = entrada.get("1.0", "end-1c")
+            elif campo.tipo is Tipo.BOOLEANO:
+                textos[campo] = "true" if entrada.get() else "false"
             else:
                 textos[campo] = entrada.get()
         return textos

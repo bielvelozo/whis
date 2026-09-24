@@ -454,7 +454,8 @@ def executar(
     definir_acoes()
 
     def abrir_palheta() -> None:
-        janela.pedir(janela.mostrar)
+        # O painel pode ter desligado a daily desde a última abertura.
+        janela.pedir(lambda: (definir_acoes(), janela.mostrar()))
 
     abrir_configuracao: Callable[[], None] | None = None
     if painel is not None:

@@ -68,6 +68,7 @@ TITULO_DO_PROMPT_QUE_JA_EXISTE = "Esse prompt já existe"
 TITULO_DO_PROMPT_RECUSADO = "Nada guardado"
 
 NOME_DE_GRAVAR = "record"
+NOME_DA_DAILY = "daily"
 NOME_DE_CONFIGURAR = "settings"
 
 #: A ordem em que as ações aparecem na janela: as três que o usuário pediu
@@ -212,11 +213,17 @@ class Palheta:
         )
 
     def acoes(self) -> tuple[Comando, ...]:
-        """Os comandos na ordem da lista da janela: as três ações pedidas primeiro."""
+        """Os comandos na ordem da lista da janela: as três ações pedidas primeiro.
+
+        Com `[daily].ativa` falso, `daily` sai da lista e deixa de ser entendido.
+        """
         posicao = {nome: indice for indice, nome in enumerate(ORDEM_DAS_ACOES)}
-        return tuple(
-            sorted(self.comandos, key=lambda comando: posicao.get(comando.nome, len(posicao)))
+        ativos = (
+            comando
+            for comando in self.comandos
+            if comando.nome != NOME_DA_DAILY or self.configuracao.daily_ativa
         )
+        return tuple(sorted(ativos, key=lambda comando: posicao.get(comando.nome, len(posicao))))
 
     def despachar(self, texto: str) -> bool:
         """Dispara o comando e devolve na hora. `False` quando outro ainda roda.
@@ -260,7 +267,7 @@ class Palheta:
 
     def _executar(self, texto: str) -> Resultado | None:
         try:
-            comando, argumento = interpretar(texto, self.comandos)
+            comando, argumento = interpretar(texto, self.acoes())
         except ComandoDesconhecido as erro:
             return Resultado(TITULO_DE_NAO_ENTENDI, str(erro))
         _log.info("Palheta: %s %s", comando.nome, _resumido(argumento))

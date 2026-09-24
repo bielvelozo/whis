@@ -25,7 +25,7 @@ Nota diária em `diario/` que resume o trabalho do dia a partir das fontes passi
 _Avoid_: daily note, log
 
 **Daily**:
-Roteiro falado que o usuário lê na reunião diária do time. Vive na **Nota viva** (`daily/atual.md`); cobre da última daily até agora — não um dia civil. Cada geração deixa ao lado uma nota datada `daily/YYYY-MM-DD.md` com a janela e as listas cruas, que é o registro durável e de conferência.
+Roteiro falado que o usuário lê na reunião diária do time. Vive na **Nota viva** (`daily/atual.md`); cobre da última daily até agora — não um dia civil. Cada geração deixa ao lado uma nota datada `daily/YYYY-MM-DD.md` com a janela e as listas cruas, que é o registro durável e de conferência. `[daily].ativa = false` desliga a daily: a tarefa `Whis-Daily` fica no Agendador mas não gera nada, e a palheta esconde *Generate daily*; só `whis daily` no terminal ainda gera uma.
 _Avoid_: standup, resumo diário
 
 **Nota viva**:
