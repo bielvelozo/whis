@@ -33,11 +33,15 @@ _Avoid_: standup, resumo diário
 _Avoid_: painel, dashboard, `daily/hoje.md`, `notas/daily.md`
 
 **Zona de propriedade**:
-Divisão do vault em três contratos: as pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`, `daily/`, `respostas/`); a zona do usuário (`notas/`), que o agente nunca toca; e a **Nota viva**, onde os dois escrevem, cada um nas suas seções. `notas/daily.md` foi aposentado em 2026-09-12 — nunca foi usado; o que era dele vive nas seções do usuário da nota viva.
+Divisão do vault em três contratos: as pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`, `daily/`, `respostas/`); a zona do usuário (`notas/`), que o agente nunca toca; e a **Nota viva**, onde os dois escrevem, cada um nas suas seções. `prompts/` é do usuário como `notas/`, com uma exceção: o agente cria um arquivo novo ou troca a linha `favorito:` quando é mandado. `notas/daily.md` foi aposentado em 2026-09-12 — nunca foi usado; o que era dele vive nas seções do usuário da nota viva.
 
 **Palheta**:
-A janela de comandos do Whis, aberta por atalho global de teclado no PC (`ctrl+space`), no estilo Raycast: um campo de texto e uma lista de ações clicáveis, num painel acrílico translúcido; os comandos são em inglês (`daily`, `note`, `doubt`, `do`, `ask`, `open`, `record`, `settings`), o rótulo de uma ação digitado inteiro vale como o comando, Tab completa o comando da ação selecionada, e a janela some ao despachar. Todo comando **dispara e some** — roda em segundo plano, o resultado vira nota no vault e um toast avisa quando fica pronto. Substitui a DM do Slack como o lugar de perguntar e anotar; a bandeja continua sendo o gesto de gravar reunião. Uma resposta de `ask` nasce em `respostas/`, zona do agente.
+A janela de comandos do Whis, aberta por atalho global de teclado no PC (`ctrl+space`), no estilo Raycast: um campo de texto e uma lista de ações clicáveis, num painel acrílico translúcido; os comandos são em inglês (`daily`, `note`, `doubt`, `do`, `ask`, `open`, `record`, `prompts`, `stash`, `settings`), o rótulo de uma ação digitado inteiro vale como o comando, Tab completa o comando da ação selecionada, e a janela some ao despachar. Todo comando **dispara e some** — menos `prompts`, que troca a lista de comandos pela dos **Prompts** sem fechar a janela — roda em segundo plano, o resultado vira nota no vault e um toast avisa quando fica pronto. Substitui a DM do Slack como o lugar de perguntar e anotar; a bandeja continua sendo o gesto de gravar reunião. Uma resposta de `ask` nasce em `respostas/`, zona do agente.
 _Avoid_: launcher, painel com abas, chat
+
+**Prompt**:
+Um texto guardado para colar num chat de IA: um `.md` em `prompts/` no vault. O título é o nome do arquivo, e `tags` e `favorito` são propriedades do Obsidian. `stash <título> #tag` guarda o que está no clipboard; `prompts` abre a lista na palheta, onde o Enter cola o prompt na janela em que o usuário estava. Referência: o Prompt Stash do Raycast.
+_Avoid_: snippet, template
 
 **Vigia**:
 Uma tarefa agendada fora do Whis (`Whis-Vigia`, um script PowerShell autossuficiente) que consulta o Agendador e a lista de processos e dispara um toast quando uma peça não subiu — a daily não nasceu, a limpeza falhou, a bandeja não está no ar. Existe porque quem avisa que o Whis caiu não pode ser o Whis.

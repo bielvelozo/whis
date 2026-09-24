@@ -21,7 +21,15 @@ filtrada pelo que se digita (pelo nome do comando e por qualquer palavra do
 rótulo). ↑/↓ escolhem; Tab completa o campo com o comando da selecionada (e,
 já completo, passa à próxima); Enter executa o texto digitado — um rótulo
 inteiro vale como o comando — ou, com o campo vazio, a ação selecionada;
-clicar numa linha executa; Esc e perder o foco escondem.
+clicar numa linha executa; Esc e perder o foco escondem. Cabem sete linhas; o
+resto rola com a seleção, com a roda do mouse ou arrastando a barra da direita.
+
+Uma ação pode abrir uma **lista** (`Acao.abre`), como a dos prompts: a janela
+não some, troca os comandos pelas linhas que a `Lista` devolve para o texto
+digitado, mostra o detalhe da selecionada embaixo e liga as teclas dos
+`Gesto`s dela, com as dicas no rodapé. Esc, ou Backspace com o campo vazio,
+volta aos comandos. O fundo é capturado já na altura da lista cheia: com a
+janela no ar, a captura da tela a pegaria junto.
 
 O Tk só aceita chamadas do thread que o criou. O atalho global e o menu da
 bandeja vivem em outros threads, então tudo que eles pedem entra por `pedir`,
@@ -36,6 +44,7 @@ from __future__ import annotations
 
 import logging
 import queue
+import textwrap
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
@@ -74,6 +83,16 @@ OPACIDADE_DO_FUNDO = 0.84
 
 PLACEHOLDER = "Type a command…"
 
+#: Quantas linhas cabem de uma vez, nos comandos e numa lista; o resto rola.
+MAXIMO_DE_LINHAS = 7
+LARGURA_DA_BARRA = 4
+#: A faixa da direita em que um clique pega a barra de rolagem, e não a linha.
+ALCANCE_DA_BARRA = 14
+COR_DA_BARRA = "#3a3a42"
+LINHAS_DO_DETALHE = 7
+ALTURA_DO_DETALHE = 150
+LARGURA_DO_DETALHE_EM_CARACTERES = 108
+
 #: A cadência com que o thread do Tk olha a fila de pedidos de outros threads.
 INTERVALO_DA_FILA_MS = 50
 
@@ -84,16 +103,65 @@ ATRASO_DO_FOCO_MS = 150
 
 @dataclass(frozen=True)
 class Acao:
-    """Uma linha da lista: o nome do comando, o glifo, o título, a descrição e se leva argumento."""
+    """Uma linha da lista: o nome do comando, o glifo, o título, a descrição e se leva argumento.
+
+    `abre`, quando há, faz a ação trocar a palheta por uma `Lista` em vez de despachar.
+    """
 
     nome: str
     icone: str
     rotulo: str | Callable[[], str]
     descricao: str = ""
     aceita_argumento: bool = False
+    abre: Callable[[], "Lista"] | None = None
 
     def rotulo_atual(self) -> str:
         return self.rotulo() if callable(self.rotulo) else self.rotulo
+
+
+@dataclass(frozen=True)
+class Linha:
+    """Uma linha de uma `Lista`: glifo, título, descrição e o texto da direita."""
+
+    icone: str
+    titulo: str
+    descricao: str = ""
+    direita: str = ""
+
+
+@dataclass(frozen=True)
+class Efeito:
+    """O que um gesto que mantém a lista aberta pede à janela depois de rodar."""
+
+    selecionar: int | None = None
+    mensagem: str = ""
+
+
+@dataclass(frozen=True)
+class Gesto:
+    """Uma tecla da lista: a sequência do Tk, como ela aparece no rodapé e o que faz.
+
+    `rodar(indice, texto)` recebe a linha selecionada (ou `None`) e o texto do
+    campo. Com `esconde`, a janela some antes de rodar — é o que devolve o foco
+    a quem estava atrás; sem, a lista é relida e redesenhada depois.
+    """
+
+    tecla: str
+    desenho: str
+    dica: str
+    rodar: Callable[[int | None, str], Efeito | None]
+    esconde: bool = False
+
+
+class Lista(Protocol):
+    nome: str
+    placeholder: str
+    vazia: str
+    gestos: Sequence[Gesto]
+
+    def linhas(self, texto: str) -> Sequence[Linha]: ...
+
+    def detalhe(self, indice: int) -> str: ...
 
 
 def filtrar(acoes: Sequence[Acao], texto: str) -> tuple[Acao, ...]:
@@ -151,6 +219,32 @@ def comando_destacado(texto: str, acoes: Sequence[Acao]) -> tuple[int, int] | No
     return None
 
 
+def acao_que_abre(texto: str, acoes: Sequence[Acao]) -> tuple[Acao, str] | None:
+    """A ação de lista que o texto chama — pelo nome, com o resto como busca, ou pelo rótulo inteiro."""
+    miolo = " ".join(texto.split())
+    if not miolo:
+        return None
+    primeira, _, resto = miolo.partition(" ")
+    for acao in acoes:
+        if acao.abre is None:
+            continue
+        if acao.nome.casefold() == primeira.casefold():
+            return acao, resto
+        if acao.rotulo_atual().casefold() == miolo.casefold():
+            return acao, ""
+    return None
+
+
+def texto_do_detalhe(texto: str) -> str:
+    """O começo do texto quebrado na largura do painel, com `…` quando não cabe."""
+    visuais: list[str] = []
+    for linha in texto.splitlines() or [""]:
+        visuais.extend(textwrap.wrap(linha, LARGURA_DO_DETALHE_EM_CARACTERES) or [""])
+    if len(visuais) <= LINHAS_DO_DETALHE:
+        return "\n".join(visuais)
+    return "\n".join([*visuais[: LINHAS_DO_DETALHE - 1], visuais[LINHAS_DO_DETALHE - 1] + " …"])
+
+
 class PortaJanela(Protocol):
     """O que a palheta precisa de uma janela — Tk ou dublê."""
 
@@ -180,6 +274,8 @@ class JanelaDaPalheta:
         tela.pack(fill="both", expand=True)
         tela.bind("<Motion>", self._ao_mover_o_mouse)
         tela.bind("<Button-1>", self._ao_clicar)
+        tela.bind("<B1-Motion>", self._ao_arrastar)
+        tela.bind("<MouseWheel>", self._roda)
 
         campo = tk.Text(
             tela,
@@ -199,10 +295,12 @@ class JanelaDaPalheta:
         campo.tag_configure("comando", foreground=DESTAQUE, font=(*FONTE, "bold"))
         campo.bind("<Return>", self._enter)
         campo.bind("<KP_Enter>", self._enter)
-        campo.bind("<Escape>", lambda _evento: (self.esconder(), "break")[1])
+        campo.bind("<Escape>", self._esc)
+        campo.bind("<BackSpace>", self._apagar)
         campo.bind("<Up>", lambda _evento: self._mover_selecao(-1))
         campo.bind("<Down>", lambda _evento: self._mover_selecao(1))
         campo.bind("<Tab>", self._tab)
+        campo.bind("<MouseWheel>", self._roda)
         campo.bind("<KeyRelease>", lambda _evento: self._atualizar())
         campo.bind("<FocusOut>", self._ao_perder_o_foco)
 
@@ -227,7 +325,15 @@ class JanelaDaPalheta:
         self._callback: Callable[[str], object] | None = None
         self._acoes: tuple[Acao, ...] = ()
         self._visiveis: tuple[Acao, ...] = ()
-        #: Os realces das linhas desenhadas, um item do canvas por ação visível.
+        self._lista: Lista | None = None
+        self._linhas_da_lista: tuple[Linha, ...] | None = None
+        #: As teclas dos gestos da lista aberta, para desligar ao sair dela.
+        self._teclas_ligadas: list[str] = []
+        #: A primeira linha desenhada: a lista rola quando a seleção sai da vista.
+        self._primeira = 0
+        self._arrastando = False
+        self._mensagem = ""
+        #: Os realces das linhas desenhadas, um item do canvas por linha visível.
         self._linhas: list[int] = []
         self._topo_das_linhas = 0
         self._posicao = (0, 0)
@@ -238,7 +344,7 @@ class JanelaDaPalheta:
         self._visivel = False
         self._encerrada = False
         self._vestida = False
-        self._desenhar(())
+        self._desenhar()
 
     @property
     def raiz(self):
@@ -255,6 +361,9 @@ class JanelaDaPalheta:
         self._atualizar()
 
     def mostrar(self) -> None:
+        if not self._visivel:
+            self._lembrar_janela_anterior()
+        self._sair_da_lista()
         self._campo.delete("1.0", "end")
         self._selecionada = 0
         # Um rótulo pode ter mudado com a janela escondida ("Start recording" →
@@ -290,6 +399,41 @@ class JanelaDaPalheta:
             return None
         return self._visiveis[min(self._selecionada, len(self._visiveis) - 1)]
 
+    def lista_aberta(self) -> Lista | None:
+        return self._lista
+
+    def linhas_da_lista(self) -> tuple[Linha, ...]:
+        return self._linhas_da_lista or ()
+
+    def indice_selecionado(self) -> int | None:
+        total = self._total()
+        return min(self._selecionada, total - 1) if total else None
+
+    def detalhe_desenhado(self) -> str:
+        itens = self._tela.find_withtag("detalhe")
+        return self._tela.itemcget(itens[0], "text") if itens else ""
+
+    def mensagem(self) -> str:
+        return self._mensagem
+
+    def abrir_lista(self, lista: Lista, texto: str = "") -> None:
+        """Troca os comandos pela lista, com a janela no ar (abre se estiver escondida)."""
+        if not self._visivel:
+            self.mostrar()
+        self._sair_da_lista()
+        self._lista = lista
+        for gesto in lista.gestos:
+            if gesto.tecla == "<Return>":
+                continue
+            for sequencia in _variantes(gesto.tecla):
+                self._campo.bind(sequencia, lambda _evento, g=gesto: self._gesto(g))
+                self._teclas_ligadas.append(sequencia)
+        self._placeholder.configure(text=lista.placeholder)
+        self._campo.delete("1.0", "end")
+        self._campo.insert("1.0", texto)
+        self._campo.mark_set("insert", "end")
+        self._atualizar()
+
     def digitar(self, texto: str) -> None:
         """Põe texto no campo como se tivesse sido digitado (para a sonda e o teste)."""
         self._campo.delete("1.0", "end")
@@ -313,6 +457,14 @@ class JanelaDaPalheta:
 
     # -- o desenho ------------------------------------------------------------
 
+    def _lembrar_janela_anterior(self) -> None:
+        from . import area_de_transferencia
+
+        try:
+            area_de_transferencia.lembrar_janela_anterior()
+        except Exception as erro:  # noqa: BLE001 — sem ela, colar vai para quem ficar ativo
+            _log.debug("Sem a janela anterior: %s", erro)
+
     def _pintar_o_fundo(self) -> None:
         """O acrílico simulado, antes de a janela aparecer: a tela atrás dela, desfocada e escurecida."""
         from PIL import ImageTk
@@ -320,11 +472,13 @@ class JanelaDaPalheta:
         from . import fundo_desfocado
 
         x, y = self._posicao
+        cabe_na_tela = self._raiz.winfo_screenheight() - y
+        altura = max(self._altura, min(_altura_da_lista_cheia(), cabe_na_tela))
         try:
-            atras = fundo_desfocado.capturar_atras(x, y, LARGURA, self._altura)
+            atras = fundo_desfocado.capturar_atras(x, y, LARGURA, altura)
         except Exception as erro:  # noqa: BLE001 — sem captura o painel é liso, nunca ausente
             _log.debug("Sem o desfoque do fundo: %s", erro)
-            atras = fundo_desfocado.fundo_liso(LARGURA, self._altura, FUNDO)
+            atras = fundo_desfocado.fundo_liso(LARGURA, altura, FUNDO)
         imagem = fundo_desfocado.desfocar(
             atras, cor=FUNDO, opacidade=OPACIDADE_DO_FUNDO, raio_dos_cantos=RAIO, cor_de_fora=COR_TRANSPARENTE
         )
@@ -364,32 +518,77 @@ class JanelaDaPalheta:
             self._campo.insert("1.0", texto)
 
         self._campo.tag_remove("comando", "1.0", "end")
-        faixa = comando_destacado(texto, self._acoes)
-        if faixa is not None:
-            self._campo.tag_add("comando", f"1.{faixa[0]}", f"1.{faixa[1]}")
+        if self._lista is None:
+            faixa = comando_destacado(texto, self._acoes)
+            if faixa is not None:
+                self._campo.tag_add("comando", f"1.{faixa[0]}", f"1.{faixa[1]}")
 
-        if texto:
-            self._placeholder.place_forget()
-        else:
-            self._placeholder.place(x=8, y=6)
+        self._mostrar_placeholder(not texto)
+
+        if self._lista is not None:
+            linhas = tuple(self._lista.linhas(texto))
+            if linhas != self._linhas_da_lista:
+                self._linhas_da_lista = linhas
+                self._selecionada = 0
+                self._primeira = 0
+                self._desenhar()
+            return
 
         visiveis = filtrar(self._acoes, texto)
         if visiveis != self._visiveis:
             self._visiveis = visiveis
             self._selecionada = 0
-            self._desenhar(visiveis)
+            self._primeira = 0
+            self._desenhar()
         else:
             self._pintar_selecao()
 
-    def _desenhar(self, visiveis: Sequence[Acao]) -> None:
+    def _mostrar_placeholder(self, mostrar: bool) -> None:
+        if mostrar:
+            self._placeholder.place(x=8, y=6)
+        else:
+            self._placeholder.place_forget()
+
+    def _linhas_de_agora(self) -> tuple[Linha, ...]:
+        if self._lista is not None:
+            return self._linhas_da_lista or ()
+        return tuple(Linha(acao.icone, acao.rotulo_atual(), acao.descricao, acao.nome) for acao in self._visiveis)
+
+    def _total(self) -> int:
+        return len(self._linhas_da_lista or ()) if self._lista is not None else len(self._visiveis)
+
+    def _cabem(self) -> int:
+        return MAXIMO_DE_LINHAS
+
+    def rola(self) -> bool:
+        return self._total() > self._cabem()
+
+    def primeira_desenhada(self) -> int:
+        return self._primeira
+
+    def _desenhar(self) -> None:
         tela = self._tela
+        todas = self._linhas_de_agora()
+        desenhadas = todas[self._primeira : self._primeira + self._cabem()]
         topo_da_lista = MARGEM + ALTURA_DO_CAMPO + 14
-        altura_da_lista = len(visiveis) * ALTURA_DA_LINHA + 8 if visiveis else 0
-        self._painel(topo_da_lista + altura_da_lista + ALTURA_DO_RODAPE)
+        linhas_de_altura = len(desenhadas) or (1 if self._lista is not None else 0)
+        altura_da_lista = linhas_de_altura * ALTURA_DA_LINHA + 8 if linhas_de_altura else 0
+        altura_do_detalhe = ALTURA_DO_DETALHE if self._lista is not None and todas else 0
+        self._painel(topo_da_lista + altura_da_lista + altura_do_detalhe + ALTURA_DO_RODAPE)
 
         self._linhas = []
         self._topo_das_linhas = topo_da_lista + 4
-        for indice, acao in enumerate(visiveis):
+        if self._lista is not None and not todas:
+            tela.create_text(
+                RECUO_DA_LINHA + 22,
+                self._topo_das_linhas + ALTURA_DA_LINHA // 2,
+                text=self._lista.vazia,
+                font=FONTE_DA_DESCRICAO,
+                fill=TEXTO_APAGADO,
+                anchor="w",
+                tags=("desenho",),
+            )
+        for indice, linha in enumerate(desenhadas):
             y = self._topo_das_linhas + indice * ALTURA_DA_LINHA
             centro = y + ALTURA_DA_LINHA // 2
             marca = f"linha{indice}"
@@ -401,38 +600,97 @@ class JanelaDaPalheta:
                 tags=(marca, "desenho"),
             )
             tela.create_text(
-                RECUO_DA_LINHA + 22, centro, text=acao.icone, font=FONTE_DO_ICONE, fill=DESTAQUE, tags=(marca, "desenho")
+                RECUO_DA_LINHA + 22, centro, text=linha.icone, font=FONTE_DO_ICONE, fill=DESTAQUE, tags=(marca, "desenho")
             )
-            titulo = tela.create_text(
-                RECUO_DA_LINHA + 44,
-                centro,
-                text=acao.rotulo_atual(),
-                font=FONTE_DA_LINHA,
-                fill=TEXTO,
-                anchor="w",
-                tags=(marca, "titulo", "desenho"),
-            )
-            tela.create_text(
-                tela.bbox(titulo)[2] + 12,
-                centro + 1,
-                text=acao.descricao,
-                font=FONTE_DA_DESCRICAO,
-                fill=TEXTO_APAGADO,
-                anchor="w",
-                tags=(marca, "desenho"),
-            )
-            tela.create_text(
+            direita = tela.create_text(
                 LARGURA - RECUO_DA_LINHA - 16,
                 centro,
-                text=acao.nome,
+                text=linha.direita,
                 font=FONTE_DA_DESCRICAO,
                 fill=DESTAQUE,
                 anchor="e",
                 tags=(marca, "desenho"),
             )
+            limite = tela.bbox(direita)[0] - 16 if linha.direita else LARGURA - RECUO_DA_LINHA - 16
+            titulo = tela.create_text(
+                RECUO_DA_LINHA + 44,
+                centro,
+                text=self._caber(linha.titulo, FONTE_DA_LINHA, limite - RECUO_DA_LINHA - 44),
+                font=FONTE_DA_LINHA,
+                fill=TEXTO,
+                anchor="w",
+                tags=(marca, "titulo", "desenho"),
+            )
+            inicio_da_descricao = tela.bbox(titulo)[2] + 12
+            tela.create_text(
+                inicio_da_descricao,
+                centro + 1,
+                text=self._caber(linha.descricao, FONTE_DA_DESCRICAO, limite - inicio_da_descricao),
+                font=FONTE_DA_DESCRICAO,
+                fill=TEXTO_APAGADO,
+                anchor="w",
+                tags=(marca, "desenho"),
+            )
             self._linhas.append(realce)
+        if altura_do_detalhe:
+            topo_do_detalhe = topo_da_lista + altura_da_lista
+            tela.create_line(1, topo_do_detalhe, LARGURA - 1, topo_do_detalhe, fill=SEPARADOR, tags=("desenho",))
+            tela.create_text(
+                MARGEM + 10,
+                topo_do_detalhe + 12,
+                text="",
+                font=FONTE_DA_DESCRICAO,
+                fill=TEXTO,
+                anchor="nw",
+                tags=("desenho", "detalhe"),
+            )
+        if len(todas) > len(desenhadas):
+            self._desenhar_a_barra(len(todas), len(desenhadas))
         tela.tag_lower("fundo")
         self._pintar_selecao()
+
+    def _faixa_da_barra(self) -> tuple[int, int]:
+        topo = self._topo_das_linhas
+        return topo, topo + self._cabem() * ALTURA_DA_LINHA
+
+    def _desenhar_a_barra(self, total: int, cabem: int) -> None:
+        topo, fundo = self._faixa_da_barra()
+        altura = fundo - topo
+        polegar = max(24, altura * cabem // total)
+        inicio = topo + (altura - polegar) * self._primeira // max(total - cabem, 1)
+        direita = LARGURA - 3
+        self._tela.create_polygon(
+            *_cantos_arredondados(direita - LARGURA_DA_BARRA, inicio, direita, inicio + polegar, 2),
+            smooth=True,
+            fill=COR_DA_BARRA,
+            outline="",
+            tags=("desenho", "barra"),
+        )
+
+    def _rolar_para(self, y: int) -> None:
+        """Põe o polegar da barra sob `y` e leva a seleção junto quando ela sai da vista."""
+        topo, fundo = self._faixa_da_barra()
+        total, cabem = self._total(), self._cabem()
+        fracao = min(max((y - topo) / max(fundo - topo, 1), 0.0), 1.0)
+        primeira = round(fracao * (total - cabem))
+        if primeira == self._primeira:
+            return
+        self._primeira = primeira
+        self._selecionada = min(max(self._selecionada, primeira), primeira + cabem - 1)
+        self._desenhar()
+
+    def _caber(self, texto: str, fonte, largura: int) -> str:
+        """O texto cortado com `…` para caber em `largura` pixels na fonte dada."""
+        from tkinter import font as tkfont
+
+        if largura <= 0 or not texto:
+            return ""
+        medida = tkfont.Font(root=self._raiz, font=fonte)
+        if medida.measure(texto) <= largura:
+            return texto
+        while texto and medida.measure(texto + "…") > largura:
+            texto = texto[:-1]
+        return texto.rstrip() + "…" if texto else ""
 
     def _painel(self, altura: int) -> None:
         raiz, tela = self._raiz, self._tela
@@ -461,9 +719,28 @@ class JanelaDaPalheta:
         centro = topo + ALTURA_DO_RODAPE // 2
         tela.create_line(1, topo, LARGURA - 1, topo, fill=SEPARADOR, tags=("desenho",))
         tela.create_text(MARGEM + 6, centro, text="◆", font=FONTE_DO_RODAPE, fill=DESTAQUE, anchor="w", tags=("desenho",))
-        tela.create_text(MARGEM + 22, centro, text="Whis", font=FONTE_DO_RODAPE, fill=TEXTO_APAGADO, anchor="w", tags=("desenho",))
 
         x = LARGURA - MARGEM - 6
+        if self._lista is not None:
+            for indice, gesto in enumerate(reversed(tuple(self._lista.gestos))):
+                if indice:
+                    tela.create_line(x, centro - 8, x, centro + 8, fill=BORDA_DA_TECLA, tags=("desenho",))
+                    x -= 12
+                x = self._tecla(x, centro, gesto.desenho)
+                x = self._dica(x, centro, gesto.dica)
+            # A mensagem de um gesto toma o lugar do caminho: ao lado dele não cabe.
+            texto, cor = (self._mensagem, DESTAQUE) if self._mensagem else (f"Whis  ›  {self._lista.nome}", TEXTO_APAGADO)
+            tela.create_text(
+                MARGEM + 22,
+                centro,
+                text=self._caber(texto, FONTE_DO_RODAPE, x - MARGEM - 22),
+                font=FONTE_DO_RODAPE,
+                fill=cor,
+                anchor="w",
+                tags=("desenho",),
+            )
+            return
+        tela.create_text(MARGEM + 22, centro, text="Whis", font=FONTE_DO_RODAPE, fill=TEXTO_APAGADO, anchor="w", tags=("desenho",))
         x = self._tecla(x, centro, "Tab")
         x = self._dica(x, centro, "Complete")
         tela.create_line(x, centro - 8, x, centro + 8, fill=BORDA_DA_TECLA, tags=("desenho",))
@@ -496,16 +773,32 @@ class JanelaDaPalheta:
 
     def _pintar_selecao(self) -> None:
         for indice, realce in enumerate(self._linhas):
-            cor = FUNDO_SELECIONADO if indice == self._selecionada else ""
+            cor = FUNDO_SELECIONADO if indice + self._primeira == self._selecionada else ""
             self._tela.itemconfigure(realce, fill=cor)
+        if self._lista is not None and self._tela.find_withtag("detalhe"):
+            indice = self.indice_selecionado()
+            texto = texto_do_detalhe(self._lista.detalhe(indice)) if indice is not None else ""
+            self._tela.itemconfigure("detalhe", text=texto)
 
     # -- os gestos ------------------------------------------------------------
 
     def _mover_selecao(self, passo: int) -> str:
-        if self._visiveis:
-            self._selecionada = (self._selecionada + passo) % len(self._visiveis)
-            self._pintar_selecao()
+        total = self._total()
+        if total:
+            self._selecionar((self._selecionada + passo) % total)
         return "break"
+
+    def _selecionar(self, indice: int) -> None:
+        self._selecionada = indice
+        cabem = self._cabem()
+        if indice < self._primeira:
+            self._primeira = indice
+            self._desenhar()
+        elif indice >= self._primeira + cabem:
+            self._primeira = indice - cabem + 1
+            self._desenhar()
+        else:
+            self._pintar_selecao()
 
     def _linha_em(self, y: int) -> int | None:
         """A linha da lista sob a coordenada `y` do canvas, ou `None` fora dela."""
@@ -513,27 +806,107 @@ class JanelaDaPalheta:
         if deslocamento < 0:
             return None
         indice = deslocamento // ALTURA_DA_LINHA
-        return indice if indice < len(self._visiveis) else None
+        return indice + self._primeira if indice < len(self._linhas) else None
 
     def _ao_mover_o_mouse(self, evento) -> None:
+        if evento.x >= LARGURA - ALCANCE_DA_BARRA and self.rola():
+            return
         indice = self._linha_em(evento.y)
         if indice is not None and indice != self._selecionada:
             self._apontar(indice)
 
     def _ao_clicar(self, evento) -> None:
+        self._arrastando = self.rola() and evento.x >= LARGURA - ALCANCE_DA_BARRA
+        if self._arrastando:
+            self._rolar_para(evento.y)
+            return
         indice = self._linha_em(evento.y)
         if indice is not None:
             self._clicar(indice)
+
+    def _ao_arrastar(self, evento) -> None:
+        if self._arrastando:
+            self._rolar_para(evento.y)
 
     def _apontar(self, indice: int) -> None:
         self._selecionada = indice
         self._pintar_selecao()
 
     def _clicar(self, indice: int) -> None:
+        if self._lista is not None:
+            if indice < self._total() and self._lista.gestos:
+                self._selecionada = indice
+                self._gesto(self._lista.gestos[0])
+            return
         if indice < len(self._visiveis):
-            self._despachar(self._visiveis[indice].nome)
+            acao = self._visiveis[indice]
+            if acao.abre is not None:
+                self.abrir_lista(acao.abre())
+                return
+            self._despachar(acao.nome)
+
+    def _roda(self, evento) -> str:
+        return self._mover_selecao(-1 if evento.delta > 0 else 1)
+
+    def _esc(self, _evento=None) -> str:
+        if self._lista is not None:
+            self._voltar_aos_comandos()
+        else:
+            self.esconder()
+        return "break"
+
+    def _apagar(self, _evento=None) -> str | None:
+        if self._lista is not None and not self.texto():
+            self._voltar_aos_comandos()
+            return "break"
+        return None
+
+    def _voltar_aos_comandos(self) -> None:
+        self._sair_da_lista()
+        self._campo.delete("1.0", "end")
+        self._selecionada = 0
+        self._visiveis = ()
+        self._atualizar()
+
+    def _sair_da_lista(self) -> None:
+        for sequencia in self._teclas_ligadas:
+            self._campo.unbind(sequencia)
+        self._teclas_ligadas = []
+        self._lista = None
+        self._linhas_da_lista = None
+        self._primeira = 0
+        self._mensagem = ""
+        self._placeholder.configure(text=PLACEHOLDER)
+
+    def _gesto(self, gesto: Gesto) -> str:
+        lista = self._lista
+        if lista is None:
+            return "break"
+        indice = self.indice_selecionado()
+        texto = self.texto()
+        if gesto.esconde:
+            self.esconder()
+        try:
+            efeito = gesto.rodar(indice, texto)
+        except Exception:  # noqa: BLE001 — o handler nunca deixa exceção subir ao Tk
+            _log.exception("O gesto %s da lista %s falhou.", gesto.dica, lista.nome)
+            efeito = Efeito(mensagem=f"{gesto.dica} failed — see the log")
+        if gesto.esconde or self._lista is not lista:
+            return "break"
+        self._mensagem = efeito.mensagem if efeito else ""
+        texto_de_agora = self.texto()
+        self._mostrar_placeholder(not texto_de_agora)
+        self._linhas_da_lista = tuple(lista.linhas(texto_de_agora))
+        total = self._total()
+        alvo = efeito.selecionar if efeito and efeito.selecionar is not None else self._selecionada
+        self._selecionada = max(0, min(alvo, total - 1)) if total else 0
+        self._primeira = max(0, self._selecionada - MAXIMO_DE_LINHAS + 1)
+        self._desenhar()
+        return "break"
 
     def _tab(self, _evento=None) -> str:
+        if self._lista is not None:
+            return "break"
         acao = self.selecionada()
         if acao is None:
             return "break"
@@ -545,7 +918,19 @@ class JanelaDaPalheta:
         return "break"
 
     def _enter(self, _evento=None) -> str:
+        if self._lista is not None:
+            principal = next((gesto for gesto in self._lista.gestos if gesto.tecla == "<Return>"), None)
+            if principal is not None:
+                self._gesto(principal)
+            return "break"
         texto = self.texto().strip()
+        chamada = acao_que_abre(texto, self._acoes)
+        if chamada is None and not texto and (acao := self.selecionada()) is not None and acao.abre is not None:
+            chamada = (acao, "")
+        if chamada is not None:
+            acao, busca = chamada
+            self.abrir_lista(acao.abre(), busca)
+            return "break"
         if texto:
             self._despachar(comando_pelo_rotulo(texto, self._acoes) or texto)
         elif (acao := self.selecionada()) is not None:
@@ -589,6 +974,26 @@ class JanelaDaPalheta:
             com_foco = None
         if self._visivel and com_foco is None:
             self.esconder()
+
+
+def _variantes(tecla: str) -> tuple[str, ...]:
+    """`<Control-f>` também como `<Control-F>`: com o Caps Lock ligado o Tk manda a maiúscula."""
+    *modificadores, final = tecla.strip("<>").split("-")
+    if len(final) == 1 and final.isalpha():
+        return (tecla, "<" + "-".join([*modificadores, final.swapcase()]) + ">")
+    return (tecla,)
+
+
+def _altura_da_lista_cheia() -> int:
+    return (
+        MARGEM
+        + ALTURA_DO_CAMPO
+        + 14
+        + MAXIMO_DE_LINHAS * ALTURA_DA_LINHA
+        + 8
+        + ALTURA_DO_DETALHE
+        + ALTURA_DO_RODAPE
+    )
 
 
 def _cantos_arredondados(x1: int, y1: int, x2: int, y2: int, raio: int) -> list[int]:

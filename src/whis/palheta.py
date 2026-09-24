@@ -8,7 +8,8 @@ minuto e a daily quarenta segundos.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
-`note`, `doubt`, `ask`, `open`, `record`, `settings`), `interpretar` lê o
+`note`, `doubt`, `do`, `ask`, `open`, `record`, `settings`, `stash`,
+`prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
 portas de verdade — as fontes, o roteiro, a busca — entram por
 `comandos_padrao`, e é por aí que `--fakes` da bandeja chega aqui. `record` e
@@ -18,6 +19,10 @@ quem a hospeda: a bandeja injeta `gravar`/`gravando` e `abrir_painel`.
 Dois cuidados que vêm do custo: um comando custa dinheiro e minutos, então um
 despacho enquanto outro roda é **recusado** com um toast curto, e a falha de
 um comando vira toast com a mensagem — nunca exceção solta num thread.
+
+`prompts` é a exceção ao dispara e some: ele não despacha, abre uma lista na
+própria janela (`Comando.lista`), a `ListaDePrompts`, cujos gestos colam,
+copiam, favoritam, editam e guardam prompts de `prompts/` no vault.
 """
 
 from __future__ import annotations
@@ -27,14 +32,18 @@ import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 
+from . import area_de_transferencia as _area
 from . import avisos as _avisos
+from . import prompts as _prompts
 from . import vault as _vault
 from .busca import PortaBusca, Resposta
 from .configuracao import Configuracao
 from .conversa import Conversas
 from .daily import ResultadoDaDaily, gerar_daily
 from .fontes import PortaFonte
+from .janela_da_palheta import Efeito, Gesto, Linha, Lista
 from .nota_viva import SECAO_DUVIDAS, SECAO_FAZER, SECAO_PONTOS
 from .obsidian import lancar as _lancar_no_windows
 from .obsidian import uri_da_nota
@@ -54,13 +63,18 @@ TITULO_DE_NAO_ACHOU = "Não achei"
 TITULO_DE_OCUPADA = "Ainda estou no comando anterior"
 TITULO_DE_FALHA = "O comando falhou"
 TITULO_DE_NAO_ENTENDI = "Não entendi"
+TITULO_DO_PROMPT_GUARDADO = "Prompt guardado"
+TITULO_DO_PROMPT_QUE_JA_EXISTE = "Esse prompt já existe"
+TITULO_DO_PROMPT_RECUSADO = "Nada guardado"
 
 NOME_DE_GRAVAR = "record"
 NOME_DE_CONFIGURAR = "settings"
 
 #: A ordem em que as ações aparecem na janela: as três que o usuário pediu
 #: primeiro, e existem mesmo com o campo vazio.
-ORDEM_DAS_ACOES = ("open", "daily", NOME_DE_GRAVAR, "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR)
+ORDEM_DAS_ACOES = (
+    "open", "daily", NOME_DE_GRAVAR, "prompts", "stash", "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR,
+)
 
 #: Quanto da resposta cabe no toast: o resto está na nota que o botão abre.
 LIMITE_DO_TEXTO_DO_TOAST = 240
@@ -90,7 +104,8 @@ class Comando:
 
     `rotulo` é o título da linha na janela (em inglês, como o comando) e pode
     ser função, para "Start recording" virar "Stop recording"; `descricao` é a
-    frase curta embaixo; `icone` é um glifo em texto.
+    frase curta embaixo; `icone` é um glifo em texto. `lista`, quando há, é o
+    que a janela abre no lugar de despachar.
     """
 
     nome: str
@@ -100,6 +115,7 @@ class Comando:
     rotulo: str | Callable[[], str] = ""
     descricao: str = ""
     icone: str = ""
+    lista: Callable[[Configuracao], Lista] | None = None
 
     def uso(self) -> str:
         return f"{self.nome} <{self.parametro}>" if self.parametro else self.nome
@@ -325,6 +341,127 @@ def resultado_da_resposta(resposta: Resposta, nota: str) -> Resultado:
     return Resultado(TITULO_DA_RESPOSTA, _encurtar(resposta.texto.strip() or "(vazia)"), nota=nota)
 
 
+class PortaAreaDeTransferencia(Protocol):
+    def ler(self) -> str: ...
+
+    def copiar(self, texto: str) -> None: ...
+
+    def colar(self, texto: str) -> None: ...
+
+
+class AreaDoWindows:
+    """`area_de_transferencia` resolvida na chamada, para o `conftest` poder trocá-la."""
+
+    def ler(self) -> str:
+        return _area.ler()
+
+    def copiar(self, texto: str) -> None:
+        _area.copiar(texto)
+
+    def colar(self, texto: str) -> None:
+        _area.colar(texto)
+
+
+def resultado_do_prompt_guardado(prompt: _prompts.Prompt) -> Resultado:
+    marcas = " ".join(f"#{tag}" for tag in prompt.tags)
+    texto = " ".join(parte for parte in (prompt.titulo, marcas, "★" if prompt.favorito else "") if parte)
+    return Resultado(TITULO_DO_PROMPT_GUARDADO, texto, nota=prompt.caminho)
+
+
+class ListaDePrompts:
+    """A lista de `prompts` na janela: busca, detalhe e os cinco gestos.
+
+    Relê `prompts/` a cada texto digitado: são dezenas de arquivos pequenos, e
+    o que o usuário mudou no Obsidian aparece sem reabrir nada.
+    """
+
+    nome = "Prompts"
+    placeholder = "Search prompts…   #tag   * favorites"
+
+    def __init__(
+        self,
+        configuracao: Configuracao,
+        *,
+        area: PortaAreaDeTransferencia,
+        lancar: Callable[[str], None],
+    ) -> None:
+        self._configuracao = configuracao
+        self._area = area
+        self._lancar = lancar
+        self._todos: list[_prompts.Prompt] = []
+        self._achados: list[_prompts.Prompt] = []
+        self.gestos = (
+            Gesto("<Return>", "↵", "Paste", self._colar, esconde=True),
+            Gesto("<Control-Return>", "Ctrl ↵", "Copy", self._copiar, esconde=True),
+            Gesto("<Control-f>", "Ctrl F", "Favorite", self._favoritar),
+            Gesto("<Control-e>", "Ctrl E", "Edit", self._editar, esconde=True),
+            Gesto("<Control-n>", "Ctrl N", "New", self._novo),
+        )
+
+    @property
+    def vazia(self) -> str:
+        if not self._todos:
+            return "No prompts yet — copy one and press Ctrl N, or type: stash <title> #tag"
+        return "No prompt matches — Ctrl N stashes the clipboard with this title"
+
+    def linhas(self, texto: str) -> list[Linha]:
+        self._todos = _prompts.listar(self._configuracao.vault)
+        self._achados = _prompts.filtrar(self._todos, texto)
+        return [
+            Linha(
+                "★" if prompt.favorito else "❝",
+                prompt.titulo,
+                prompt.primeira_linha(),
+                " ".join(f"#{tag}" for tag in prompt.tags),
+            )
+            for prompt in self._achados
+        ]
+
+    def detalhe(self, indice: int) -> str:
+        return self._achados[indice].conteudo if 0 <= indice < len(self._achados) else ""
+
+    def prompt(self, indice: int | None) -> _prompts.Prompt | None:
+        if indice is None or not 0 <= indice < len(self._achados):
+            return None
+        return self._achados[indice]
+
+    def _colar(self, indice: int | None, _texto: str) -> None:
+        if (prompt := self.prompt(indice)) is not None:
+            self._area.colar(prompt.conteudo)
+
+    def _copiar(self, indice: int | None, _texto: str) -> None:
+        if (prompt := self.prompt(indice)) is not None:
+            self._area.copiar(prompt.conteudo)
+
+    def _editar(self, indice: int | None, _texto: str) -> None:
+        if (prompt := self.prompt(indice)) is not None:
+            self._lancar(uri_da_nota(self._configuracao, prompt.caminho))
+
+    def _favoritar(self, indice: int | None, texto: str) -> Efeito | None:
+        prompt = self.prompt(indice)
+        if prompt is None:
+            return None
+        novo = _prompts.alternar_favorito(self._configuracao.vault, prompt)
+        return Efeito(
+            selecionar=self._posicao(novo.caminho, texto),
+            mensagem=f"★ {novo.titulo}" if novo.favorito else f"Unfavorited {novo.titulo}",
+        )
+
+    def _novo(self, _indice: int | None, texto: str) -> Efeito:
+        pedido = _prompts.interpretar_pedido(texto)
+        try:
+            prompt = _prompts.guardar(self._configuracao.vault, pedido, self._area.ler())
+        except _prompts.PromptJaExiste:
+            return Efeito(mensagem="A prompt with this title already exists")
+        except _prompts.PromptRecusado:
+            return Efeito(mensagem="Nothing to stash — the clipboard is empty or the title is invalid")
+        return Efeito(selecionar=self._posicao(prompt.caminho, texto), mensagem=f"Stashed {prompt.titulo}")
+
+    def _posicao(self, caminho: str, texto: str) -> int | None:
+        achados = _prompts.filtrar(_prompts.listar(self._configuracao.vault), texto)
+        return next((indice for indice, prompt in enumerate(achados) if prompt.caminho == caminho), None)
+
+
 def comandos_padrao(
     *,
     fontes_da_daily: Callable[[Configuracao], Sequence[PortaFonte]],
@@ -332,8 +469,9 @@ def comandos_padrao(
     busca: Callable[[Configuracao], PortaBusca],
     lancar: Callable[[str], None] | None = None,
     relogio: Callable[[], datetime] | None = None,
+    area: PortaAreaDeTransferencia | None = None,
 ) -> tuple[Comando, ...]:
-    """Os seis comandos que tocam o vault, com as portas injetadas.
+    """Os oito comandos que tocam o vault, com as portas injetadas.
 
     As fábricas recebem a configuração a cada chamada — é o que faz uma
     configuração recarregada valer no comando seguinte. `record` e
@@ -341,6 +479,7 @@ def comandos_padrao(
     """
     agora = relogio or (lambda: datetime.now().astimezone())
     lancar_alvo = lancar or _lancar_no_windows
+    area_de_transferencia = area or AreaDoWindows()
 
     def daily(_argumento: str, configuracao: Configuracao) -> Resultado:
         resultado = gerar_daily(
@@ -389,6 +528,22 @@ def comandos_padrao(
     def abrir(_argumento: str, configuracao: Configuracao) -> None:
         lancar_alvo(uri_da_nota(configuracao, _vault.CAMINHO_DA_NOTA_VIVA))
         return None
+
+    def guardar_prompt(argumento: str, configuracao: Configuracao) -> Resultado:
+        pedido = _prompts.interpretar_pedido(argumento)
+        try:
+            prompt = _prompts.guardar(configuracao.vault, pedido, area_de_transferencia.ler())
+        except _prompts.PromptJaExiste as erro:
+            return Resultado(TITULO_DO_PROMPT_QUE_JA_EXISTE, str(erro), nota=erro.caminho)
+        except _prompts.PromptRecusado as erro:
+            return Resultado(TITULO_DO_PROMPT_RECUSADO, str(erro))
+        return resultado_do_prompt_guardado(prompt)
+
+    def lista_de_prompts(configuracao: Configuracao) -> ListaDePrompts:
+        return ListaDePrompts(configuracao, area=area_de_transferencia, lancar=lancar_alvo)
+
+    def prompts_fora_da_janela(_argumento: str, _configuracao: Configuracao) -> Resultado:
+        return Resultado("Prompts", "A lista de prompts abre na palheta: ctrl+space e prompts.")
 
     return (
         Comando(
@@ -442,6 +597,25 @@ def comandos_padrao(
             rotulo="To-do",
             descricao=f"Add a to-do to {SECAO_FAZER} in daily/atual.md; you tick it yourself",
             icone="☐",
+        ),
+        Comando(
+            "prompts",
+            "busca os prompts guardados em prompts/ e cola o escolhido",
+            prompts_fora_da_janela,
+            parametro="search",
+            rotulo="Search prompts",
+            descricao="Paste a saved prompt from prompts/; #tag and * filter",
+            icone="❝",
+            lista=lista_de_prompts,
+        ),
+        Comando(
+            "stash",
+            "guarda o que está no clipboard como prompt em prompts/",
+            guardar_prompt,
+            parametro="title #tag",
+            rotulo="Stash prompt",
+            descricao="Save the clipboard as a prompt in prompts/; * marks it favorite",
+            icone="⧉",
         ),
     )
 

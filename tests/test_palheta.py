@@ -55,7 +55,7 @@ FUSO = timezone(timedelta(hours=-3))
 MOMENTO = datetime(2026, 9, 12, 14, 3, tzinfo=FUSO)
 PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 NOTA_DA_RESPOSTA = "respostas/2026-09-12-1403-o-que-ficou-decidido-sobre-a-retencao-de-180-dias.md"
-COMANDOS = ("daily", "note", "doubt", "do", "ask", "open", "record", "settings")
+COMANDOS = ("daily", "note", "doubt", "do", "ask", "open", "record", "settings", "prompts", "stash")
 
 
 class AvisoEspiao:
@@ -467,7 +467,7 @@ def test_texto_vazio_nao_faz_nada_e_comando_desconhecido_diz_o_que_existe(montar
     assert "'vagas'" in texto and "ask <question>" in texto
 
 
-def test_sao_os_oito_comandos_e_nenhum_futuro_nem_ajuda(montar):
+def test_sao_os_dez_comandos_e_nenhum_futuro_nem_ajuda(montar):
     palheta = montar()
 
     assert {comando.nome for comando in palheta.comandos} == set(COMANDOS)
@@ -531,6 +531,8 @@ ACOES = (
     Acao("open", "▤", "Open note", "daily/atual.md in Obsidian"),
     Acao("daily", "☀", "Generate daily"),
     Acao("record", "●", lambda: "Start recording"),
+    Acao("prompts", "❝", "Search prompts", aceita_argumento=True),
+    Acao("stash", "⧉", "Stash prompt", aceita_argumento=True),
     Acao("ask", "?", "Ask", aceita_argumento=True),
     Acao("note", "✎", "Note", aceita_argumento=True),
     Acao("doubt", "¿", "Doubt", aceita_argumento=True),
@@ -595,10 +597,10 @@ def test_o_texto_igual_ao_rotulo_vira_o_comando():
 
 def test_tab_completa_o_comando_e_deixa_o_espaco_quando_ha_argumento():
     assert completar(ACOES[1]) == "daily"
-    assert completar(ACOES[3]) == "ask "
-    assert completar(ACOES[4]) == "note "
-    assert completar(ACOES[6]) == "do "
-    assert completar(ACOES[7]) == "settings"
+    assert completar(ACOES[5]) == "ask "
+    assert completar(ACOES[6]) == "note "
+    assert completar(ACOES[8]) == "do "
+    assert completar(ACOES[9]) == "settings"
 
 
 def test_o_rotulo_de_uma_acao_pode_ser_funcao():
@@ -868,3 +870,40 @@ def test_o_subcomando_bandeja_monta_a_palheta_com_os_fakes_e_o_atalho(configurac
     resultado = daily.rodar("", palheta.configuracao)
     assert resultado.nota == "daily/atual.md"
     assert (caminho_do_vault / "daily" / "atual.md").is_file()
+
+
+def test_a_janela_de_verdade_mostra_sete_linhas_e_rola_com_a_selecao_e_a_barra():
+    tk = pytest.importorskip("tkinter")
+    from whis.janela_da_palheta import ALTURA_DA_LINHA, LARGURA, MAXIMO_DE_LINHAS, JanelaDaPalheta
+
+    try:
+        janela = JanelaDaPalheta()
+    except tk.TclError as erro:
+        pytest.skip(f"sem tela para o Tk: {erro}")
+    janela.definir_acoes(ACOES)
+    try:
+        janela.mostrar()
+        janela.raiz.update()
+        assert len(ACOES) > MAXIMO_DE_LINHAS and janela.rola()
+        assert len(janela.titulos_desenhados()) == MAXIMO_DE_LINHAS
+        assert janela._tela.find_withtag("barra")
+
+        for _ in range(len(ACOES) - 1):
+            janela._mover_selecao(1)
+        assert janela.selecionada().nome == "settings"
+        assert janela.titulos_desenhados()[-1] == "Settings"
+        assert janela.primeira_desenhada() == len(ACOES) - MAXIMO_DE_LINHAS
+
+        topo = janela._topo_das_linhas
+        janela._ao_clicar(type("Evento", (), {"x": LARGURA - 5, "y": topo})())
+        assert janela.primeira_desenhada() == 0
+        assert janela.titulos_desenhados()[0] == "Open note"
+        assert janela.selecionada().nome == ACOES[MAXIMO_DE_LINHAS - 1].nome
+        janela._ao_arrastar(type("Evento", (), {"x": 300, "y": topo + MAXIMO_DE_LINHAS * ALTURA_DA_LINHA})())
+        assert janela.primeira_desenhada() == len(ACOES) - MAXIMO_DE_LINHAS
+
+        janela.digitar("d")
+        assert not janela.rola() and not janela._tela.find_withtag("barra")
+        assert janela.primeira_desenhada() == 0
+    finally:
+        janela.raiz.destroy()

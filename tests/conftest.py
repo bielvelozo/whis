@@ -170,3 +170,21 @@ def toasts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, tuple[str, s
 
     monkeypatch.setattr(avisos, "avisar", fingir)
     return mostrados
+
+
+@pytest.fixture(autouse=True)
+def area_de_transferencia_trancada(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nenhum teste lê, troca ou cola no clipboard de quem roda a suíte.
+
+    Colar um prompt manda Ctrl+V para a janela que estiver ativa — numa
+    execução da suíte, a do usuário. Quem testa a lista de prompts injeta uma
+    área fake; chegar na de verdade é erro do teste.
+    """
+    from whis import area_de_transferencia
+
+    def recusar(*_argumentos, **_nomeados):
+        raise AssertionError("teste chegou no clipboard de verdade — injete uma área fake")
+
+    monkeypatch.setattr(area_de_transferencia, "lembrar_janela_anterior", lambda: None)
+    for nome in ("ler", "copiar", "colar"):
+        monkeypatch.setattr(area_de_transferencia, nome, recusar)

@@ -431,12 +431,27 @@ def executar(
     janela = JanelaDaPalheta()
     janela.ao_enviar(palheta.despachar)
     palheta.gravando = lambda: coletor.situacao().gravando
-    janela.definir_acoes(
-        [
-            Acao(comando.nome, comando.icone, comando.rotulo_atual, comando.descricao, bool(comando.parametro))
-            for comando in palheta.acoes()
-        ]
-    )
+    def abre(comando):
+        if comando.lista is None:
+            return None
+        return lambda: comando.lista(palheta.configuracao)
+
+    def definir_acoes() -> None:
+        janela.definir_acoes(
+            [
+                Acao(
+                    comando.nome,
+                    comando.icone,
+                    comando.rotulo_atual,
+                    comando.descricao,
+                    bool(comando.parametro),
+                    abre=abre(comando),
+                )
+                for comando in palheta.acoes()
+            ]
+        )
+
+    definir_acoes()
 
     def abrir_palheta() -> None:
         janela.pedir(janela.mostrar)
