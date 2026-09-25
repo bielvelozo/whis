@@ -159,6 +159,8 @@ def configurar_logs(verboso: bool = False) -> None:
         datefmt="%H:%M:%S",
         stream=sys.stderr,
     )
+    if not verboso:
+        logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 def montar_portas(
