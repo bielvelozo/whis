@@ -18,6 +18,7 @@ from collections import deque
 from collections.abc import Iterable
 from dataclasses import replace
 from datetime import date, datetime, time
+from pathlib import Path
 
 from .atendente import Mensagem
 from .busca import Citacao, Resposta
@@ -28,10 +29,18 @@ from .nota_viva import NotaViva, id_do_item
 from .portas import (
     EU,
     OUTROS,
+    Aula,
     CanaisDaGravacao,
+    Candidato,
     Daily,
+    Escolha,
     Fala,
+    Formacao,
+    ItemEscolhido,
     ItemNovo,
+    Janelas,
+    Medida,
+    Publicacao,
     Resumo,
     ResumoDoDia,
     Transcricao,
@@ -414,3 +423,159 @@ class DMFake:
 
 def _transportar(evento: Evento, dia: date) -> Evento:
     return replace(evento, momento=datetime.combine(dia, evento.momento.time()).astimezone())
+
+
+#: O que os fakes do jornal dizem ter medido: plausível, com as janelas do plano
+#: preenchidas para o cabeçalho da edição ter o que mostrar.
+MEDIDA_DO_EDITOR_FAKE = Medida(
+    custo_usd=0.40,
+    segundos=48.0,
+    plano_primeiro=Janelas(cinco_horas=30, sete_dias=60),
+    plano_ultimo=Janelas(cinco_horas=31, sete_dias=60),
+)
+MEDIDA_DA_FORMACAO_FAKE = Medida(
+    custo_usd=0.24,
+    segundos=95.0,
+    plano_primeiro=Janelas(cinco_horas=31, sete_dias=60),
+    plano_ultimo=Janelas(cinco_horas=31, sete_dias=61),
+)
+MEDIDA_DA_PUBLICACAO_FAKE = Medida(
+    custo_usd=0.07,
+    segundos=32.0,
+    plano_primeiro=Janelas(cinco_horas=31, sete_dias=61),
+    plano_ultimo=Janelas(cinco_horas=31, sete_dias=61),
+)
+
+URL_DO_JORNAL_FAKE = "https://claude.ai/artifact/fake-jornal"
+
+
+class EditorFake:
+    """Editor que escolhe os `min` primeiros de cada seção, sem chamar ninguém.
+
+    O título ganha `[fake] ` na frente para a edição denunciar de onde veio; o
+    resumo é o do feed. Respeita o teto de 2 itens da mesma fonte por seção e
+    devolve até 2 do time. Guarda o que recebeu.
+    """
+
+    def __init__(self, medida: Medida = MEDIDA_DO_EDITOR_FAKE, erro: Exception | None = None) -> None:
+        self._medida = medida
+        self._erro = erro
+        self.candidatos_recebidos: dict[str, tuple[Candidato, ...]] = {}
+        self.limites_recebidos: dict[str, tuple[int, int]] = {}
+        self.time_recebido: tuple[Candidato, ...] = ()
+
+    def escolher(
+        self,
+        candidatos: dict[str, tuple[Candidato, ...]],
+        limites: dict[str, tuple[int, int]],
+        time: tuple[Candidato, ...],
+    ) -> Escolha:
+        self.candidatos_recebidos = dict(candidatos)
+        self.limites_recebidos = dict(limites)
+        self.time_recebido = tuple(time)
+        if self._erro is not None:
+            raise self._erro
+        secoes = {
+            secao: _primeiros_por_fonte(lista, limites.get(secao, (3, 5))[0])
+            for secao, lista in candidatos.items()
+        }
+        return Escolha(secoes=secoes, time=_primeiros_por_fonte(time, 2), medida=self._medida)
+
+
+def _primeiros_por_fonte(candidatos: Iterable[Candidato], quantos: int) -> tuple[ItemEscolhido, ...]:
+    escolhidos: list[ItemEscolhido] = []
+    por_fonte: dict[str, int] = {}
+    for candidato in candidatos:
+        if len(escolhidos) >= quantos:
+            break
+        if por_fonte.get(candidato.fonte, 0) >= 2:
+            continue
+        por_fonte[candidato.fonte] = por_fonte.get(candidato.fonte, 0) + 1
+        escolhidos.append(
+            ItemEscolhido(candidato=candidato, titulo=f"[fake] {candidato.titulo}", resumo=candidato.resumo)
+        )
+    return tuple(escolhidos)
+
+
+class FormacaoFake:
+    """Formação que ensina sempre as mesmas três aulas: uma de software, duas de carro.
+
+    Cada aula traz uma URL `https://` em `fontes` e a linha da trilha do dia
+    recebido. Guarda a data e a trilha que recebeu.
+    """
+
+    def __init__(self, medida: Medida = MEDIDA_DA_FORMACAO_FAKE, erro: Exception | None = None) -> None:
+        self._medida = medida
+        self._erro = erro
+        self.data_recebida: date | None = None
+        self.trilha_recebida: str | None = None
+
+    def ensinar(self, data: date, trilha: str) -> Formacao:
+        self.data_recebida = data
+        self.trilha_recebida = trilha
+        if self._erro is not None:
+            raise self._erro
+        dia = data.isoformat()
+        return Formacao(
+            software=Aula(
+                titulo="[fake] Testes de contrato",
+                texto=(
+                    "Um teste de contrato fixa o que uma porta promete, não como o adaptador "
+                    "faz. Por que isso importa: trocar o adaptador não quebra quem o usa."
+                ),
+                fontes=("https://martinfowler.com/bliki/ContractTest.html",),
+                trilha=f"- {dia} — software: testes de contrato",
+            ),
+            carros=(
+                Aula(
+                    titulo="[fake] O motor rotativo",
+                    texto=(
+                        "O Wankel troca pistões por um rotor triangular. Por que isso importa: "
+                        "explica o som e a fama do RX-7."
+                    ),
+                    fontes=("https://en.wikipedia.org/wiki/Wankel_engine",),
+                    trilha=f"- {dia} — carros: motor rotativo Wankel",
+                ),
+                Aula(
+                    titulo="[fake] O que é JDM",
+                    texto=(
+                        "JDM são os carros feitos para o mercado japonês. Por que isso importa: "
+                        "é a porta de entrada da cultura que ele começou a acompanhar."
+                    ),
+                    fontes=("https://en.wikipedia.org/wiki/Japanese_domestic_market",),
+                    trilha=f"- {dia} — carros: o que é JDM",
+                ),
+            ),
+            medida=self._medida,
+        )
+
+
+class PublicacaoFake:
+    """Publicação que não publica: devolve uma URL fixa e guarda o que recebeu.
+
+    `pagina` é o HTML lido na hora da chamada — a pasta da edição é temporária
+    e pode sumir antes de o teste olhar.
+    """
+
+    def __init__(
+        self,
+        url: str = URL_DO_JORNAL_FAKE,
+        medida: Medida = MEDIDA_DA_PUBLICACAO_FAKE,
+        erro: Exception | None = None,
+    ) -> None:
+        self._url = url
+        self._medida = medida
+        self._erro = erro
+        self.html: Path | None = None
+        self.capas: dict[str, Path] = {}
+        self.url_recebida: str | None = None
+        self.pagina: str | None = None
+
+    def publicar(self, html: Path, capas: dict[str, Path], url_atual: str | None) -> Publicacao:
+        self.html = html
+        self.capas = dict(capas)
+        self.url_recebida = url_atual
+        self.pagina = html.read_text(encoding="utf-8") if html.is_file() else None
+        if self._erro is not None:
+            raise self._erro
+        return Publicacao(url=self._url, medida=self._medida)

@@ -20,6 +20,7 @@ import json
 import logging
 import os
 from collections.abc import Iterable
+from pathlib import Path
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -360,3 +361,23 @@ def _registrar_resposta_ilegivel(bruto: str) -> None:
         _TRECHO_DE_DIAGNOSTICO,
         bruto.strip()[:_TRECHO_DE_DIAGNOSTICO],
     )
+
+
+def caminho_do_cli(preenchido: str | None) -> str | None:
+    """O `claude.exe` que os adaptadores do jornal passam como `cli_path`.
+
+    O CLI empacotado no SDK (2.1.238) não emite as janelas do plano e deixa o
+    `files` do Artifact atrás de um flag remoto; o do npm (2.1.274 ou mais novo)
+    faz as duas coisas. Vence `[claude].cli` preenchido; sem ele, o do npm se
+    existir; senão `None`, e o SDK cai no empacotado. O `.cmd` do npm não serve:
+    o SDK recusa script batch, tem de ser o `.exe` de `bin/`.
+    """
+    if preenchido and preenchido.strip():
+        return preenchido.strip()
+    appdata = os.environ.get("APPDATA")
+    if not appdata:
+        return None
+    do_npm = (
+        Path(appdata) / "npm" / "node_modules" / "@anthropic-ai" / "claude-code" / "bin" / "claude.exe"
+    )
+    return str(do_npm) if do_npm.is_file() else None

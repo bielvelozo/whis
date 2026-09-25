@@ -1,4 +1,4 @@
-"""Portas dos serviços externos: STT, resumo de reunião, resumo do dia e daily.
+"""Portas dos serviços externos: STT, resumos, daily e as três do jornal.
 
 Nem o pipeline, nem o diário, nem a daily falam com um provedor concreto —
 falam com estas portas. Os adaptadores reais (Deepgram, Claude) implementam os
@@ -9,6 +9,7 @@ testes. Trocar de provedor não toca nenhuma das costuras.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
@@ -206,4 +207,139 @@ class PortaDaily(Protocol):
 
         Levanta `ErroDeDaily` quando o serviço falha.
         """
+        ...
+
+
+@dataclass(frozen=True)
+class Candidato:
+    """Um item de feed que passou pela coleta e pode entrar no jornal.
+
+    `id` é único na edição inteira (`tecnologia-3`), e é só por ele que o
+    editor se refere a um item: o que o modelo não recebeu não existe.
+    """
+
+    id: str
+    secao: str
+    fonte: str
+    titulo: str
+    link: str
+    resumo: str = ""
+    data: datetime | None = None
+    imagem: str | None = None
+    destaque: bool = False
+
+
+@dataclass(frozen=True)
+class Janelas:
+    """A utilização das janelas do plano da conta, em pontos percentuais."""
+
+    cinco_horas: int | None = None
+    sete_dias: int | None = None
+
+
+@dataclass(frozen=True)
+class Medida:
+    """Quanto uma chamada ao Claude custou e o que o plano marcava nela.
+
+    `plano_primeiro` e `plano_ultimo` são a primeira e a última leitura das
+    janelas vistas durante a chamada; `None` quando o CLI não as emitiu.
+    """
+
+    custo_usd: float | None = None
+    segundos: float = 0.0
+    plano_primeiro: Janelas | None = None
+    plano_ultimo: Janelas | None = None
+
+
+@dataclass(frozen=True)
+class ItemEscolhido:
+    """Um candidato que o editor pôs no jornal, com título e resumo em português."""
+
+    candidato: Candidato
+    titulo: str
+    resumo: str
+
+
+@dataclass(frozen=True)
+class Escolha:
+    """O que o editor devolve: os itens de cada seção e os do time, já validados."""
+
+    secoes: dict[str, tuple[ItemEscolhido, ...]]
+    time: tuple[ItemEscolhido, ...] = ()
+    medida: Medida = field(default_factory=Medida)
+
+
+class ErroDeEditor(RuntimeError):
+    """A escolha falhou; o jornal sai com os itens mais novos, sem resumo."""
+
+
+@runtime_checkable
+class PortaEditor(Protocol):
+    """Escolhe, traduz e resume os candidatos de cada seção."""
+
+    def escolher(
+        self,
+        candidatos: dict[str, tuple[Candidato, ...]],
+        limites: dict[str, tuple[int, int]],
+        time: tuple[Candidato, ...],
+    ) -> Escolha:
+        """`limites` é `{secao: (minimo, maximo)}`. Levanta `ErroDeEditor`."""
+        ...
+
+
+@dataclass(frozen=True)
+class Aula:
+    """Um texto da formação, escrito a partir das páginas em `fontes`."""
+
+    titulo: str
+    texto: str
+    fontes: tuple[str, ...]
+    trilha: str = ""
+
+
+@dataclass(frozen=True)
+class Formacao:
+    """O que a formação devolve: uma aula de software e as de carro aceitas."""
+
+    software: Aula | None = None
+    carros: tuple[Aula, ...] = ()
+    medida: Medida = field(default_factory=Medida)
+
+    def aulas(self) -> tuple[Aula, ...]:
+        return ((self.software,) if self.software else ()) + self.carros
+
+
+class ErroDeFormacao(RuntimeError):
+    """A formação falhou; o jornal sai sem *Aprender hoje* nem *Para aprender*."""
+
+
+@runtime_checkable
+class PortaFormacao(Protocol):
+    """Pesquisa na web e ensina o próximo passo da trilha."""
+
+    def ensinar(self, data: date, trilha: str) -> Formacao:
+        """`trilha` é o texto de `noticias/trilha.md`. Levanta `ErroDeFormacao`."""
+        ...
+
+
+@dataclass(frozen=True)
+class Publicacao:
+    """O endereço do artifact publicado e quanto a publicação custou."""
+
+    url: str
+    medida: Medida = field(default_factory=Medida)
+
+
+class ErroDePublicacao(RuntimeError):
+    """A página não saiu; a nota da edição já existe no vault."""
+
+
+@runtime_checkable
+class PortaPublicacao(Protocol):
+    """Publica a página da edição como artifact, no mesmo endereço quando houver um."""
+
+    def publicar(
+        self, html: Path, capas: dict[str, Path], url_atual: str | None
+    ) -> Publicacao:
+        """`capas` é `{"img/N.jpg": caminho local}`. Levanta `ErroDePublicacao`."""
         ...
