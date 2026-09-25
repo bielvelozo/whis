@@ -55,7 +55,7 @@ FUSO = timezone(timedelta(hours=-3))
 MOMENTO = datetime(2026, 9, 12, 14, 3, tzinfo=FUSO)
 PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 NOTA_DA_RESPOSTA = "respostas/2026-09-12-1403-o-que-ficou-decidido-sobre-a-retencao-de-180-dias.md"
-COMANDOS = ("daily", "note", "doubt", "do", "ask", "open", "record", "settings", "prompts", "stash")
+COMANDOS = ("daily", "news", "note", "doubt", "do", "ask", "open", "record", "settings", "prompts", "stash")
 
 
 class AvisoEspiao:
@@ -531,6 +531,7 @@ ACOES = (
     Acao("open", "▤", "Open note", "daily/atual.md in Obsidian"),
     Acao("daily", "☀", "Generate daily"),
     Acao("record", "●", lambda: "Start recording"),
+    Acao("news", "📰", "Generate news"),
     Acao("prompts", "❝", "Search prompts", aceita_argumento=True),
     Acao("stash", "⧉", "Stash prompt", aceita_argumento=True),
     Acao("ask", "?", "Ask", aceita_argumento=True),
@@ -560,8 +561,8 @@ def test_o_nome_exato_vem_na_frente_de_quem_so_comeca_igual():
 
 
 def test_o_rotulo_tambem_filtra_e_o_nome_do_comando_vem_primeiro():
-    assert [acao.nome for acao in filtrar(ACOES, "generate")] == ["daily"]
-    assert [acao.nome for acao in filtrar(ACOES, "generate daily")] == ["daily"]
+    assert [acao.nome for acao in filtrar(ACOES, "generate")] == ["daily", "news"]
+    assert [acao.nome for acao in filtrar(ACOES, "generate daily")] == ["daily", "news"]
     assert [acao.nome for acao in filtrar(ACOES, "Open note")] == ["open"]
     assert [acao.nome for acao in filtrar(ACOES, "start")] == ["record"]
     assert [acao.nome for acao in filtrar(ACOES, "no")] == ["note", "open"]
@@ -597,10 +598,10 @@ def test_o_texto_igual_ao_rotulo_vira_o_comando():
 
 def test_tab_completa_o_comando_e_deixa_o_espaco_quando_ha_argumento():
     assert completar(ACOES[1]) == "daily"
-    assert completar(ACOES[5]) == "ask "
-    assert completar(ACOES[6]) == "note "
-    assert completar(ACOES[8]) == "do "
-    assert completar(ACOES[9]) == "settings"
+    assert completar(ACOES[6]) == "ask "
+    assert completar(ACOES[7]) == "note "
+    assert completar(ACOES[9]) == "do "
+    assert completar(ACOES[10]) == "settings"
 
 
 def test_o_rotulo_de_uma_acao_pode_ser_funcao():
@@ -671,7 +672,7 @@ def test_a_janela_de_verdade_filtra_destaca_e_some_no_enter_e_no_esc():
         assert janela._campo.tag_ranges("comando") and str(janela._campo.get("comando.first", "comando.last")) == "ask"
 
         janela.digitar("generate daily")
-        assert [acao.nome for acao in janela.acoes_visiveis()] == ["daily"]
+        assert [acao.nome for acao in janela.acoes_visiveis()] == ["daily", "news"]
         assert str(janela._campo.get("comando.first", "comando.last")) == "generate daily"
 
         janela.digitar("vag")

@@ -38,6 +38,7 @@ api_key = "dg-#segredo\\"com aspas\\" e \\\\ barra"
 
 [claude]
 modelo = "claude-opus-5"
+cli = "C:/Users/gabí/.local/bin/claude.exe"
 
 [audio]
 dispositivo_microfone = "Microfone (Realtek)"
@@ -52,6 +53,10 @@ ativa = false
 referencias_pessoais = ["whis", "meu-blog"]
 contexto_do_time = "Ele disse \\"ok\\".\\nSegunda linha com \\\\ e acento: ação"
 horarios = { segunda = "13:55", quarta = "10:25", domingo = "09:00" }
+
+[noticias]
+ativa = false
+horario = "07:45"
 
 [palheta]
 atalho = "ctrl+shift+k"
@@ -109,6 +114,8 @@ def test_ida_e_volta_devolve_a_mesma_configuracao(completo, tmp_path: Path):
     assert dados["privacidade"]["excluir"] == ["senha", 'a"b', "c\\d"]
     assert dados["daily"]["horarios"] == {"segunda": "13:55", "quarta": "10:25", "domingo": "09:00"}
     assert dados["daily"]["ativa"] is False
+    assert dados["noticias"] == {"ativa": False, "horario": "07:45"}
+    assert dados["claude"]["cli"] == "C:/Users/gabí/.local/bin/claude.exe"
     assert sem_origem(carregar(destino)) == sem_origem(completo)
 
 
@@ -157,7 +164,7 @@ def test_toda_chave_do_modelo_e_escrita_e_nenhuma_a_mais(completo):
     gerado = tomllib.loads(gerar_toml(valores_de(completo)))
 
     assert _achatar(gerado).keys() == _achatar(do_modelo).keys()
-    assert len(CHAVES) == len(_achatar(do_modelo)) == 28
+    assert len(CHAVES) == len(_achatar(do_modelo)) == 31
 
 
 def _achatar(dados: dict) -> dict[str, object]:

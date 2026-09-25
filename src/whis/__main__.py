@@ -3,16 +3,17 @@ r"""Entrada de linha de comando do Whis.
 Nove subcomandos sobre a mesma configuração local e sobre as quatro costuras
 do projeto — `pipeline.processar` para a reunião, `diario.gerar_diario` para o
 dia civil, `daily.gerar_daily` para a nota viva da daily, `pergunta.responder`
-para a busca no vault::
+para a busca no vault — e `jornal.gerar_jornal` para o jornal de notícias::
 
     python -m whis init
     python -m whis bandeja
-    python -m whis windows [--daily] [--limpeza] [--remover]
+    python -m whis windows [--daily] [--news] [--limpeza] [--remover]
     python -m whis processar <pasta-da-gravacao>
     python -m whis reprocessar [<pasta> ...]
     python -m whis limpar [--simular]
     python -m whis diario [YYYY-MM-DD] [--simular]
     python -m whis daily [--anotar TEXTO] [--simular] [--agendada]
+    python -m whis news [--agendada] [--fakes] [--simular]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -23,15 +24,22 @@ continua o fio do terminal entre uma chamada e outra.
 
 `windows` amarra o Whis à máquina: o atalho de logon da bandeja sempre;
 `--daily` agenda a daily nos horários de `[daily].horarios` (e o vigia, que
-avisa por toast quando uma peça do Whis não subiu); `--limpeza` agenda a
-limpeza do áudio. As tarefas rodam mesmo que o PC estivesse desligado na hora.
+avisa por toast quando uma peça do Whis não subiu); `--news` agenda o jornal
+todo dia em `[noticias].horario` (e reagenda o vigia, se existe, para olhar
+por ele); `--limpeza` agenda a limpeza do áudio. As tarefas rodam mesmo que o
+PC estivesse desligado na hora.
 
 Por padrão o comando usa os **adaptadores reais** — Deepgram para o STT, Claude
 (conta do usuário, OAuth) para os resumos, git/Linear/Slack para as fontes.
 `--fakes` troca todos pelas portas fake: é como exercitar as costuras inteiras
 sem gastar crédito nem rede.
 
-`diario` e `daily` saem com um código que diz **se a nota nasceu, e inteira**:
+`news` gera o jornal do dia: a nota em `noticias/` e a página publicada como
+artifact, no mesmo endereço de sempre; `--simular` e `--fakes` montam nota e
+página numa pasta temporária, sem publicar nem escrever no vault (`--fakes`
+também sem chamar o Claude).
+
+`diario`, `daily` e `news` saem com um código que diz **se a nota nasceu, e inteira**:
 `0` completa, `3` parcial (uma fonte ou o Claude falhou — a nota existe,
 marcada), `1` não nasceu (todas as fontes falharam, nenhuma configurada, ou
 não havia nada no período). `2` é do argparse: erro de uso.
@@ -65,10 +73,14 @@ from .configuracao import (
 )
 from .conversa import Conversas
 from .daily import ResultadoDaDaily, gerar_daily
+from .jornal import JornalNaoNasceu, PortasDoJornal, ResultadoDoJornal, gerar_jornal
 from .diario import NenhumaFonteConfigurada, ResultadoDoDiario, gerar_diario
 from .fakes import (
     BuscaFake,
     DailyFake,
+    EditorFake,
+    FormacaoFake,
+    PublicacaoFake,
     ResumoDoDiaFake,
     ResumoFake,
     STTFake,
@@ -286,6 +298,27 @@ def montar_busca(configuracao: Configuracao, *, fakes: bool = False) -> PortaBus
     return BuscaClaude(
         modelo=configuracao.claude_modelo or None,
         fontes_ao_vivo=FontesAoVivo(fontes, excluir=configuracao.privacidade_excluir),
+    )
+
+
+def montar_portas_do_jornal(configuracao: Configuracao, *, fakes: bool = False) -> PortasDoJornal:
+    """As três portas do jornal: o Claude da conta do usuário, ou os fakes.
+
+    Os adaptadores do jornal usam o CLI de `[claude].cli` (vazio = o do npm,
+    se houver): é o que emite as janelas do plano e aceita as capas no artifact.
+    """
+    if fakes:
+        _log.warning("Usando editor, formação e publicação FAKE — nada é enviado ao Claude.")
+        return PortasDoJornal(EditorFake(), FormacaoFake(), PublicacaoFake())
+
+    from .jornal_claude import EditorClaude, FormacaoClaude, PublicacaoClaude
+
+    modelo = configuracao.claude_modelo or None
+    cli = configuracao.claude_cli or None
+    return PortasDoJornal(
+        editor=EditorClaude(modelo=modelo, cli=cli),
+        formacao=FormacaoClaude(modelo=modelo, cli=cli),
+        publicacao=PublicacaoClaude(cli=cli),
     )
 
 
@@ -542,6 +575,83 @@ def _avisar_que_a_daily_nasceu(configuracao: Configuracao, resultado: ResultadoD
     _palheta.avisar_resultado(configuracao, _palheta.resultado_da_daily(resultado))
 
 
+# -- news -------------------------------------------------------------------
+
+
+def _comando_news(args: argparse.Namespace) -> int:
+    """Gera o jornal de hoje, publica a página e avisa com o link.
+
+    Quem chama na hora agendada é a tarefa `Whis-Noticias`: o toast é o único
+    sinal de que a edição saiu, e o botão abre a página.
+    """
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    if args.agendada and not configuracao.noticias_ativa:
+        _log.info(
+            "Jornal desligado em [noticias].ativa de %s — a tarefa agendada não gerou nada.",
+            configuracao.origem,
+        )
+        return SAIDA_COMPLETA
+    portas = montar_portas_do_jornal(configuracao, fakes=args.fakes)
+    simular = args.simular or args.fakes
+    try:
+        resultado = gerar_jornal(
+            datetime.now().astimezone(),
+            configuracao,
+            editor=portas.editor,
+            formacao=portas.formacao,
+            publicacao=portas.publicacao,
+            simular=simular,
+        )
+    except JornalNaoNasceu as erro:
+        _log.error("O jornal não nasceu: %s", erro)
+        print(f"O jornal não nasceu: {erro}")
+        if not simular:
+            _palheta.avisar_resultado(configuracao, _palheta.resultado_do_jornal_que_nao_nasceu(erro))
+        return SAIDA_NAO_NASCEU
+
+    _relatar_jornal(resultado)
+    if not simular:
+        _palheta.avisar_resultado(configuracao, _palheta.resultado_do_jornal(resultado))
+    return SAIDA_PARCIAL if resultado.parcial else SAIDA_COMPLETA
+
+
+def _relatar_jornal(resultado: ResultadoDoJornal) -> None:
+    from .pagina_do_jornal import texto_do_custo, texto_do_plano
+
+    edicao = resultado.edicao
+    if resultado.simulado:
+        print(f"Simulação — nada publicado nem escrito no vault. Nota: {resultado.nota}")
+        print(f"Página: {resultado.pagina}")
+    else:
+        print(f"Jornal de {edicao.data.isoformat()} no vault: {resultado.nota}")
+        if resultado.url:
+            print(f"Página: {resultado.url}")
+        else:
+            print(f"A página não saiu: {resultado.falha_da_publicacao}")
+    for secao in edicao.secoes:
+        print(f"  {secao.titulo}: {len(secao.itens)}")
+    if edicao.time:
+        print(f"  {edicao.time_nome or 'Time'}: {len(edicao.time)}")
+    aulas = (1 if edicao.aprender else 0) + len(edicao.para_aprender)
+    print(f"  Aulas: {aulas}")
+    print(
+        " · ".join(
+            parte
+            for parte in (
+                f"{edicao.segundos:.0f} s",
+                texto_do_custo(edicao.custo_usd),
+                texto_do_plano(edicao.plano_antes, edicao.plano_depois),
+            )
+            if parte
+        )
+    )
+    for aviso in edicao.avisos:
+        print(f"Faltou: {aviso}")
+    if edicao.fontes_com_falha:
+        print("Não responderam: " + ", ".join(edicao.fontes_com_falha))
+
+
 def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
     """Acrescenta uma linha em *Pontos* de `daily/atual.md` e sai, sem coletar nada."""
     if not texto.strip():
@@ -687,6 +797,7 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
         fontes_da_daily=lambda atual: montar_fontes_da_daily(atual, fakes=fakes),
         roteiro_da_daily=lambda atual: montar_roteiro_da_daily(atual, fakes=fakes),
         busca=lambda atual: montar_busca(atual, fakes=fakes),
+        portas_do_jornal=lambda atual: montar_portas_do_jornal(atual, fakes=fakes),
     )
     palheta = _palheta.Palheta(comandos, configuracao)
 
@@ -764,7 +875,7 @@ def _horarios_por_extenso(configuracao: Configuracao) -> str:
 
 
 def _comando_windows(args: argparse.Namespace) -> int:
-    """Amarra (ou desamarra) o Whis ao Windows: logon, daily, vigia e limpeza.
+    """Amarra (ou desamarra) o Whis ao Windows: logon, daily, jornal, vigia e limpeza.
 
     Amarrações explícitas, cada uma com o seu `--remover`. A limpeza agendada
     só existe se o usuário pedir: apagar áudio é irreversível e não pode ser
@@ -774,12 +885,14 @@ def _comando_windows(args: argparse.Namespace) -> int:
     """
     from . import automacao
 
-    precisa_da_configuracao = bool(args.config) or (args.daily and not args.remover)
+    precisa_da_configuracao = bool(args.config) or (
+        (args.daily or args.news) and not args.remover
+    )
     configuracao = _configuracao(args) if precisa_da_configuracao else None
     origem = (configuracao.origem if configuracao else None) or caminho_padrao()
     feitos: list[str] = []
     so_remover_legado = args.remover_legado and not (
-        args.atendente or args.limpeza or args.daily
+        args.atendente or args.limpeza or args.daily or args.news
     )
 
     if args.daily and not args.remover and not configuracao.daily_horarios:
@@ -831,6 +944,19 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     if removido
                     else "Não havia vigia agendado."
                 )
+            if args.news:
+                removida = automacao.desagendar_noticias()
+                feitos.append(
+                    f"Tarefa '{automacao.NOME_DA_TAREFA_DO_JORNAL}' removida do Agendador."
+                    if removida
+                    else "Não havia tarefa do jornal agendada."
+                )
+                if removida and not args.daily and automacao.vigia_agendado():
+                    vigiadas = automacao.agendar_vigia(configuracao or _configuracao(args))
+                    feitos.append(
+                        f"Vigia reagendado como '{automacao.NOME_DA_TAREFA_DO_VIGIA}': "
+                        f"agora vigia {', '.join(vigiadas)}."
+                    )
             if args.limpeza:
                 removida = automacao.desagendar_limpeza()
                 feitos.append(
@@ -866,6 +992,26 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"'{automacao.NOME_DA_TAREFA}' — apaga só o áudio já virado "
                     f"nota e vencido pelo prazo de retenção."
                 )
+            if args.news:
+                automacao.agendar_noticias(configuracao)
+                feitos.append(
+                    f"Jornal agendado como '{automacao.NOME_DA_TAREFA_DO_JORNAL}': todo dia "
+                    f"às {configuracao.noticias_horario}. Com [noticias].ativa = false a "
+                    f"tarefa continua lá, mas sai sem gerar."
+                )
+                vigia_ja_agendado = not args.daily and automacao.vigia_agendado()
+                if vigia_ja_agendado:
+                    vigiadas = automacao.agendar_vigia(configuracao)
+                    feitos.append(
+                        f"Vigia reagendado como '{automacao.NOME_DA_TAREFA_DO_VIGIA}': "
+                        f"avisa por toast se {' ou '.join(vigiadas)} falhou ou a bandeja "
+                        f"não está no ar."
+                    )
+                elif not args.daily:
+                    feitos.append(
+                        f"'{automacao.NOME_DA_TAREFA_DO_VIGIA}' não está agendado: rode "
+                        f"'whis windows --daily' para ele olhar também pelo jornal."
+                    )
             if args.daily:
                 automacao.agendar_daily(configuracao)
                 feitos.append(
@@ -879,7 +1025,7 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"daily e todo dia às {automacao.HORA_DA_RONDA_DO_VIGIA} — avisa por "
                     f"toast se {' ou '.join(vigiadas)} falhou ou a bandeja não está no ar."
                 )
-            if args.limpeza or args.daily:
+            if args.limpeza or args.daily or args.news:
                 feitos.append(
                     "As tarefas rodam mesmo que o PC estivesse desligado na hora: assim "
                     "que ele ligar, e acordando a máquina se estiver em suspensão."
@@ -1071,6 +1217,35 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     daily_cmd.set_defaults(funcao=_comando_daily)
 
+    news_cmd = subcomandos.add_parser(
+        "news",
+        help="gera o jornal de hoje em noticias/ e publica a página",
+        description=(
+            "Lê os feeds de noticias/fontes.md, pede ao Claude da sua conta que escolha, "
+            "resuma e ensine, escreve noticias/AAAA-MM-DD.md e publica a página como "
+            "artifact, no mesmo endereço da edição anterior."
+        ),
+        epilog=CODIGOS_DE_SAIDA,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _acrescentar_config(news_cmd)
+    news_cmd.add_argument(
+        "--fakes",
+        action="store_true",
+        help="usa editor, formação e publicação fake: sem Claude, sem publicar, sem escrever no vault",
+    )
+    news_cmd.add_argument(
+        "--simular",
+        action="store_true",
+        help="gera nota e página numa pasta temporária, sem publicar e sem escrever no vault",
+    )
+    news_cmd.add_argument(
+        "--agendada",
+        action="store_true",
+        help="é como a tarefa Whis-Noticias chama: sai sem gerar nada se [noticias].ativa = false",
+    )
+    news_cmd.set_defaults(funcao=_comando_news)
+
     perguntar_cmd = subcomandos.add_parser(
         "perguntar",
         help="pergunta ao vault pelo terminal, citando as notas (para teste e diagnóstico)",
@@ -1135,9 +1310,10 @@ def construir_parser() -> argparse.ArgumentParser:
         description=(
             "Amarra o Whis ao Windows. Sozinho, cria o atalho de logon da bandeja. "
             "--daily agenda a daily nos dias e horas de [daily].horarios e o vigia que "
-            "avisa por toast quando uma peça do Whis não subiu; --limpeza agenda a "
-            "limpeza do áudio. As tarefas rodam mesmo que o PC estivesse desligado na "
-            "hora. --remover com os mesmos flags desfaz."
+            "avisa por toast quando uma peça do Whis não subiu; --news agenda o jornal "
+            "todo dia em [noticias].horario; --limpeza agenda a limpeza do áudio. As "
+            "tarefas rodam mesmo que o PC estivesse desligado na hora. --remover com os "
+            "mesmos flags desfaz."
         ),
     )
     _acrescentar_config(windows_cmd)
@@ -1152,6 +1328,14 @@ def construir_parser() -> argparse.ArgumentParser:
         help=(
             "também agenda a daily nos horários de [daily].horarios (tarefa Whis-Daily) "
             "e o vigia (Whis-Vigia)"
+        ),
+    )
+    windows_cmd.add_argument(
+        "--news",
+        action="store_true",
+        help=(
+            "também agenda o jornal todo dia em [noticias].horario (tarefa Whis-Noticias) "
+            "e reagenda o vigia, se existe, para olhar por ele"
         ),
     )
     windows_cmd.add_argument(

@@ -256,7 +256,7 @@ def test_o_vigia_so_vigia_a_limpeza_se_ela_estiver_agendada():
     assert automacao.agendar_vigia(configuracao, executar=sem_limpeza) == ["Whis-Daily"]
     assert parametro(sem_limpeza.registros()[0], "-Argumentos").endswith("-Tarefas Whis-Daily")
 
-    com_limpeza = ExecutorEspiao()
+    com_limpeza = ExecutorEspiao(**{"'Whis-Noticias'": 1})
     assert automacao.agendar_vigia(configuracao, executar=com_limpeza) == [
         "Whis-Daily",
         "Whis-Limpeza",

@@ -14,6 +14,9 @@ Este módulo faz poucas coisas, todas **explícitas e reversíveis**:
 - `agendar_daily()` registra a tarefa `Whis-Daily`, com um gatilho semanal por
   dia da tabela `[daily].horarios`, rodando `whis daily --agendada` (que sai
   sem gerar nada quando `[daily].ativa` é falso);
+- `agendar_noticias()` registra a tarefa diária `Whis-Noticias` no horário de
+  `[noticias].horario`, rodando `whis news --agendada` (que sai sem gerar nada
+  quando `[noticias].ativa` é falso);
 - `agendar_limpeza()` registra a tarefa diária `Whis-Limpeza` rodando
   `whis limpar`;
 - `agendar_vigia()` registra `Whis-Vigia`, um script PowerShell autossuficiente
@@ -58,6 +61,7 @@ NOME_DO_ATALHO_DO_MENU = "Whis.lnk"
 NOME_DA_TAREFA = "Whis-Limpeza"
 NOME_DA_TAREFA_DA_DAILY = "Whis-Daily"
 NOME_DA_TAREFA_DO_VIGIA = "Whis-Vigia"
+NOME_DA_TAREFA_DO_JORNAL = "Whis-Noticias"
 
 #: O script que registra uma tarefa pelo módulo `ScheduledTasks`, com os
 #: gatilhos como `Dia=HH:MM` (dia em inglês, ou `Daily`) separados por vírgula.
@@ -436,6 +440,36 @@ def daily_agendada(*, executar: Executor = _rodar) -> bool:
     return _tarefa_agendada(NOME_DA_TAREFA_DA_DAILY, executar=executar)
 
 
+# -- o jornal agendado ------------------------------------------------------
+
+
+def agendar_noticias(configuracao: Configuracao, *, executar: Executor = _rodar) -> str:
+    """Registra `Whis-Noticias`: um gatilho diário em `[noticias].horario`.
+
+    A edição leva uns 7 minutos, folgada no teto de 30 min do
+    `agendar_tarefa.ps1`. Com `-StartWhenAvailable`, a manhã em que o PC estava
+    desligado ganha o jornal assim que ele ligar.
+    """
+    _registrar_tarefa(
+        NOME_DA_TAREFA_DO_JORNAL,
+        executavel=str(interpretador_sem_console()),
+        argumentos=_argumentos_do_whis(
+            "news --agendada", configuracao.origem or caminho_padrao()
+        ),
+        gatilhos=[f"Daily={configuracao.noticias_horario}"],
+        executar=executar,
+    )
+    return NOME_DA_TAREFA_DO_JORNAL
+
+
+def desagendar_noticias(*, executar: Executor = _rodar) -> bool:
+    return _desregistrar_tarefa(NOME_DA_TAREFA_DO_JORNAL, executar=executar)
+
+
+def noticias_agendada(*, executar: Executor = _rodar) -> bool:
+    return _tarefa_agendada(NOME_DA_TAREFA_DO_JORNAL, executar=executar)
+
+
 # -- limpeza agendada -------------------------------------------------------
 
 
@@ -493,7 +527,7 @@ def gatilhos_do_vigia(configuracao: Configuracao) -> list[str]:
 
 
 def tarefas_vigiadas(*, executar: Executor = _rodar) -> list[str]:
-    """`Whis-Daily` sempre; `Whis-Limpeza` só se ela existe no Agendador.
+    """`Whis-Daily` sempre; `Whis-Limpeza` e `Whis-Noticias` só se existem no Agendador.
 
     Passar um nome que não existe faria o vigia reclamar de uma tarefa que o
     usuário nunca pediu.
@@ -501,6 +535,8 @@ def tarefas_vigiadas(*, executar: Executor = _rodar) -> list[str]:
     nomes = [NOME_DA_TAREFA_DA_DAILY]
     if limpeza_agendada(executar=executar):
         nomes.append(NOME_DA_TAREFA)
+    if noticias_agendada(executar=executar):
+        nomes.append(NOME_DA_TAREFA_DO_JORNAL)
     return nomes
 
 

@@ -56,6 +56,7 @@ api_key = ""                 # crédito de US$ 200; sem ela o STT real não roda
 
 [claude]
 modelo = ""                  # vazio = o modelo padrão da sua conta
+cli = ""                     # caminho do claude.exe; vazio = acha sozinho
 
 [audio]
 dispositivo_microfone = ""   # vazio = microfone padrão do Windows
@@ -70,6 +71,10 @@ ativa = true                  # false = sem daily: a tarefa agendada não gera e
 referencias_pessoais = []     # repositórios e canais que são seus, não do trabalho: ficam no vault mas fora do roteiro
 contexto_do_time = ""         # como o seu processo funciona, para o roteiro não inventar bloqueio
 horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:55", sexta = "10:25" }}  # hora em que a daily nasce em cada dia (segunda..domingo, sem acento); dia ausente = sem daily
+
+[noticias]
+ativa = true                 # false = sem jornal: a tarefa agendada não gera e a palheta esconde "Generate news"
+horario = "08:20"            # quando a tarefa agendada gera o jornal do dia
 
 [palheta]
 atalho = "ctrl+space"        # o atalho global que abre a palheta: ctrl, alt, shift, win e uma tecla (letra, dígito, space, f1..f12)
@@ -141,6 +146,7 @@ CHAVES: tuple[Chave, ...] = (
     Chave("", "retencao_dias", "retencao_dias", Tipo.INTEIRO),
     Chave("deepgram", "api_key", "deepgram_api_key", Tipo.SEGREDO),
     Chave("claude", "modelo", "claude_modelo", Tipo.TEXTO),
+    Chave("claude", "cli", "claude_cli", Tipo.TEXTO),
     Chave("audio", "dispositivo_microfone", "dispositivo_microfone", Tipo.TEXTO),
     Chave("audio", "dispositivo_sistema", "dispositivo_sistema", Tipo.TEXTO),
     Chave("diario", "inicio_do_dia", "diario_inicio_do_dia", Tipo.HORA),
@@ -149,6 +155,8 @@ CHAVES: tuple[Chave, ...] = (
     Chave("daily", "referencias_pessoais", "daily_referencias_pessoais", Tipo.LISTA),
     Chave("daily", "contexto_do_time", "daily_contexto_do_time", Tipo.TEXTO),
     Chave("daily", "horarios", "daily_horarios", Tipo.HORARIOS),
+    Chave("noticias", "ativa", "noticias_ativa", Tipo.BOOLEANO),
+    Chave("noticias", "horario", "noticias_horario", Tipo.HORA),
     Chave("palheta", "atalho", "palheta_atalho", Tipo.TEXTO),
     Chave("privacidade", "excluir", "privacidade_excluir", Tipo.LISTA),
     Chave("privacidade", "pastas_privadas", "privacidade_pastas_privadas", Tipo.LISTA),
@@ -178,6 +186,9 @@ class Configuracao:
     coletor roda contra a assinatura dele, e o CLI já escolhe um modelo que
     aquela conta pode usar. Preencher é para quem quer fixar um id.
 
+    `claude_cli` vazio significa "achar o `claude.exe` sozinho"; preencher é
+    para quando a tarefa agendada não enxerga o CLI pelo `PATH`.
+
     As chaves das fontes passivas seguem a mesma regra: **vazia é fonte
     desligada**. É o que permite o diário nascer só com git e Linear enquanto o
     Slack espera aprovação do admin.
@@ -198,6 +209,11 @@ class Configuracao:
     pelo painel vale na hora, sem mexer no Windows. `whis daily` no terminal
     não olha isto — é o jeito de gerar uma com ela desligada.
 
+    `noticias_ativa` e `noticias_horario` são o mesmo par para o jornal: a
+    tarefa `Whis-Noticias` roda todo dia em `noticias_horario` e sai sem gerar
+    quando `noticias_ativa` é falso. Fontes, nomes e time não moram aqui, e sim
+    em `noticias/fontes.md` no vault.
+
     `obsidian_vault` é como o Obsidian chama o vault na URI `obsidian://` — o
     ID (o que *Copy vault ID* copia) ou o nome da pasta. Vazio usa o nome da
     pasta de `vault`, que é o que o Obsidian usa quando o vault foi aberto
@@ -212,6 +228,7 @@ class Configuracao:
     retencao_dias: int = 7
     deepgram_api_key: str = ""
     claude_modelo: str = ""
+    claude_cli: str = ""
     dispositivo_microfone: str = ""
     dispositivo_sistema: str = ""
     diario_inicio_do_dia: str = INICIO_DO_DIA_PADRAO
@@ -220,6 +237,8 @@ class Configuracao:
     daily_referencias_pessoais: tuple[str, ...] = ()
     daily_contexto_do_time: str = ""
     daily_horarios: tuple[tuple[str, str], ...] = ()
+    noticias_ativa: bool = True
+    noticias_horario: str = "08:20"
     privacidade_excluir: tuple[str, ...] = ()
     privacidade_pastas_privadas: tuple[str, ...] = ()
     busca_maximo_de_notas: int = 40
@@ -298,6 +317,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
     audio = dados.get("audio") or {}
     diario = dados.get("diario") or {}
     daily = dados.get("daily") or {}
+    noticias = dados.get("noticias") or {}
     privacidade = dados.get("privacidade") or {}
     busca = dados.get("busca") or {}
     git = dados.get("git") or {}
@@ -312,6 +332,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         retencao_dias=retencao_dias,
         deepgram_api_key=str(deepgram.get("api_key", "")),
         claude_modelo=str(claude.get("modelo", "")),
+        claude_cli=str(claude.get("cli", "")).strip(),
         dispositivo_microfone=str(audio.get("dispositivo_microfone", "")),
         dispositivo_sistema=str(audio.get("dispositivo_sistema", "")),
         diario_inicio_do_dia=_hora(
@@ -326,6 +347,10 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         daily_referencias_pessoais=_textos(daily.get("referencias_pessoais")),
         daily_contexto_do_time=str(daily.get("contexto_do_time", "")).strip(),
         daily_horarios=_horarios_da_daily(daily.get("horarios"), arquivo),
+        noticias_ativa=_booleano(noticias.get("ativa", True), "[noticias].ativa", arquivo),
+        noticias_horario=_hora(
+            noticias.get("horario", "08:20"), "[noticias].horario", arquivo
+        ),
         privacidade_excluir=_textos(privacidade.get("excluir")),
         privacidade_pastas_privadas=_pastas_privadas(
             privacidade.get("pastas_privadas"), arquivo

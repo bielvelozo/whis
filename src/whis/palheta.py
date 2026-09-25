@@ -8,7 +8,7 @@ minuto e a daily quarenta segundos.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
-`note`, `doubt`, `do`, `ask`, `open`, `record`, `settings`, `stash`,
+`news`, `note`, `doubt`, `do`, `ask`, `open`, `record`, `settings`, `stash`,
 `prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
 portas de verdade — as fontes, o roteiro, a busca — entram por
@@ -43,6 +43,7 @@ from .configuracao import Configuracao
 from .conversa import Conversas
 from .daily import ResultadoDaDaily, gerar_daily
 from .fontes import PortaFonte
+from .jornal import JornalNaoNasceu, PortasDoJornal, ResultadoDoJornal, caminho_da_edicao, gerar_jornal
 from .janela_da_palheta import Efeito, Gesto, Linha, Lista
 from .nota_viva import SECAO_DUVIDAS, SECAO_FAZER, SECAO_PONTOS
 from .obsidian import lancar as _lancar_no_windows
@@ -56,6 +57,7 @@ _log = logging.getLogger("whis.palheta")
 FIO_DA_PALHETA = "palheta"
 
 ROTULO_DO_BOTAO = "Abrir no Obsidian"
+ROTULO_DO_BOTAO_DO_JORNAL = "Abrir jornal"
 TITULO_DO_TOAST_DA_DAILY = "A daily está pronta"
 TITULO_DA_DAILY_QUE_NAO_NASCEU = "A daily não nasceu"
 TITULO_DA_RESPOSTA = "Whis"
@@ -66,15 +68,20 @@ TITULO_DE_NAO_ENTENDI = "Não entendi"
 TITULO_DO_PROMPT_GUARDADO = "Prompt guardado"
 TITULO_DO_PROMPT_QUE_JA_EXISTE = "Esse prompt já existe"
 TITULO_DO_PROMPT_RECUSADO = "Nada guardado"
+TITULO_DO_JORNAL = "O jornal de hoje está pronto"
+TITULO_DO_JORNAL_PARCIAL = "O jornal saiu com falta"
+TITULO_DO_JORNAL_SEM_PAGINA = "O jornal não foi publicado"
+TITULO_DO_JORNAL_QUE_NAO_NASCEU = "O jornal não nasceu"
 
 NOME_DE_GRAVAR = "record"
 NOME_DA_DAILY = "daily"
+NOME_DO_JORNAL = "news"
 NOME_DE_CONFIGURAR = "settings"
 
 #: A ordem em que as ações aparecem na janela: as três que o usuário pediu
 #: primeiro, e existem mesmo com o campo vazio.
 ORDEM_DAS_ACOES = (
-    "open", "daily", NOME_DE_GRAVAR, "prompts", "stash", "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR,
+    "open", "daily", NOME_DE_GRAVAR, NOME_DO_JORNAL, "prompts", "stash", "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR,
 )
 
 #: Quanto da resposta cabe no toast: o resto está na nota que o botão abre.
@@ -85,13 +92,15 @@ LIMITE_DO_TEXTO_DO_TOAST = 240
 class Resultado:
     """O que um comando devolve, e que a palheta transforma no toast.
 
-    `nota` é o caminho relativo ao vault da nota que o botão abre; `None` é
-    toast sem botão.
+    `nota` é o caminho relativo ao vault da nota que o botão abre; `link`,
+    quando há, é um endereço `https://` que o botão abre no lugar dela (a
+    página do jornal). Sem os dois, o toast não tem botão.
     """
 
     titulo: str
     texto: str
     nota: str | None = None
+    link: str | None = None
 
 
 #: `rodar(argumento, configuracao)`: a configuração vem da palheta a cada
@@ -215,14 +224,19 @@ class Palheta:
     def acoes(self) -> tuple[Comando, ...]:
         """Os comandos na ordem da lista da janela: as três ações pedidas primeiro.
 
-        Com `[daily].ativa` falso, `daily` sai da lista e deixa de ser entendido.
+        Com `[daily].ativa` falso, `daily` sai da lista e deixa de ser
+        entendido; com `[noticias].ativa` falso, o mesmo vale para `news`.
         """
         posicao = {nome: indice for indice, nome in enumerate(ORDEM_DAS_ACOES)}
-        ativos = (
-            comando
-            for comando in self.comandos
-            if comando.nome != NOME_DA_DAILY or self.configuracao.daily_ativa
-        )
+        desligados = {
+            nome
+            for nome, ativo in (
+                (NOME_DA_DAILY, self.configuracao.daily_ativa),
+                (NOME_DO_JORNAL, self.configuracao.noticias_ativa),
+            )
+            if not ativo
+        }
+        ativos = (comando for comando in self.comandos if comando.nome not in desligados)
         return tuple(sorted(ativos, key=lambda comando: posicao.get(comando.nome, len(posicao))))
 
     def despachar(self, texto: str) -> bool:
@@ -296,13 +310,18 @@ class Palheta:
 def avisar_resultado(
     configuracao: Configuracao, resultado: Resultado, *, avisar: Callable[..., bool] | None = None
 ) -> bool:
-    """O toast de um resultado: com o botão do Obsidian quando há nota.
+    """O toast de um resultado: com o botão do link quando há, senão o do Obsidian quando há nota.
 
     `avisos.avisar` é resolvido na chamada, e não na importação, para o teste
     poder espioná-lo no módulo.
     """
     mostrar = avisar or _avisos.avisar
-    botao = (ROTULO_DO_BOTAO, uri_da_nota(configuracao, resultado.nota)) if resultado.nota else None
+    if resultado.link:
+        botao = (ROTULO_DO_BOTAO_DO_JORNAL, resultado.link)
+    elif resultado.nota:
+        botao = (ROTULO_DO_BOTAO, uri_da_nota(configuracao, resultado.nota))
+    else:
+        botao = None
     return mostrar(resultado.titulo, resultado.texto, botao=botao)
 
 
@@ -338,6 +357,43 @@ def resultado_da_daily(resultado: ResultadoDaDaily) -> Resultado:
         texto_do_toast_da_daily(resultado),
         nota=_vault.CAMINHO_DA_NOTA_VIVA,
     )
+
+
+def texto_do_toast_do_jornal(resultado: ResultadoDoJornal) -> str:
+    from .pagina_do_jornal import texto_do_custo, texto_do_plano
+
+    edicao = resultado.edicao
+    noticias = sum(len(secao.itens) for secao in edicao.secoes) + len(edicao.time)
+    partes = [
+        f"{noticias} {'notícia' if noticias == 1 else 'notícias'}",
+        texto_do_plano(edicao.plano_antes, edicao.plano_depois),
+        texto_do_custo(edicao.custo_usd),
+    ]
+    texto = " · ".join(parte for parte in partes if parte) + "."
+    if edicao.avisos:
+        texto += " Faltou: " + "; ".join(edicao.avisos) + "."
+    return texto
+
+
+def resultado_do_jornal(resultado: ResultadoDoJornal) -> Resultado:
+    """O toast do jornal — o mesmo para `whis news` e para a palheta.
+
+    Publicado, o botão abre a página; sem página, abre a nota no Obsidian.
+    """
+    if resultado.url is None:
+        caminho = caminho_da_edicao(resultado.edicao.data)
+        motivo = resultado.falha_da_publicacao or "a publicação falhou"
+        return Resultado(
+            TITULO_DO_JORNAL_SEM_PAGINA,
+            _encurtar(f"A nota está no vault ({caminho}); a página não saiu: {motivo}"),
+            nota=caminho,
+        )
+    titulo = TITULO_DO_JORNAL_PARCIAL if resultado.parcial else TITULO_DO_JORNAL
+    return Resultado(titulo, _encurtar(texto_do_toast_do_jornal(resultado)), link=resultado.url)
+
+
+def resultado_do_jornal_que_nao_nasceu(erro: JornalNaoNasceu) -> Resultado:
+    return Resultado(TITULO_DO_JORNAL_QUE_NAO_NASCEU, _encurtar(str(erro)))
 
 
 def resultado_da_resposta(resposta: Resposta, nota: str) -> Resultado:
@@ -477,8 +533,9 @@ def comandos_padrao(
     lancar: Callable[[str], None] | None = None,
     relogio: Callable[[], datetime] | None = None,
     area: PortaAreaDeTransferencia | None = None,
+    portas_do_jornal: Callable[[Configuracao], PortasDoJornal] | None = None,
 ) -> tuple[Comando, ...]:
-    """Os oito comandos que tocam o vault, com as portas injetadas.
+    """Os comandos que tocam o vault, com as portas injetadas.
 
     As fábricas recebem a configuração a cada chamada — é o que faz uma
     configuração recarregada valer no comando seguinte. `record` e
@@ -496,6 +553,22 @@ def comandos_padrao(
             roteiro=roteiro_da_daily(configuracao),
         )
         return resultado_da_daily(resultado)
+
+    def jornal(_argumento: str, configuracao: Configuracao) -> Resultado:
+        if portas_do_jornal is None:
+            raise RuntimeError("O jornal não está disponível nesta execução.")
+        portas = portas_do_jornal(configuracao)
+        try:
+            resultado = gerar_jornal(
+                agora(),
+                configuracao,
+                editor=portas.editor,
+                formacao=portas.formacao,
+                publicacao=portas.publicacao,
+            )
+        except JornalNaoNasceu as erro:
+            return resultado_do_jornal_que_nao_nasceu(erro)
+        return resultado_do_jornal(resultado)
 
     def anotar_em(secao: str, nome: str) -> Rodar:
         def anotar(texto: str, configuracao: Configuracao) -> Resultado:
@@ -568,6 +641,14 @@ def comandos_padrao(
             rotulo="Generate daily",
             descricao="Update daily/atual.md from git, Linear and Slack (~40 s)",
             icone="☀",
+        ),
+        Comando(
+            NOME_DO_JORNAL,
+            "gera o jornal de hoje e publica a página",
+            jornal,
+            rotulo="Generate news",
+            descricao="Today's news in noticias/ and the page on your phone (~7 min)",
+            icone="📰",
         ),
         Comando(
             "ask",
