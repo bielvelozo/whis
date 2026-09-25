@@ -1,4 +1,4 @@
-"""Escrita no vault: pastas, nota de reunião, transcrição, diário, daily e nota viva.
+"""Escrita no vault: pastas, nota de reunião, transcrição, diário, daily, nota viva e jornal.
 
 A zona de propriedade é uma invariante deste módulo, não só dos testes — e ela
 é **por coletor**: `escrever` recebe as zonas que aquela chamada permite. O
@@ -40,6 +40,7 @@ if TYPE_CHECKING:  # ambos importam este módulo em tempo de execução
     from .busca import Resposta
     from .coleta import FalhaDeFonte
     from .daily import JanelaDaDaily
+    from .jornal import Edicao
 
 _log = logging.getLogger("whis.vault")
 
@@ -49,6 +50,7 @@ PASTA_DIARIO = "diario"
 PASTA_DAILY = "daily"
 PASTA_RESPOSTAS = "respostas"
 PASTA_NOTAS = "notas"
+PASTA_NOTICIAS = "noticias"
 
 #: Todas as pastas criadas na primeira execução.
 ESTRUTURA = (
@@ -58,6 +60,7 @@ ESTRUTURA = (
     PASTA_DAILY,
     PASTA_RESPOSTAS,
     PASTA_NOTAS,
+    PASTA_NOTICIAS,
 )
 
 #: As únicas pastas em que o coletor de reunião pode escrever.
@@ -71,6 +74,9 @@ ZONAS_DA_DAILY = (PASTA_DAILY,)
 
 #: A única pasta em que `perguntar` da palheta pode escrever.
 ZONAS_DAS_RESPOSTAS = (PASTA_RESPOSTAS,)
+
+#: A única pasta em que o jornal escreve; `noticias/fontes.md` ali é do usuário.
+ZONAS_DO_JORNAL = (PASTA_NOTICIAS,)
 
 #: A nota viva: a única nota que agente e usuário mantêm juntos.
 CAMINHO_DA_NOTA_VIVA = f"{PASTA_DAILY}/atual.md"
@@ -825,3 +831,110 @@ def _lista(itens: tuple[str, ...]) -> str:
     if not itens:
         return _NADA_REGISTRADO
     return "\n".join(f"- {item}" for item in itens)
+
+
+def montar_jornal(edicao: "Edicao") -> str:
+    """A nota `noticias/YYYY-MM-DD.md`: o dado da edição, do mesmo objeto que gera a página.
+
+    A imagem aponta a capa original da fonte: as reduzidas (`img/N.jpg`) só
+    existem no artifact, não no vault.
+    """
+    from .pagina_do_jornal import NADA_RELEVANTE, data_por_extenso, hora, texto_do_custo, texto_do_plano
+
+    def janelas(janela) -> str:
+        if janela is None:
+            return ""
+        return f"5h={_ou_vazio(janela.cinco_horas)} 7d={_ou_vazio(janela.sete_dias)}"
+
+    campos: dict[str, object] = {
+        "tipo": "jornal",
+        "data": edicao.data.isoformat(),
+        "gerado_em": edicao.gerado_em.isoformat(timespec="seconds"),
+        "artifact": edicao.artifact or "",
+        "plano_antes": janelas(edicao.plano_antes),
+        "plano_depois": janelas(edicao.plano_depois),
+        "custo_usd": "" if edicao.custo_usd is None else f"{edicao.custo_usd:.4f}",
+        "segundos": f"{edicao.segundos:.0f}",
+        "fontes_com_falha": list(edicao.fontes_com_falha),
+    }
+    medida = " · ".join(
+        parte
+        for parte in (
+            f"gerado às {edicao.gerado_em.strftime('%H:%M')}",
+            texto_do_plano(edicao.plano_antes, edicao.plano_depois),
+            texto_do_custo(edicao.custo_usd),
+        )
+        if parte
+    )
+    linhas = [f"# Jornal do Whis — {data_por_extenso(edicao.data)}", "", f"_{medida}_", ""]
+    if edicao.artifact:
+        linhas += [f"[Abrir a página]({edicao.artifact})", ""]
+    for aviso in edicao.avisos:
+        linhas += [f"> {aviso[:1].upper()}{aviso[1:]}.", ""]
+
+    def aula(a, nivel: str) -> list[str]:
+        fontes = ", ".join(f"[{_dominio(url)}]({url})" for url in a.fontes)
+        return [f"{nivel} {a.titulo}", "", a.texto, "", f"Fontes: {fontes}", ""]
+
+    def item(i) -> list[str]:
+        bloco = [f"### [{i.titulo}]({i.link})", ""]
+        if i.imagem:
+            bloco += [f"![]({i.imagem})", ""]
+        if i.resumo:
+            bloco += [i.resumo, ""]
+        rodape = i.fonte + (f" · {hora(i.data)}" if i.data else "")
+        return bloco + [f"_{rodape}_", ""]
+
+    if edicao.aprender:
+        linhas += ["## Aprender hoje", "", *aula(edicao.aprender, "###")]
+    for secao in edicao.secoes:
+        linhas += [f"## {secao.titulo}", ""]
+        if secao.id == "futebol":
+            if edicao.time:
+                linhas += [f"### {edicao.time_nome or 'Time'}", ""]
+                for i in edicao.time:
+                    resumo = f" {i.resumo}" if i.resumo else ""
+                    linhas.append(f"- **[{i.titulo}]({i.link})** — {i.fonte}, {hora(i.data)}.{resumo}")
+                linhas.append("")
+            if edicao.placar is not None:
+                linhas += ["### Placares", ""]
+                if edicao.placar.jogos:
+                    ligas: dict[str, list] = {}
+                    for jogo in edicao.placar.jogos:
+                        ligas.setdefault(jogo.liga, []).append(jogo)
+                    for liga, jogos in ligas.items():
+                        linhas += [f"**{liga}**", ""]
+                        for jogo in jogos:
+                            gols = "; ".join(f"{g.minuto} {g.autor}" for g in jogo.gols) or "sem gols"
+                            linhas.append(
+                                f"- {jogo.mandante} **{jogo.placar_mandante} x {jogo.placar_visitante}** "
+                                f"{jogo.visitante} ({jogo.hora_brt}) — {gols}"
+                            )
+                        linhas.append("")
+                else:
+                    linhas += [f"_{edicao.placar.texto}_", ""]
+            if edicao.efemeride is not None:
+                e = edicao.efemeride
+                prefixo = f"{e.ano}: " if e.ano else ""
+                fonte = f" ([Wikipédia]({e.link}))" if e.link else ""
+                linhas += ["### Curiosidade do dia", "", f"{prefixo}{e.texto}{fonte}", ""]
+        if secao.itens:
+            for i in secao.itens:
+                linhas += item(i)
+        else:
+            linhas += [f"_{NADA_RELEVANTE}_", ""]
+        if secao.id == "carros" and edicao.para_aprender:
+            linhas += ["### Para aprender", ""]
+            for a in edicao.para_aprender:
+                linhas += aula(a, "####")
+    if edicao.fontes_com_falha:
+        linhas += ["---", "", "Fontes que não responderam hoje: " + ", ".join(edicao.fontes_com_falha), ""]
+    return _frontmatter(campos) + "\n".join(linhas).rstrip() + "\n"
+
+
+def _ou_vazio(valor: int | None) -> str:
+    return "?" if valor is None else f"{valor}%"
+
+
+def _dominio(url: str) -> str:
+    return re.sub(r"^https?://(www\.)?", "", url).split("/")[0]
