@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <language>pt-br</language>
+    <title>Motor1.com Brasil - Notícias</title>
+    <link>https://motor1.uol.com.br/news/</link>
+    <description>Motor1.com - Notícias</description>
+    <lastBuildDate>Fri, 25 Sep 2026 00:42:14 +0000</lastBuildDate>
+    <image>
+      <url>https://motor1.uol.com.br/favicon.ico</url>
+      <title>Motor1.com Brasil</title>
+      <link>https://motor1.uol.com.br/</link>
+    </image>
+    <generator>Laminas_Feed_Writer 2 (https://getlaminas.org)</generator>
+    	<item>
+      <title>F1: Russell voa no TL2 e crava Antonelli em Baku; Bortoleto é 14º</title>
+      <description><![CDATA[Verstappen e a dupla da Ferrari também marcaram boas voltas, mas o carro #63 parece perfeitamente equilibrado]]></description>
+      <pubDate>Thu, 24 Sep 2026 22:11:33 +0000</pubDate>
+      <link>https://motor1.uol.com.br/news/809506/russell-lidera-tl2-azerbaijao/</link>
+      <guid>https://motor1.uol.com.br/news/809506/russell-lidera-tl2-azerbaijao/</guid>
+      <enclosure type="image/jpeg" length="17268" url="https://cdn.motor1.com/images/mgl/1ZPK2W/s3/f1-russell-voa-no-tl2-e-crava-antonelli-em-baku-bortoleto-e-14o.jpg"/>
+    </item>
+	<item>
+      <title>Chevrolet derruba preço do Onix automático para menos de R$ 99.990 em promoção</title>
+      <description><![CDATA[Oferta é focada no ECO Turbo AT, versão que roda exclusivamente com etanol e tem 115 cv]]></description>
+      <pubDate>Thu, 24 Sep 2026 21:00:00 +0000</pubDate>
+      <link>https://motor1.uol.com.br/news/809330/oferta-chevrolet-onix-automatico-barato/</link>
+      <guid>https://motor1.uol.com.br/news/809330/oferta-chevrolet-onix-automatico-barato/</guid>
+      <enclosure type="image/jpeg" length="28536" url="https://cdn.motor1.com/images/mgl/6Z8vZZ/s3/chevrolet-onix-eco-tem-motor-turbo-rodando-apenas-com-etanol.jpg"/>
+    </item>
+  </channel>
+</rss>
