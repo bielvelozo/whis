@@ -38,6 +38,7 @@ SECAO_FAZER = "Fazer"
 SECAO_DUVIDAS = "Dúvidas"
 SECAO_PONTOS = "Pontos"
 SECAO_FALAR = "Falar"
+SECAO_TERMINEI = "O que terminei"
 
 #: As seis seções, na ordem em que a nota as tem.
 SECOES = (SECAO_FIZ, SECAO_FAZENDO, SECAO_FAZER, SECAO_DUVIDAS, SECAO_PONTOS, SECAO_FALAR)
@@ -76,6 +77,9 @@ tipo: {TIPO_NOTA_VIVA}
 
 #: Um item de lista markdown: `- `, `* `, `+ `, `1. ` ou `1) `, com qualquer indentação.
 _ITEM = re.compile(r"^(?P<indentacao>[ \t]*)(?P<marcador>[-*+]|\d+[.)])[ \t]+(?P<texto>.*)$")
+
+#: Um marcador sem texto (`-`, `1.`): o item vazio que o Obsidian deixa ao dar Enter.
+_SO_MARCADOR = re.compile(r"^[ \t]*([-*+]|\d+[.)])[ \t]*$")
 
 #: O título que abre uma seção: só `#` e `##` delimitam; `###` fica dentro.
 _TITULO = re.compile(r"^#{1,2}[ \t]+(?P<titulo>.*?)[ \t]*$")
@@ -544,6 +548,30 @@ def _hash(texto: str) -> str:
 def _nivel(linha: str) -> int:
     indentacao = linha[: len(linha) - len(linha.lstrip(" \t"))]
     return len(indentacao.expandtabs(_TAB))
+
+
+def texto_e_profundidade(linhas: Sequence[str]) -> tuple[tuple[str, int], ...]:
+    """Cada linha com texto como `(texto, profundidade)`, para quem só lê a seção.
+
+    O texto vem sem o marcador de lista e sem o recuo; uma linha que não é item
+    entra inteira. A profundidade conta as linhas abertas acima dela, pela
+    mesma régua de recuo de `_nivel` (tab = 4 colunas).
+    """
+    resultado: list[tuple[str, int]] = []
+    colunas: list[int] = []
+    for linha in linhas:
+        if _SO_MARCADOR.match(linha):
+            continue
+        partes = _ITEM.match(linha)
+        texto = (partes["texto"] if partes else linha).strip()
+        if not texto:
+            continue
+        coluna = _nivel(linha)
+        while colunas and colunas[-1] >= coluna:
+            colunas.pop()
+        resultado.append((texto, len(colunas)))
+        colunas.append(coluna)
+    return tuple(resultado)
 
 
 def sem_brancos_nas_pontas(linhas: Sequence[str]) -> tuple[str, ...]:
