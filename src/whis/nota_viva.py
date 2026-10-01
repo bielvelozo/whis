@@ -24,7 +24,6 @@ TIPO_NOTA_VIVA = "daily-atual"
 
 SECAO_FIZ = "O que eu fiz"
 SECAO_FAZENDO = "O que estou fazendo"
-SECAO_TERMINEI = "O que terminei"
 SECAO_FAZER = "Fazer"
 SECAO_DUVIDAS = "Dúvidas"
 SECAO_PONTOS = "Pontos"
@@ -33,7 +32,6 @@ SECAO_FALAR = "Falar"
 SECOES = (
     SECAO_FIZ,
     SECAO_FAZENDO,
-    SECAO_TERMINEI,
     SECAO_FAZER,
     SECAO_DUVIDAS,
     SECAO_PONTOS,
@@ -55,8 +53,6 @@ tipo: {TIPO_NOTA_VIVA}
 ## O que eu fiz
 
 ## O que estou fazendo
-
-## O que terminei
 
 ## Fazer
 

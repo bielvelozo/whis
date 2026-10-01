@@ -20,7 +20,6 @@ from whis.nota_viva import (
     SECAO_FAZER,
     SECAO_FIZ,
     SECAO_PONTOS,
-    SECAO_TERMINEI,
     NotaViva,
 )
 
@@ -166,26 +165,33 @@ def test_a_secao_nova_entra_na_ordem_das_cinco_mesmo_sem_a_seguinte_imediata():
 def test_garantir_secao_abre_o_titulo_que_falta_no_lugar_dele_uma_vez_so():
     nota = NotaViva.de_texto(NOTA)
 
-    assert nota.garantir_secao(SECAO_TERMINEI) is True
-    assert nota.garantir_secao(SECAO_TERMINEI) is False
+    assert nota.garantir_secao(SECAO_FAZER) is True
+    assert nota.garantir_secao(SECAO_FAZER) is False
 
     texto = nota.texto()
-    assert texto.count("## O que terminei") == 1
-    assert texto.replace("## O que terminei\n\n", "", 1) == NOTA
-    assert texto.index("## O que estou fazendo") < texto.index("## O que terminei") < texto.index("## Dúvidas")
+    assert texto.count("## Fazer") == 1
+    assert texto.replace("## Fazer\n\n", "", 1) == NOTA
+    assert texto.index("## O que estou fazendo") < texto.index("## Fazer") < texto.index("## Dúvidas")
+
+
+def test_o_que_terminei_antiga_fica_intocada_e_nao_e_mais_secao():
+    antiga = NOTA.replace("## Dúvidas\n", "## O que terminei\n\n- entregue\n\n## Dúvidas\n", 1)
+    nota = NotaViva.de_texto(antiga)
+
+    assert nota.texto() == antiga
+    assert "O que terminei" not in [secao for secao, _ in nota.secoes()]
 
 
 # -- o modelo ------------------------------------------------------------------
 
 
-def test_o_modelo_tem_as_sete_secoes_na_ordem_e_nenhuma_explicacao():
+def test_o_modelo_tem_as_seis_secoes_na_ordem_e_nenhuma_explicacao():
     """Ele sabe o que cada seção é (ticket 13): só o frontmatter e os títulos."""
     nota = NotaViva.do_modelo()
 
     assert [secao for secao, _ in nota.secoes()] == [
         SECAO_FIZ,
         SECAO_FAZENDO,
-        SECAO_TERMINEI,
         SECAO_FAZER,
         SECAO_DUVIDAS,
         SECAO_PONTOS,

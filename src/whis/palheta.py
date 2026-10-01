@@ -333,7 +333,7 @@ def resultado_da_daily(resultado: ResultadoDaDaily) -> Resultado:
     if resultado.vazio:
         return Resultado(
             TITULO_DA_DAILY_VAZIA,
-            "Escreva o que fez, está fazendo e terminou, e gere de novo.",
+            "Escreva o que fez e está fazendo, e gere de novo.",
             nota=_vault.CAMINHO_DA_NOTA_VIVA,
         )
     if not resultado.publicado:

@@ -1,4 +1,4 @@
-"""A nota da daily como ele a escreve no Obsidian, ainda sem `## O que terminei`."""
+"""A nota da daily como ele a escreve no Obsidian."""
 
 from __future__ import annotations
 

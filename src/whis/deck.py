@@ -22,7 +22,6 @@ from .nota_viva import (
     SECAO_FALAR,
     SECAO_FAZENDO,
     SECAO_FIZ,
-    SECAO_TERMINEI,
     NotaViva,
     texto_e_profundidade,
 )
@@ -30,7 +29,6 @@ from .nota_viva import (
 SECOES_DO_DECK = (
     (SECAO_FIZ, "fiz"),
     (SECAO_FAZENDO, "fazendo"),
-    (SECAO_TERMINEI, "terminei"),
     (SECAO_DUVIDAS, "duvidas"),
     (SECAO_FALAR, "falar"),
 )

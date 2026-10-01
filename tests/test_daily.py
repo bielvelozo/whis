@@ -72,7 +72,7 @@ def test_a_copia_tem_so_as_secoes_que_viraram_slide_com_as_linhas_literais(
 
     texto = corpo(resultado.copia)
     assert "## O que eu fiz\n\n- FN-123 frete do checkout corrigido\n\t- subiu em produção\n" in texto
-    for fora in ("## Pontos", "## Fazer", "## O que terminei"):
+    for fora in ("## Pontos", "## Fazer"):
         assert fora not in texto
 
 
@@ -91,16 +91,13 @@ def test_republica_no_endereco_da_copia_mais_recente_que_tem_um(configuracao, ca
     assert ler_frontmatter(resultado.copia)["deck"] == ANTIGA
 
 
-def test_nota_sem_o_que_terminei_ganha_o_titulo_e_nada_mais_muda(configuracao, caminho_do_vault: Path, tmp_path: Path):
+def test_a_nota_com_as_quatro_secoes_do_deck_sai_byte_a_byte_igual(configuracao, caminho_do_vault: Path, tmp_path: Path):
     arquivo = escrever_nota_da_daily(caminho_do_vault)
 
     gerar(configuracao, PublicacaoDoDeckFake(), tmp_path)
     gerar(configuracao, PublicacaoDoDeckFake(), tmp_path)
 
-    texto = arquivo.read_bytes().decode("utf-8")
-    assert texto.count("## O que terminei") == 1
-    assert "- FN-130 diário automático\n\n## O que terminei\n\n## Fazer\n" in texto
-    assert texto.replace("## O que terminei\n\n", "", 1) == NOTA_DA_DAILY
+    assert arquivo.read_bytes().decode("utf-8") == NOTA_DA_DAILY
 
 
 def test_nota_sem_as_secoes_do_deck_ganha_os_titulos_que_faltam(configuracao, caminho_do_vault: Path, tmp_path: Path):
@@ -111,9 +108,10 @@ def test_nota_sem_as_secoes_do_deck_ganha_os_titulos_que_faltam(configuracao, ca
     gerar(configuracao, PublicacaoDoDeckFake(), tmp_path)
 
     texto = arquivo.read_bytes().decode("utf-8")
-    for titulo in ("O que eu fiz", "O que estou fazendo", "O que terminei", "Dúvidas", "Falar"):
+    for titulo in ("O que eu fiz", "O que estou fazendo", "Dúvidas", "Falar"):
         assert texto.count(f"## {titulo}\n") == 1
-    assert texto.index("## O que eu fiz") < texto.index("## O que estou fazendo") < texto.index("## O que terminei")
+    assert texto.index("## O que eu fiz") < texto.index("## O que estou fazendo") < texto.index("## Fazer")
+    assert "## O que terminei" not in texto
     assert "## Dúvidas\n\n- uma dúvida\n" in texto and "- [ ] uma tarefa\n" in texto
 
 
@@ -135,7 +133,7 @@ def test_nota_vazia_nao_publica_nem_grava_copia_mas_ganha_o_titulo(configuracao,
 
     assert resultado.vazio and publicacao.chamadas == 0
     assert not copia_de_hoje(caminho_do_vault).exists()
-    assert "## O que terminei" in arquivo.read_text(encoding="utf-8")
+    assert "## O que estou fazendo" in arquivo.read_text(encoding="utf-8")
 
 
 def test_sem_nota_nenhuma_grava_o_modelo_e_nao_publica(configuracao, caminho_do_vault: Path, tmp_path: Path):

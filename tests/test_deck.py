@@ -21,6 +21,8 @@ NOTA = (
     "\n"
     "## O que terminei\n"
     "\n"
+    "- entregue na semana passada\n"
+    "\n"
     "## Fazer\n"
     "\n"
     "- [ ] não entra\n"
@@ -80,8 +82,10 @@ def test_pontos_e_fazer_nunca_entram():
     assert not any("não entra" in texto for texto in textos)
 
 
-def test_nota_sem_o_que_terminei_monta_o_deck_sem_ela():
-    assert [slide.id for slide in montar_deck(secao("O que eu fiz", ["- a"])).slides] == ["fiz"]
+def test_o_que_terminei_antiga_nao_vira_slide():
+    textos = [item.texto for slide in montar_deck(NotaViva.de_texto(NOTA)).slides for item in slide.itens]
+
+    assert "entregue na semana passada" not in textos
 
 
 def test_nota_sem_texto_e_deck_vazio():
