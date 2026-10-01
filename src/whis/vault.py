@@ -127,6 +127,8 @@ _DIAS_DA_SEMANA = (
 #: O `YYYY-MM-DD-HHMM` com que a nota de reunião começa, pelo contrato da pasta.
 _PREFIXO_DA_REUNIAO = re.compile(r"^(?P<data>\d{4}-\d{2}-\d{2})-(?P<hora>\d{4})(?:-.*)?$")
 
+_DECK_NO_FRONTMATTER = re.compile(r'^deck:\s*"?(https://[^\s"]+)"?\s*$', re.M)
+
 class ForaDaZonaDePropriedade(RuntimeError):
     """Tentativa de escrever fora das zonas permitidas àquela chamada."""
 
@@ -395,6 +397,57 @@ def _linhas_do_evento(evento: Evento) -> list[str]:
 def caminho_da_daily(data: date) -> str:
     """Caminho relativo da daily: um arquivo por dia, sem hora no nome."""
     return f"{PASTA_DAILY}/{data.isoformat()}.md"
+
+
+def montar_copia_da_daily(
+    *,
+    gerada: datetime,
+    deck: str | None,
+    secoes: Sequence[tuple[str, Sequence[str]]],
+    aviso: str | None = None,
+) -> str:
+    """A cópia do que foi para o deck, com o link no frontmatter.
+
+    Sem campo `data`: a Daily notes do Obsidian o transformaria em link para
+    uma nota que não existe (passo 8 de `docs/smoke-interface.md`).
+    """
+    campos: dict[str, object] = {"tipo": TIPO_DAILY}
+    if deck:
+        campos["deck"] = deck
+    campos["gerada"] = gerada.isoformat(timespec="seconds")
+
+    linhas = [f"# Daily — {_data_por_extenso(gerada.date())}", ""]
+    if deck:
+        linhas.extend([f"> [!info] [Abrir os slides]({deck})", ""])
+    if aviso:
+        linhas.extend([f"> [!warning] {aviso}", ""])
+    for titulo, conteudo in secoes:
+        linhas.extend([f"## {titulo}", "", *conteudo, ""])
+    return _frontmatter(campos) + "\n".join(linhas)
+
+
+def ultimo_deck(vault: Path) -> str | None:
+    """O `deck:` da nota datada mais recente de `daily/` que tem um."""
+    pasta = Path(vault) / PASTA_DAILY
+    if not pasta.is_dir():
+        return None
+    datadas = sorted(
+        ((dia, arquivo) for arquivo in pasta.glob("*.md") if (dia := _data_do_nome(arquivo.stem)) is not None),
+        reverse=True,
+    )
+    for _dia, arquivo in datadas:
+        casou = _DECK_NO_FRONTMATTER.search(_frontmatter_cru(arquivo))
+        if casou:
+            return casou.group(1)
+    return None
+
+
+def _frontmatter_cru(arquivo: Path) -> str:
+    texto = arquivo.read_text(encoding="utf-8", errors="replace")
+    if not texto.startswith("---"):
+        return ""
+    fim = texto.find("\n---", 3)
+    return texto[: fim if fim != -1 else 0]
 
 
 def caminho_da_resposta(momento: datetime, pergunta: str) -> str:
