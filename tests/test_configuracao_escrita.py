@@ -32,7 +32,7 @@ COMPLETO = """\
 vault = "C:/Users/gabí/whis-vault"
 
 [claude]
-modelo = "claude-opus-5"
+modelo = "Ele disse \\"ok\\".\\nSegunda linha com \\\\ e acento: ação"
 cli = "C:/Users/gabí/.local/bin/claude.exe"
 
 [diario]
@@ -41,8 +41,6 @@ hora_da_tarefa = "18:30"
 
 [daily]
 ativa = false
-referencias_pessoais = ["whis", "meu-blog"]
-contexto_do_time = "Ele disse \\"ok\\".\\nSegunda linha com \\\\ e acento: ação"
 horarios = { segunda = "13:55", quarta = "10:25", domingo = "09:00" }
 
 [noticias]
@@ -101,7 +99,7 @@ def test_ida_e_volta_devolve_a_mesma_configuracao(completo, tmp_path: Path):
 
     dados = tomllib.loads(destino.read_text(encoding="utf-8"))
     assert dados["linear"]["api_key"] == 'lin_api_#segredo"com aspas" e \\ barra'
-    assert dados["daily"]["contexto_do_time"] == 'Ele disse "ok".\nSegunda linha com \\ e acento: ação'
+    assert dados["claude"]["modelo"] == 'Ele disse "ok".\nSegunda linha com \\ e acento: ação'
     assert dados["privacidade"]["excluir"] == ["senha", 'a"b', "c\\d"]
     assert dados["daily"]["horarios"] == {"segunda": "13:55", "quarta": "10:25", "domingo": "09:00"}
     assert dados["daily"]["ativa"] is False
@@ -155,7 +153,7 @@ def test_toda_chave_do_modelo_e_escrita_e_nenhuma_a_mais(completo):
     gerado = tomllib.loads(gerar_toml(valores_de(completo)))
 
     assert _achatar(gerado).keys() == _achatar(do_modelo).keys()
-    assert len(CHAVES) == len(_achatar(do_modelo)) == 26
+    assert len(CHAVES) == len(_achatar(do_modelo)) == 24
 
 
 def _achatar(dados: dict) -> dict[str, object]:

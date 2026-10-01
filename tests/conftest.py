@@ -121,3 +121,14 @@ def area_de_transferencia_trancada(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(area_de_transferencia, "lembrar_janela_anterior", lambda: None)
     for nome in ("ler", "copiar", "colar"):
         monkeypatch.setattr(area_de_transferencia, nome, recusar)
+
+
+@pytest.fixture(autouse=True)
+def publicacao_do_deck(monkeypatch: pytest.MonkeyPatch):
+    """Nenhum teste publica o deck da daily de verdade: `whis daily` e a bandeja caem neste fake."""
+    from whis import __main__ as cli
+    from whis.fakes import PublicacaoDoDeckFake
+
+    fake = PublicacaoDoDeckFake()
+    monkeypatch.setattr(cli, "montar_publicacao_do_deck", lambda _configuracao: fake)
+    return fake

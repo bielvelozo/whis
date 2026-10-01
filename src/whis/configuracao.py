@@ -60,8 +60,6 @@ hora_da_tarefa = "19:00"     # quando a tarefa agendada gera o diário
 
 [daily]
 ativa = true                  # false = sem daily: a tarefa agendada não gera e a palheta esconde "Generate daily"
-referencias_pessoais = []     # repositórios e canais que são seus, não do trabalho: ficam no vault mas fora do roteiro
-contexto_do_time = ""         # como o seu processo funciona, para o roteiro não inventar bloqueio
 horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:55", sexta = "10:25" }}  # hora em que a daily nasce em cada dia (segunda..domingo, sem acento); dia ausente = sem daily
 
 [noticias]
@@ -139,8 +137,6 @@ CHAVES: tuple[Chave, ...] = (
     Chave("diario", "inicio_do_dia", "diario_inicio_do_dia", Tipo.HORA),
     Chave("diario", "hora_da_tarefa", "diario_hora_da_tarefa", Tipo.HORA),
     Chave("daily", "ativa", "daily_ativa", Tipo.BOOLEANO),
-    Chave("daily", "referencias_pessoais", "daily_referencias_pessoais", Tipo.LISTA),
-    Chave("daily", "contexto_do_time", "daily_contexto_do_time", Tipo.TEXTO),
     Chave("daily", "horarios", "daily_horarios", Tipo.HORARIOS),
     Chave("noticias", "ativa", "noticias_ativa", Tipo.BOOLEANO),
     Chave("noticias", "horario", "noticias_horario", Tipo.HORA),
@@ -180,13 +176,6 @@ class Configuracao:
     desligada**. É o que permite o diário nascer só com git e Linear enquanto o
     Slack espera aprovação do admin.
 
-    `daily_referencias_pessoais` vazia significa **"tudo é trabalho"** — o
-    comportamento de quem nunca mexeu no arquivo. Preencher é para quem tem
-    projeto pessoal na mesma pasta de desenvolvimento e não quer falar dele na
-    daily do time. Lista-se o que é **pessoal**, e não o que é do trabalho,
-    porque trabalho novo aparece toda semana e sumir da daily em silêncio é pior
-    do que aparecer demais.
-
     `daily_horarios` é a hora em que a daily deve nascer em cada dia da semana,
     como pares `(dia, "HH:MM")` na ordem segunda→domingo. Dia ausente é dia sem
     daily; tabela vazia é nada agendado — a tarefa do Windows nasce daqui.
@@ -216,8 +205,6 @@ class Configuracao:
     diario_inicio_do_dia: str = INICIO_DO_DIA_PADRAO
     diario_hora_da_tarefa: str = "19:00"
     daily_ativa: bool = True
-    daily_referencias_pessoais: tuple[str, ...] = ()
-    daily_contexto_do_time: str = ""
     daily_horarios: tuple[tuple[str, str], ...] = ()
     noticias_ativa: bool = True
     noticias_horario: str = "08:20"
@@ -316,8 +303,6 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
             diario.get("hora_da_tarefa", "19:00"), "[diario].hora_da_tarefa", arquivo
         ),
         daily_ativa=_booleano(daily.get("ativa", True), "[daily].ativa", arquivo),
-        daily_referencias_pessoais=_textos(daily.get("referencias_pessoais")),
-        daily_contexto_do_time=str(daily.get("contexto_do_time", "")).strip(),
         daily_horarios=_horarios_da_daily(daily.get("horarios"), arquivo),
         noticias_ativa=_booleano(noticias.get("ativa", True), "[noticias].ativa", arquivo),
         noticias_horario=_hora(

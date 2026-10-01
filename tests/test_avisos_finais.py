@@ -8,21 +8,15 @@ casos e as duas portas do lançador.
 
 from __future__ import annotations
 
-import re
 import tomllib
-from datetime import date, datetime
 from pathlib import Path
 
 import pytest
 
-from whis import __main__ as cli
 from whis import avisos, obsidian, vault
-from whis.__main__ import MODELO_DE_CONFIGURACAO, main, texto_do_toast_da_daily
+from fixtures.daily import escrever_nota_da_daily
+from whis.__main__ import MODELO_DE_CONFIGURACAO, main
 from whis.configuracao import Configuracao, carregar
-from whis.daily import JanelaDaDaily, ResultadoDaDaily
-from whis.fakes import DailyFake
-from whis.nota_viva import Mudancas
-from whis.portas import ErroDeDaily
 
 ID_DO_VAULT = "245833c11ad43e6e"
 
@@ -84,52 +78,6 @@ def test_o_modelo_traz_o_id_do_vault_desta_maquina():
     assert dados["obsidian"]["vault"] == ID_DO_VAULT
 
 
-# -- o texto do toast -------------------------------------------------------
-
-
-def resultado_com(mudancas: Mudancas | None = None, falha: str | None = None) -> ResultadoDaDaily:
-    agora = datetime(2026, 9, 11, 13, 55).astimezone()
-    return ResultadoDaDaily(
-        janela=JanelaDaDaily(data=date(2026, 9, 11), desde=agora, ate=agora),
-        nota=Path("daily/2026-09-11.md"),
-        eventos=(),
-        excluidos=0,
-        fontes_lidas=("git",),
-        fontes_com_falha=(),
-        reunioes=(),
-        roteiro=None,
-        nota_viva=Path("daily/atual.md"),
-        secoes=(),
-        mudancas=mudancas,
-        falha_do_roteiro=falha,
-    )
-
-
-def test_o_texto_conta_os_novos_e_os_movidos():
-    mudancas = Mudancas(acrescentadas=(("- a",), ("- b",), ("- c",)), movidas=(("- d",),))
-
-    assert texto_do_toast_da_daily(resultado_com(mudancas)) == (
-        "3 itens novos e 1 movido para 'O que eu fiz'."
-    )
-    assert texto_do_toast_da_daily(resultado_com(Mudancas(acrescentadas=(("- a",),)))) == (
-        "1 item novo."
-    )
-    assert texto_do_toast_da_daily(resultado_com(Mudancas(movidas=(("- a",), ("- b",))))) == (
-        "2 movidos para 'O que eu fiz'."
-    )
-
-
-def test_o_texto_diz_quando_nada_mudou():
-    assert texto_do_toast_da_daily(resultado_com(Mudancas())) == "Nada mudou na nota viva."
-    assert texto_do_toast_da_daily(resultado_com(None)) == "Nada mudou na nota viva."
-
-
-def test_o_texto_diz_quando_a_nota_nasceu_parcial():
-    assert texto_do_toast_da_daily(resultado_com(falha="o Claude não respondeu a tempo")) == (
-        "A nota nasceu parcial: o Claude não respondeu a tempo. A nota viva ficou como estava."
-    )
-
-
 # -- o subcomando daily -----------------------------------------------------
 
 
@@ -150,26 +98,7 @@ def aviso(monkeypatch) -> AvisoEspiao:
     return espiao
 
 
-def test_quando_a_daily_nasce_sai_o_toast_com_o_botao_do_obsidian(
-    configuracao_do_diario, caminho_do_vault: Path, aviso: AvisoEspiao
-):
-    configuracao_do_diario()
-
-    codigo = main(["daily", "--fakes"])
-
-    assert codigo == 0
-    [(titulo, texto, botao)] = aviso.avisos
-    assert titulo == "A daily está pronta"
-    assert re.fullmatch(r"\d+ ite(m novo|ns novos)\.", texto), texto
-    assert botao == (
-        "Abrir no Obsidian",
-        f"obsidian://open?vault={caminho_do_vault.name}&file=daily%2Fatual",
-    )
-
-
-def test_o_botao_usa_o_id_do_vault_quando_configurado(
-    configuracao_do_diario, tmp_path: Path, aviso: AvisoEspiao, monkeypatch
-):
+def test_o_botao_da_nota_usa_o_id_do_vault_quando_configurado(configuracao_do_diario, aviso: AvisoEspiao):
     configuracao = configuracao_do_diario()
     arquivo = configuracao.origem
     arquivo.write_text(
@@ -177,41 +106,12 @@ def test_o_botao_usa_o_id_do_vault_quando_configurado(
         encoding="utf-8",
     )
 
-    main(["daily", "--fakes"])
+    main(["daily"])
 
     assert aviso.avisos[0][2][1] == f"obsidian://open?vault={ID_DO_VAULT}&file=daily%2Fatual"
 
 
-def test_simular_nao_avisa(configuracao_do_diario, aviso: AvisoEspiao):
-    configuracao_do_diario()
-
-    main(["daily", "--fakes", "--simular"])
-
-    assert aviso.avisos == []
-
-
-def test_a_nota_parcial_avisa_que_ficou_como_estava(
-    configuracao_do_diario, aviso: AvisoEspiao, monkeypatch, capsys
-):
-    configuracao_do_diario()
-    main(["daily", "--fakes"])
-    aviso.avisos.clear()
-    monkeypatch.setattr(
-        cli,
-        "montar_roteiro_da_daily",
-        lambda configuracao, *, fakes=False: DailyFake(erro=ErroDeDaily("o Claude caiu")),
-    )
-
-    codigo = main(["daily", "--fakes"])
-
-    assert codigo == cli.SAIDA_PARCIAL
-    [(titulo, texto, botao)] = aviso.avisos
-    assert titulo == "A daily está pronta"
-    assert texto == "A nota nasceu parcial: o Claude caiu. A nota viva ficou como estava."
-    assert botao[0] == "Abrir no Obsidian"
-
-
-def test_a_suite_nunca_mostra_um_toast_de_verdade(configuracao_do_diario, toasts):
+def test_a_suite_nunca_mostra_um_toast_de_verdade(configuracao_do_diario, caminho_do_vault: Path, toasts):
     """A fixture autouse do `conftest` intercepta: rodar a suíte não enche a central de avisos.
 
     Sem ela, cada `main(["daily", ...])` dos testes chamava o PowerShell de
@@ -219,18 +119,20 @@ def test_a_suite_nunca_mostra_um_toast_de_verdade(configuracao_do_diario, toasts
     dezenas por execução, guardadas três dias.
     """
     configuracao_do_diario()
+    escrever_nota_da_daily(caminho_do_vault)
 
-    main(["daily", "--fakes"])
+    main(["daily"])
 
     assert [titulo for titulo, _, _ in toasts] == ["A daily está pronta"]
     assert avisos.avisar.__module__ == "conftest", "o `avisar` de verdade não pode estar no caminho"
 
 
-def test_o_toast_que_nao_saiu_nao_muda_o_codigo_de_saida(configuracao_do_diario, monkeypatch):
+def test_o_toast_que_nao_saiu_nao_muda_o_codigo_de_saida(configuracao_do_diario, caminho_do_vault: Path, monkeypatch):
     configuracao_do_diario()
+    escrever_nota_da_daily(caminho_do_vault)
     monkeypatch.setattr(avisos, "avisar", AvisoEspiao(saiu=False))
 
-    assert main(["daily", "--fakes"]) == 0
+    assert main(["daily"]) == 0
 
 
 # -- o lançador ---------------------------------------------------------------

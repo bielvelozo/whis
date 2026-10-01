@@ -5,7 +5,7 @@ adaptadores que os testes (e o `--fakes` da CLI) injetam no lugar do Claude,
 do git, do Linear e do Slack. Os testes verificam só o que aparece
 no vault.
 
-As exceções são `ResumoDoDiaFake`, `DailyFake` e `BuscaFake`, que guardam o
+As exceções são `ResumoDoDiaFake` e `BuscaFake`, que guardam o
 que receberam: o filtro de exclusão e a pasta privada prometem que o conteúdo
 excluído **não sai da máquina**, e a única forma de provar isso é olhar o que
 chegou à porta.
@@ -25,15 +25,12 @@ from .busca import Citacao, Resposta
 from .conversa import Turno
 from .ferramentas import Ferramentas
 from .fontes import Evento, Janela
-from .nota_viva import NotaViva, id_do_item
 from .portas import (
     Aula,
     Candidato,
-    Daily,
     Escolha,
     Formacao,
     ItemEscolhido,
-    ItemNovo,
     Janelas,
     Medida,
     Publicacao,
@@ -102,31 +99,6 @@ RESUMO_DO_DIA_PADRAO = ResumoDoDia(
     temas=("fontes passivas", "checkout"),
 )
 
-#: O item aberto de exemplo: entra em *O que estou fazendo* na primeira
-#: execução e é movido para *O que eu fiz* na seguinte.
-ITEM_ABERTO_DE_EXEMPLO = "Sigo no coletor de git, que ficou pela metade."
-
-#: Resposta de daily de exemplo: acrescenta em cada lista e pede um movimento.
-#:
-#: O id em `mover` é o que `NotaViva` dará ao item aberto assim que ele
-#: existir. Na primeira execução ele ainda não está na nota e o pedido é
-#: ignorado com log; na segunda, o item está lá e sobe. Nenhum texto entra
-#: duas vezes: a costura reconhece o que já está na nota.
-DAILY_PADRAO = Daily(
-    fiz=(
-        ItemNovo("Fechei a camada 01 do diário."),
-        ItemNovo("FN-123, o cálculo de frete do checkout: corrigido e em produção."),
-    ),
-    fazendo=(
-        ItemNovo(ITEM_ABERTO_DE_EXEMPLO),
-        ItemNovo(
-            "FN-130, o diário automático: combinado gerar às 19:00 com a máquina ligada.",
-            sob=ITEM_ABERTO_DE_EXEMPLO,
-        ),
-    ),
-    mover=(id_do_item(ITEM_ABERTO_DE_EXEMPLO),),
-)
-
 
 class FonteFake:
     """Fonte passiva que devolve eventos fixos, recortados pela janela.
@@ -172,41 +144,11 @@ class FonteDeExemplo:
         return tuple(evento for evento in do_dia if janela.contem(evento.momento))
 
 
-class FonteDaJanela:
-    """Fonte fake que espalha seus eventos ao longo da janela pedida.
-
-    A janela da daily não é um dia civil: ela começa quando a última daily
-    terminou, e um evento preso a um horário fixo cairia fora dela em quase
-    toda execução. Espalhar é o que faz `daily --fakes` mostrar sempre um
-    período plausível, seja ele de duas horas ou de um fim de semana.
-    """
-
-    def __init__(self, nome: str, eventos: tuple[Evento, ...]) -> None:
-        self.nome = nome
-        self._eventos = tuple(eventos)
-
-    def coletar(self, janela: Janela) -> tuple[Evento, ...]:
-        duracao = janela.fim - janela.inicio
-        passo = duracao / (len(self._eventos) + 1)
-        return tuple(
-            replace(evento, momento=janela.inicio + passo * (posicao + 1))
-            for posicao, evento in enumerate(self._eventos)
-        )
-
-
 def fontes_de_exemplo() -> list[FonteDeExemplo]:
     """As fontes que o `--fakes` do diário injeta: git e Linear num dia plausível."""
     return [
         FonteDeExemplo("git", EVENTOS_DE_GIT),
         FonteDeExemplo("linear", EVENTOS_DE_LINEAR),
-    ]
-
-
-def fontes_de_exemplo_da_daily() -> list[FonteDaJanela]:
-    """As fontes que o `--fakes` da daily injeta, cabendo em qualquer janela."""
-    return [
-        FonteDaJanela("git", EVENTOS_DE_GIT),
-        FonteDaJanela("linear", EVENTOS_DE_LINEAR),
     ]
 
 
@@ -236,34 +178,6 @@ class ResumoDoDiaFake:
         if self._erro is not None:
             raise self._erro
         return self._resumo
-
-
-class DailyFake:
-    """Porta de daily que devolve sempre a mesma resposta.
-
-    Guarda o que recebeu pelo mesmo motivo que `ResumoDoDiaFake`: é assim que o
-    teste do filtro de exclusão prova que o conteúdo excluído nunca chegou
-    perto de sair da máquina — e que a nota viva chegou inteira ao modelo.
-    """
-
-    def __init__(
-        self, roteiro: Daily = DAILY_PADRAO, erro: Exception | None = None
-    ) -> None:
-        self._roteiro = roteiro
-        self._erro = erro
-        self.eventos_recebidos: tuple[Evento, ...] = ()
-        self.reunioes_recebidas: tuple[str, ...] = ()
-        self.nota_recebida: NotaViva | None = None
-
-    def resumir_daily(
-        self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...], nota: NotaViva
-    ) -> Daily:
-        self.eventos_recebidos = tuple(eventos)
-        self.reunioes_recebidas = tuple(reunioes)
-        self.nota_recebida = nota
-        if self._erro is not None:
-            raise self._erro
-        return self._roteiro
 
 
 #: Resposta de exemplo, citando uma nota como o adaptador real citaria.

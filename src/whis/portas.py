@@ -1,4 +1,4 @@
-"""Portas dos serviços externos: o resumo do dia, a daily e as três do jornal.
+"""Portas dos serviços externos: o resumo do dia, a publicação do deck da daily e as três do jornal.
 
 Nem o diário, nem a daily, nem o jornal falam com um provedor concreto —
 falam com estas portas. Os adaptadores reais (Claude) implementam os
@@ -11,13 +11,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from .fontes import Evento
-
-if TYPE_CHECKING:
-    from .nota_viva import NotaViva
-
 
 @dataclass(frozen=True)
 class ResumoDoDia:
@@ -44,59 +40,6 @@ class PortaResumoDoDia(Protocol):
         """Devolve narrativa, destaques, pendências e temas do dia.
 
         Levanta `ErroDeResumoDoDia` quando o serviço falha.
-        """
-        ...
-
-
-@dataclass(frozen=True)
-class ItemNovo:
-    """Um item que ainda não está na nota viva e o modelo quer acrescentar.
-
-    `sob` é onde ele entra: o id de um item existente, para virar sub-item
-    dele; o texto exato de outro item novo da mesma resposta, para o modelo
-    montar um grupo com sub-itens de uma vez; ou `None`, para o fim da lista.
-    """
-
-    texto: str
-    sob: str | None = None
-
-
-@dataclass(frozen=True)
-class Daily:
-    """O que o modelo quer mudar na nota viva depois de ler a janela.
-
-    Irmã de `ResumoDoDia`, com outro recorte e outro destino: o diário é uma
-    narrativa nova a cada dia; a daily é uma lista que o usuário mantém, e o
-    modelo só **acrescenta** e **aponta**. `fiz` e `fazendo` são itens novos
-    para *O que eu fiz* e *O que estou fazendo*; `mover` são ids de itens de
-    *O que estou fazendo* que terminaram. O texto de um item que já existe
-    nunca volta aqui: quem move é a costura, copiando a linha literal.
-
-    Tudo vazio é uma resposta válida — a nota já diz tudo.
-    """
-
-    fiz: tuple[ItemNovo, ...] = ()
-    fazendo: tuple[ItemNovo, ...] = ()
-    mover: tuple[str, ...] = ()
-
-
-class ErroDeDaily(RuntimeError):
-    """Falha ao montar a resposta. A nota viva fica como estava; a datada nasce marcada."""
-
-
-@runtime_checkable
-class PortaDaily(Protocol):
-    """Lê os eventos de uma janela contra a nota viva e diz o que muda nela."""
-
-    def resumir_daily(
-        self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...], nota: NotaViva
-    ) -> Daily:
-        """Devolve os itens novos de cada lista e os ids a mover.
-
-        `nota` é a nota viva como está: as duas listas do agente com um id por
-        item, e as seções do usuário como contexto para não repetir.
-
-        Levanta `ErroDeDaily` quando o serviço falha.
         """
         ...
 

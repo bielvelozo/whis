@@ -1,7 +1,7 @@
 """A palheta: registro, despacho e o contrato "dispara e some" — sem janela e sem Tk.
 
 Cada comando roda pela costura de verdade contra um vault temporário, com as
-portas fake (`DailyFake`, `BuscaFake`) e o thread de trabalho síncrono. O que
+portas fake (`PublicacaoDoDeckFake`, `BuscaFake`) e o thread de trabalho síncrono. O que
 se prova é o que sobra: a nota no vault, o fio em `conversas.json`, o toast
 montado (com e sem botão) e que nada escapa da zona `respostas/`. A janela
 entra por dublê; o filtro e o destaque da lista são funções puras; o Tk de
@@ -28,12 +28,12 @@ from whis.busca import Citacao, Resposta
 from whis.busca_claude import PROMPT_DA_BUSCA
 from whis.configuracao import MODELO_DE_CONFIGURACAO, ConfiguracaoInvalida, carregar
 from whis.conversa import NOME_DO_ARQUIVO
+from fixtures.daily import NOTA_DA_DAILY, escrever_nota_da_daily
 from whis.fakes import (
-    DAILY_PADRAO,
     RESPOSTA_PADRAO,
+    URL_DO_DECK_FAKE,
     BuscaFake,
-    DailyFake,
-    fontes_de_exemplo_da_daily,
+    PublicacaoDoDeckFake,
 )
 from whis.janela_da_palheta import Acao, comando_destacado, comando_pelo_rotulo, completar, filtrar
 from whis.palheta import (
@@ -110,12 +110,12 @@ def aviso() -> AvisoEspiao:
 def montar(configuracao_do_diario, aviso: AvisoEspiao):
     """Uma palheta com os comandos de verdade sobre as portas fake, síncrona."""
 
-    def construir(*, busca=None, roteiro=None, lancados=None, abrir_painel=None, extras=()):
+    def construir(*, busca=None, publicacao=None, simular_daily=False, lancados=None, abrir_painel=None, extras=()):
         configuracao = configuracao_do_diario()
         comandos = comandos_padrao(
-            fontes_da_daily=lambda _atual: fontes_de_exemplo_da_daily(),
-            roteiro_da_daily=lambda _atual: roteiro or DailyFake(),
+            publicacao_do_deck=lambda _atual: publicacao or PublicacaoDoDeckFake(),
             busca=lambda _atual: busca or BuscaFake(),
+            simular_daily=simular_daily,
             lancar=(lancados if lancados is not None else []).append,
             relogio=lambda: MOMENTO,
         )
@@ -165,56 +165,47 @@ def test_texto_vazio_e_comando_desconhecido_listam_os_que_existem():
 # -- daily ----------------------------------------------------------------------
 
 
-def test_daily_pela_palheta_gera_a_nota_viva_e_avisa_com_o_botao(montar, caminho_do_vault: Path, aviso):
-    palheta = montar()
+def test_daily_pela_palheta_publica_os_slides_e_avisa_com_o_link(montar, caminho_do_vault: Path, aviso):
+    escrever_nota_da_daily(caminho_do_vault)
+    publicacao = PublicacaoDoDeckFake()
+    palheta = montar(publicacao=publicacao)
 
     assert palheta.despachar("daily") is True
 
-    assert ler_frontmatter(caminho_do_vault / "daily" / "atual.md")["tipo"] == "daily-atual"
-    assert f"- {DAILY_PADRAO.fiz[0].texto}" in (caminho_do_vault / "daily" / "atual.md").read_text(encoding="utf-8")
-    titulo, texto, botao = aviso.ultimo()
-    assert titulo == "A daily está pronta"
-    assert "itens novos" in texto
-    assert botao == ("Abrir no Obsidian", f"obsidian://open?vault={caminho_do_vault.name}&file=daily%2Fatual")
+    assert publicacao.chamadas == 1
+    assert aviso.ultimo() == ("A daily está pronta", "4 slides no link de sempre.", ("Abrir slides", URL_DO_DECK_FAKE))
 
 
-def test_o_toast_da_daily_e_o_mesmo_do_subcomando(montar, aviso, monkeypatch, capsys):
+def test_o_toast_da_daily_e_o_mesmo_do_subcomando(montar, caminho_do_vault: Path, aviso, monkeypatch):
     """Um lugar só monta o toast: o subcomando e a palheta dizem a mesma coisa."""
-    palheta = montar()
-    palheta.despachar("daily")
+    escrever_nota_da_daily(caminho_do_vault)
+    montar().despachar("daily")
     da_palheta = aviso.ultimo()
     monkeypatch.setattr(avisos, "avisar", aviso)
 
-    cli.main(["daily", "--fakes"])
+    cli.main(["daily"])
 
-    do_subcomando = aviso.ultimo()
-    assert do_subcomando[0] == da_palheta[0] == cli.TITULO_DO_TOAST_DA_DAILY
-    assert do_subcomando[2] == da_palheta[2]
+    assert aviso.ultimo() == da_palheta
 
 
-def test_daily_que_nao_nasce_avisa_sem_botao(montar, aviso):
-    palheta = montar()
-    palheta.comandos = tuple(
-        Comando(c.nome, c.ajuda, (lambda a, cfg: modulo.resultado_da_daily(_vazio())) if c.nome == "daily" else c.rodar)
-        for c in palheta.comandos
-    )
+def test_daily_com_a_bandeja_em_fakes_simula_sem_publicar_nem_escrever(montar, caminho_do_vault: Path, aviso):
+    arquivo = escrever_nota_da_daily(caminho_do_vault)
+    publicacao = PublicacaoDoDeckFake()
+    palheta = montar(publicacao=publicacao, simular_daily=True)
 
     palheta.despachar("daily")
 
-    titulo, texto, botao = aviso.ultimo()
-    assert titulo == "A daily não nasceu"
-    assert "Nada aconteceu" in texto
-    assert botao is None
+    assert publicacao.chamadas == 0
+    assert arquivo.read_bytes().decode("utf-8") == NOTA_DA_DAILY
+    assert aviso.ultimo() == ("Simulação da daily", "Simulação: 4 slides, nada publicado.", None)
 
 
-def _vazio():
-    from whis.daily import JanelaDaDaily, ResultadoDaDaily
+def test_daily_com_a_nota_vazia_avisa_com_o_botao_da_nota(montar, caminho_do_vault: Path, aviso):
+    montar().despachar("daily")
 
-    return ResultadoDaDaily(
-        janela=JanelaDaDaily(data=MOMENTO.date(), desde=MOMENTO, ate=MOMENTO),
-        nota=None, eventos=(), excluidos=0, fontes_lidas=(), fontes_com_falha=(), reunioes=(),
-        roteiro=None, nota_viva=None, secoes=(), mudancas=None, vazio=True,
-    )
+    titulo, _texto, botao = aviso.ultimo()
+    assert titulo == "A nota da daily está vazia"
+    assert botao == ("Abrir no Obsidian", f"obsidian://open?vault={caminho_do_vault.name}&file=daily%2Fatual")
 
 
 # -- note e doubt -----------------------------------------------------------
@@ -821,10 +812,11 @@ def test_o_subcomando_bandeja_monta_a_palheta_com_os_fakes_e_o_atalho(configurac
     palheta = extras["palheta"]
     assert isinstance(palheta, Palheta)
     assert extras["atalho"].texto == "ctrl+space"
+    escrever_nota_da_daily(caminho_do_vault)
     daily = next(comando for comando in palheta.comandos if comando.nome == "daily")
     resultado = daily.rodar("", palheta.configuracao)
-    assert resultado.nota == "daily/atual.md"
-    assert (caminho_do_vault / "daily" / "atual.md").is_file()
+    assert resultado.titulo == "Simulação da daily" and resultado.link is None
+    assert sorted(p.name for p in (caminho_do_vault / "daily").iterdir()) == ["atual.md"]
 
 
 def test_a_janela_de_verdade_mostra_sete_linhas_e_rola_com_a_selecao_e_a_barra():

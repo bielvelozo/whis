@@ -69,19 +69,15 @@ from .jornal import JornalNaoNasceu, PortasDoJornal, ResultadoDoJornal, gerar_jo
 from .diario import NenhumaFonteConfigurada, ResultadoDoDiario, gerar_diario
 from .fakes import (
     BuscaFake,
-    DailyFake,
     EditorFake,
     FormacaoFake,
     PublicacaoFake,
     ResumoDoDiaFake,
     fontes_de_exemplo,
-    fontes_de_exemplo_da_daily,
 )
 from .fontes import PortaFonte, data_do_diario
-from .palheta import ROTULO_DO_BOTAO as ROTULO_DO_BOTAO_DA_DAILY  # noqa: F401 — reexport
-from .palheta import TITULO_DO_TOAST_DA_DAILY, texto_do_toast_da_daily  # noqa: F401 — reexport
 from .pergunta import PerguntaVazia, responder
-from .portas import PortaDaily, PortaResumoDoDia
+from .portas import PortaPublicacaoDoDeck, PortaResumoDoDia
 
 _log = logging.getLogger("whis")
 
@@ -191,38 +187,15 @@ def montar_resumo_do_dia(
     return ResumoDoDiaClaude(modelo=configuracao.claude_modelo or None)
 
 
-def montar_fontes_da_daily(
-    configuracao: Configuracao, *, fakes: bool = False
-) -> list[PortaFonte]:
-    """As mesmas fontes do diário; só o `--fakes` muda.
+def montar_publicacao_do_deck(configuracao: Configuracao) -> PortaPublicacaoDoDeck:
+    """A publicação do deck da daily: o Haiku da conta do usuário, pelo CLI de `[claude].cli`.
 
-    A janela da daily não é um dia civil, então as fontes fake do diário — que
-    trazem os exemplos numa hora fixa — cairiam fora dela quase sempre.
+    Não há fake aqui de propósito: `--fakes` na daily é simulação, e uma
+    publicação fake que gravasse a cópia deixaria um `deck:` falso no vault.
     """
-    if fakes:
-        _log.warning("Usando fontes FAKE — nada é lido do git, do Linear nem do Slack.")
-        return list(fontes_de_exemplo_da_daily())
-    return montar_fontes(configuracao)
+    from .deck_claude import PublicacaoDoDeckClaude
 
-
-def montar_roteiro_da_daily(
-    configuracao: Configuracao, *, fakes: bool = False
-) -> PortaDaily:
-    """O roteiro da daily: o Claude da conta do usuário, ou o fake.
-
-    O processo do time entra pelo construtor, como o modelo: a porta é a mesma
-    para todo adaptador, e o que muda de máquina para máquina é configuração.
-    """
-    if fakes:
-        _log.warning("Usando roteiro da daily FAKE — nada é enviado ao Claude.")
-        return DailyFake()
-
-    from .resumo_dia_claude import ResumoDoDiaClaude
-
-    return ResumoDoDiaClaude(
-        modelo=configuracao.claude_modelo or None,
-        contexto_do_time=configuracao.daily_contexto_do_time,
-    )
+    return PublicacaoDoDeckClaude(cli=configuracao.claude_cli or None)
 
 
 def montar_busca(configuracao: Configuracao, *, fakes: bool = False) -> PortaBusca:
@@ -367,13 +340,11 @@ def _relatar_diario(resultado: ResultadoDoDiario) -> None:
 
 
 def _comando_daily(args: argparse.Namespace) -> int:
-    """Lê da última daily até agora, mantém `daily/atual.md` e imprime a nota viva.
+    """Publica os slides da nota viva no link de sempre e grava a cópia em `daily/`.
 
-    O que sai no terminal são as quatro seções da nota viva como ficaram — o
-    que o usuário lê em voz alta um minuto depois; a nota datada guarda o que
-    mudou e as listas cruas. Quando a nota viva existe ao fim, sai também o
-    toast com o botão que a abre no Obsidian — quem chamou foi a tarefa
-    agendada, e não há terminal para ler.
+    O que sai no terminal são os slides como foram, e o link; quem chama na
+    hora agendada é a tarefa `Whis-Daily`, e o toast com o botão é o único
+    sinal de que os slides saíram.
     """
     configuracao = _configuracao(args)
     if args.anotar is not None:
@@ -382,42 +353,32 @@ def _comando_daily(args: argparse.Namespace) -> int:
     _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
     if args.agendada and not configuracao.daily_ativa:
         _log.info(
-            "Daily desligada em [daily].ativa de %s — a tarefa agendada "
-            "não gerou nada.",
+            "Daily desligada em [daily].ativa de %s — a tarefa agendada não gerou nada.",
             configuracao.origem,
         )
-        return 0
-    fontes = montar_fontes_da_daily(configuracao, fakes=args.fakes)
-    # Em simulação o roteiro não é pedido; o fake entra como marcador para que
-    # conferir o filtro não dependa de credencial nem do adaptador do Claude.
-    roteiro = montar_roteiro_da_daily(configuracao, fakes=args.fakes or args.simular)
-
+        return SAIDA_COMPLETA
+    simular = args.simular or args.fakes
     resultado = gerar_daily(
         datetime.now().astimezone(),
         configuracao=configuracao,
-        fontes=fontes,
-        roteiro=roteiro,
-        simular=args.simular,
+        publicacao=None if simular else montar_publicacao_do_deck(configuracao),
+        simular=simular,
     )
     _relatar_daily(resultado)
-    if not args.simular and resultado.nota_viva is not None:
-        _avisar_que_a_daily_nasceu(configuracao, resultado)
-    return _codigo_de_saida(
-        f"Daily de {resultado.janela.data.isoformat()}",
-        vazio=resultado.vazio,
-        parcial=bool(resultado.fontes_com_falha or resultado.falha_do_roteiro),
+    if not simular:
+        _palheta.avisar_resultado(configuracao, _palheta.resultado_da_daily(resultado))
+    return _codigo_da_daily(resultado)
+
+
+def _codigo_da_daily(resultado: ResultadoDaDaily) -> int:
+    """0 com os slides no ar ou com a nota vazia; 3 quando só a cópia nasceu."""
+    if resultado.simulado or resultado.vazio or resultado.publicado:
+        _log.info("Daily de %s: saída %d.", resultado.data.isoformat(), SAIDA_COMPLETA)
+        return SAIDA_COMPLETA
+    _log.warning(
+        "Daily de %s: os slides não saíram (saída %d).", resultado.data.isoformat(), SAIDA_PARCIAL
     )
-
-
-def _avisar_que_a_daily_nasceu(configuracao: Configuracao, resultado: ResultadoDaDaily) -> None:
-    """O toast com o botão que abre `daily/atual.md` no Obsidian.
-
-    Quem chama `whis daily` na hora agendada não está olhando terminal nenhum;
-    o toast é o único sinal de que a nota nasceu. É o mesmo toast que a
-    palheta dispara — montado num lugar só. Falhar em avisar já é tratado
-    dentro de `avisar`; o código de saída continua sendo o da nota.
-    """
-    _palheta.avisar_resultado(configuracao, _palheta.resultado_da_daily(resultado))
+    return SAIDA_PARCIAL
 
 
 # -- news -------------------------------------------------------------------
@@ -510,53 +471,28 @@ def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
 
 
 def _relatar_daily(resultado: ResultadoDaDaily) -> None:
-    if resultado.vazio:
-        print("Nada aconteceu desde a última daily — nenhuma nota foi escrita.")
-        print(_vault.cobertura_da_janela(resultado.janela))
-        return
-
-    print(f"Daily — {resultado.janela.data.isoformat()}")
-    print(_vault.cobertura_da_janela(resultado.janela))
+    print(f"Daily — {resultado.data.isoformat()}")
     print()
-
-    for titulo, linhas in resultado.secoes:
-        print(f"{titulo}:")
-        for linha in linhas:
-            print(f"  {linha}")
-        if not linhas:
-            print("  (nada)")
+    for slide in resultado.deck.slides:
+        print(f"{slide.titulo}:")
+        for item in slide.itens:
+            print(f"{'  ' * (item.profundidade + 1)}{item.texto}")
         print()
 
     if resultado.simulado:
-        print("Simulação — o Claude não foi chamado e nada foi escrito.")
-        calados = {id(evento) for evento in resultado.calados}
-        for evento in resultado.eventos:
-            referencia = f" ({evento.referencia})" if evento.referencia else ""
-            marca = "  ← só no vault" if id(evento) in calados else ""
-            print(
-                f"  {evento.momento:%d/%m %H:%M}  [{evento.fonte}]{referencia} "
-                f"{evento.titulo}{marca}"
-            )
-        if not resultado.eventos:
-            print("  (nenhum evento)")
+        print("Simulação — nada foi publicado nem gravado.")
+        if resultado.vazio:
+            print("A nota da daily está vazia: nenhum slide sairia.")
+        return
+    if resultado.vazio:
+        print(f"A nota da daily está vazia — escreva em {_vault.CAMINHO_DA_NOTA_VIVA} e rode de novo.")
+        return
+    if resultado.publicado:
+        print(f"Slides: {resultado.url}")
     else:
-        if resultado.nota_viva is not None:
-            print(f"Nota viva: {resultado.nota_viva}")
-        print(f"Nota: {resultado.nota}")
-
-    for reuniao in resultado.reunioes:
-        print(f"  reunião: {reuniao}")
-    if resultado.excluidos:
-        print(f"O filtro de exclusão removeu {resultado.excluidos} evento(s).")
-    if resultado.calados:
-        print(
-            f"{len(resultado.calados)} evento(s) ficam só no vault, fora do roteiro "
-            f"— são de [daily].referencias_pessoais."
-        )
-    for falha in resultado.fontes_com_falha:
-        print(f"Fonte '{falha.fonte}' não entrou: {falha.motivo}")
-    if resultado.falha_do_roteiro:
-        print(f"A nota viva não ganhou nada nesta daily: {resultado.falha_do_roteiro}")
+        print(f"Os slides não saíram: {resultado.falha_da_publicacao}")
+    if resultado.copia is not None:
+        print(f"Cópia: {resultado.copia}")
 
 
 # -- perguntar --------------------------------------------------------------
@@ -638,8 +574,8 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
     configuracao = _configuracao(args)
     fakes = args.fakes
     comandos = _palheta.comandos_padrao(
-        fontes_da_daily=lambda atual: montar_fontes_da_daily(atual, fakes=fakes),
-        roteiro_da_daily=lambda atual: montar_roteiro_da_daily(atual, fakes=fakes),
+        publicacao_do_deck=lambda atual: montar_publicacao_do_deck(atual),
+        simular_daily=fakes,
         busca=lambda atual: montar_busca(atual, fakes=fakes),
         portas_do_jornal=lambda atual: montar_portas_do_jornal(atual, fakes=fakes),
     )
