@@ -8,7 +8,9 @@ o formato é ignorada com aviso no log, e o jornal sai com o que deu para ler.
 Formato: uma seção por `##`, uma fonte por linha `- Nome: URL`. O título da
 seção pode trazer o id interno entre parênteses e os limites de itens —
 `## Tecnologia (tecnologia) · 3 a 5 itens`. `## Time` e `## Nomes` são
-especiais e não viram seção do jornal.
+especiais e não viram seção do jornal. Uma página do X é `- Nome: x:seguindo`,
+`- Nome: x:para-voce` ou `- Nome: x:busca <consulta>`; ela não é feed e não
+conta para o jornal nascer.
 """
 
 from __future__ import annotations
@@ -29,6 +31,16 @@ MINIMO_PADRAO = 3
 MAXIMO_PADRAO = 5
 
 MODELO_DAS_FONTES = """# Fontes do jornal
+
+## Dev com IA (ia) · 4 a 6 itens
+- X · Seguindo: x:seguindo
+- X · Para você: x:para-voce
+- X · Claude Code: x:busca "claude code" min_faves:100
+- X · Outros harness: x:busca (codex OR cursor OR "gemini cli" OR opencode) (agent OR cli) min_faves:50
+- X · Skills e hooks: x:busca (claude OR codex) (skills OR hooks OR subagents OR "slash commands" OR MCP) min_faves:50
+- X · Contexto: x:busca ("context engineering" OR CLAUDE.md OR AGENTS.md OR "plan mode") min_faves:30
+- X · Tokens e custo: x:busca ("prompt caching" OR "token usage" OR "context window" OR compact) (claude OR codex OR cursor) min_faves:30
+- X · Fluxo de trabalho: x:busca ("agentic coding" OR "spec-driven" OR "parallel agents" OR worktrees) min_faves:50
 
 ## Tecnologia (tecnologia) · 3 a 5 itens
 - Ars Technica: https://feeds.arstechnica.com/arstechnica/index
@@ -98,7 +110,10 @@ _CABECALHO = re.compile(r"^##(?!#)\s*(?P<resto>.*?)\s*$")
 _LIMITES = re.compile(r"\s*[·•|—–-]\s*(?P<minimo>\d+)\s*a\s*(?P<maximo>\d+)(?:\s*itens?)?\s*$", re.I)
 _ID = re.compile(r"\s*\((?P<id>[^()]*)\)\s*$")
 _LINHA_DE_FONTE = re.compile(r"^[-*+]\s+(?P<nome>.+?)\s*:\s*(?P<url>https?://\S+)\s*$", re.I)
+_LINHA_DO_X = re.compile(r"^[-*+]\s+(?P<nome>.+?)\s*:\s*x:(?P<tipo>\S+)(?:\s+(?P<consulta>.+?))?\s*$", re.I)
 _MARCADOR = re.compile(r"^[-*+]\s+")
+
+TIPOS_DO_X = ("seguindo", "para-voce", "busca")
 
 _TIME = "time"
 _NOMES = "nomes"
@@ -113,6 +128,15 @@ class Fonte:
 
 
 @dataclass(frozen=True)
+class FonteDoX:
+    """Uma página do X que o leitor visita: uma aba da home ou uma busca."""
+
+    nome: str
+    tipo: str
+    consulta: str = ""
+
+
+@dataclass(frozen=True)
 class Secao:
     """Uma seção do jornal, com os limites de itens que o editor respeita."""
 
@@ -121,6 +145,7 @@ class Secao:
     minimo: int
     maximo: int
     fontes: tuple[Fonte, ...]
+    x: tuple[FonteDoX, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -148,7 +173,7 @@ def interpretar_fontes(texto: str) -> FontesDoJornal:
     def fechar() -> None:
         if atual is None:
             return
-        if not atual["fontes"]:
+        if not atual["fontes"] and not atual["x"]:
             _avisar(avisos, f"Seção “{atual['titulo']}” sem nenhuma fonte válida; fica fora do jornal")
             return
         secoes.append(
@@ -158,6 +183,7 @@ def interpretar_fontes(texto: str) -> FontesDoJornal:
                 minimo=atual["minimo"],
                 maximo=atual["maximo"],
                 fontes=tuple(atual["fontes"]),
+                x=tuple(atual["x"]),
             )
         )
 
@@ -181,7 +207,7 @@ def interpretar_fontes(texto: str) -> FontesDoJornal:
                 ignorando = True
             else:
                 ids_vistos.add(id_)
-                atual = {"id": id_, "titulo": titulo, "minimo": minimo, "maximo": maximo, "fontes": []}
+                atual = {"id": id_, "titulo": titulo, "minimo": minimo, "maximo": maximo, "fontes": [], "x": []}
             continue
 
         if linha.startswith("#") and not linha.startswith("##"):
@@ -194,6 +220,23 @@ def interpretar_fontes(texto: str) -> FontesDoJornal:
                 nome = nome.strip()
                 if nome and nome.casefold() not in {n.casefold() for n in nomes}:
                     nomes.append(nome)
+            continue
+
+        do_x = _LINHA_DO_X.match(linha)
+        if do_x:
+            tipo, consulta = do_x["tipo"].lower(), (do_x["consulta"] or "").strip()
+            if tipo not in TIPOS_DO_X or (tipo == "busca") != bool(consulta):
+                _avisar(
+                    avisos,
+                    f"Linha {numero} ignorada: “x:{do_x['tipo']}{' ' + consulta if consulta else ''}” "
+                    f"não é x:seguindo, x:para-voce nem x:busca <consulta>",
+                )
+            elif especial == _TIME:
+                _avisar(avisos, f"Linha {numero} ignorada: o time vem de um feed, não do X")
+            elif atual is not None:
+                atual["x"].append(FonteDoX(nome=do_x["nome"].strip(), tipo=tipo, consulta=consulta))
+            else:
+                _avisar(avisos, f"Linha {numero} ignorada: fonte do X fora de uma seção")
             continue
 
         fonte = _ler_fonte(linha)

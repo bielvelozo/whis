@@ -119,6 +119,7 @@ class Candidato:
     data: datetime | None = None
     imagem: str | None = None
     destaque: bool = False
+    curtidas: int | None = None
 
 
 @dataclass(frozen=True)
@@ -153,12 +154,22 @@ class ItemEscolhido:
 
 
 @dataclass(frozen=True)
+class Dica:
+    """A Dica do dia de *Dev com IA*: um post do X e como aplicar, escrito só a partir dele."""
+
+    candidato: Candidato
+    titulo: str
+    como_aplicar: str
+
+
+@dataclass(frozen=True)
 class Escolha:
     """O que o editor devolve: os itens de cada seção e os do time, já validados."""
 
     secoes: dict[str, tuple[ItemEscolhido, ...]]
     time: tuple[ItemEscolhido, ...] = ()
     medida: Medida = field(default_factory=Medida)
+    dica: Dica | None = None
 
 
 class ErroDeEditor(RuntimeError):

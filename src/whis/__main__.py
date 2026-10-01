@@ -81,6 +81,7 @@ from .fakes import (
     DailyFake,
     EditorFake,
     FormacaoFake,
+    LeitorDoXFake,
     PublicacaoFake,
     ResumoDoDiaFake,
     ReunioesFake,
@@ -263,15 +264,16 @@ def montar_busca(configuracao: Configuracao, *, fakes: bool = False) -> PortaBus
 
 
 def montar_portas_do_jornal(configuracao: Configuracao, *, fakes: bool = False) -> PortasDoJornal:
-    """As três portas do jornal: o Claude da conta do usuário, ou os fakes.
+    """As portas do jornal: o Claude da conta do usuário e o Chrome do X, ou os fakes.
 
     Os adaptadores do jornal usam o CLI de `[claude].cli` (vazio = o do npm,
     se houver): é o que emite as janelas do plano e aceita as capas no artifact.
     """
     if fakes:
-        _log.warning("Usando editor, formação e publicação FAKE — nada é enviado ao Claude.")
-        return PortasDoJornal(EditorFake(), FormacaoFake(), PublicacaoFake())
+        _log.warning("Usando editor, formação, publicação e X FAKE — nada é enviado ao Claude nem ao X.")
+        return PortasDoJornal(EditorFake(), FormacaoFake(), PublicacaoFake(), LeitorDoXFake())
 
+    from .fonte_x import LeitorDoX
     from .jornal_claude import EditorClaude, FormacaoClaude, PublicacaoClaude
 
     modelo = configuracao.claude_modelo or None
@@ -280,6 +282,7 @@ def montar_portas_do_jornal(configuracao: Configuracao, *, fakes: bool = False) 
         editor=EditorClaude(modelo=modelo, cli=cli),
         formacao=FormacaoClaude(modelo=modelo, cli=cli),
         publicacao=PublicacaoClaude(cli=cli),
+        leitor_do_x=LeitorDoX(),
     )
 
 
@@ -454,6 +457,17 @@ def _avisar_que_a_daily_nasceu(configuracao: Configuracao, resultado: ResultadoD
 # -- news -------------------------------------------------------------------
 
 
+def _comando_x_login(_args: argparse.Namespace) -> int:
+    from . import fonte_x
+
+    print("Abrindo o Chrome do Whis no login do X. Entre com a conta do Whis e espere a home carregar.")
+    if fonte_x.abrir_login():
+        print("Sessão do X salva: a próxima edição do jornal lê o X.")
+        return 0
+    print("Login não concluído: a janela fechou ou o tempo acabou antes da home carregar.")
+    return 1
+
+
 def _comando_news(args: argparse.Namespace) -> int:
     """Gera o jornal de hoje, publica a página e avisa com o link.
 
@@ -477,6 +491,7 @@ def _comando_news(args: argparse.Namespace) -> int:
             editor=portas.editor,
             formacao=portas.formacao,
             publicacao=portas.publicacao,
+            leitor_do_x=portas.leitor_do_x,
             simular=simular,
         )
     except JornalNaoNasceu as erro:
@@ -1089,6 +1104,17 @@ def construir_parser() -> argparse.ArgumentParser:
         help="é como a tarefa Whis-Noticias chama: sai sem gerar nada se [noticias].ativa = false",
     )
     news_cmd.set_defaults(funcao=_comando_news)
+
+    x_login_cmd = subcomandos.add_parser(
+        "x-login",
+        help="abre o Chrome do Whis no login do x.com para você entrar na conta do jornal",
+        description=(
+            "Abre o Chrome com o perfil só do Whis (%LOCALAPPDATA%\\whis\\navegador-x) na tela de "
+            "login do x.com. Entre com a conta do Whis; quando a home carregar, a sessão fica "
+            "salva e o jornal passa a ler a seção Dev com IA. O Whis nunca vê a senha."
+        ),
+    )
+    x_login_cmd.set_defaults(funcao=_comando_x_login)
 
     perguntar_cmd = subcomandos.add_parser(
         "perguntar",

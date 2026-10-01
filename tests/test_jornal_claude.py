@@ -313,6 +313,74 @@ def test_esquema_da_escolha_pede_uma_lista_por_secao_e_a_do_time():
     assert esquema["properties"]["secoes"]["required"] == ["tecnologia", "carros"]
 
 
+def candidatos_com_x() -> dict[str, tuple[Candidato, ...]]:
+    return {
+        "ia": (
+            Candidato("ia-1", "ia", "Simon Willison", "Blog", "https://simonwillison.net/x"),
+            Candidato("ia-x1", "ia", "@bcherny", "Tip", "https://x.com/bcherny/status/1", curtidas=900),
+            Candidato("ia-x2", "ia", "@simonw", "Tip 2", "https://x.com/simonw/status/2", curtidas=40),
+        ),
+        "tecnologia": (Candidato("tecnologia-1", "tecnologia", "HN", "N", "https://e.com/1"),),
+    }
+
+
+def test_o_esquema_so_pede_a_dica_quando_ia_tem_post_do_x():
+    com_x = esquema_da_escolha(candidatos_com_x())
+    sem_x = esquema_da_escolha({"ia": candidatos_com_x()["ia"][:1], "tecnologia": ()})
+
+    assert set(com_x["properties"]["dica"]["required"]) == {"id", "titulo", "como_aplicar"}
+    assert com_x["required"] == ["secoes", "time"]
+    assert "dica" not in sem_x["properties"]
+
+
+def test_o_pedido_leva_as_curtidas_e_o_prompt_a_regra_da_secao_e_a_dica():
+    pedido = montar_pedido_de_escolha(candidatos_com_x(), {}, ())
+
+    assert '"curtidas": 900' in pedido
+    assert '"curtidas"' not in pedido.split('"tecnologia"')[-1]
+    assert "Dev com IA" in SISTEMA_ESCOLHA
+    assert '"dica"' in SISTEMA_ESCOLHA and "como_aplicar" in SISTEMA_ESCOLHA
+
+
+def test_dica_valida_sai_da_lista_da_secao():
+    dados = {
+        "secoes": {"ia": [_item("ia-x1"), _item("ia-x2")], "tecnologia": []},
+        "time": [],
+        "dica": {"id": "ia-x1", "titulo": "Teste no CLAUDE.md", "como_aplicar": "Ponha o comando de teste no CLAUDE.md."},
+    }
+
+    escolha = interpretar_escolha(dados, candidatos_com_x(), {}, ())
+
+    assert escolha.dica.candidato.id == "ia-x1"
+    assert (escolha.dica.titulo, escolha.dica.como_aplicar) == ("Teste no CLAUDE.md", "Ponha o comando de teste no CLAUDE.md.")
+    assert [i.candidato.id for i in escolha.secoes["ia"]] == ["ia-x2"]
+
+
+@pytest.mark.parametrize(
+    "dica",
+    [
+        {"id": "ia-1", "titulo": "T", "como_aplicar": "C"},
+        {"id": "tecnologia-1", "titulo": "T", "como_aplicar": "C"},
+        {"id": "ia-x9", "titulo": "T", "como_aplicar": "C"},
+        {"id": "ia-x1", "titulo": "T", "como_aplicar": "  "},
+        "ia-x1",
+    ],
+)
+def test_dica_invalida_cai_e_a_lista_fica_inteira(dica):
+    dados = {"secoes": {"ia": [_item("ia-x1")], "tecnologia": []}, "time": [], "dica": dica}
+
+    escolha = interpretar_escolha(dados, candidatos_com_x(), {}, ())
+
+    assert escolha.dica is None
+    assert [i.candidato.id for i in escolha.secoes["ia"]] == ["ia-x1"]
+
+
+def test_dica_sem_titulo_usa_o_do_post():
+    dados = {"secoes": {"ia": [], "tecnologia": []}, "time": [], "dica": {"id": "ia-x2", "titulo": "", "como_aplicar": "Use."}}
+
+    assert interpretar_escolha(dados, candidatos_com_x(), {}, ()).dica.titulo == "Tip 2"
+
+
 def test_escolha_le_a_saida_estruturada_e_traz_a_medida():
     estruturada = {"secoes": {"tecnologia": [_item("tecnologia-1")], "carros": [_item("carros-2")]}, "time": []}
     editor = EditorGravado(

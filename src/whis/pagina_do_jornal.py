@@ -15,10 +15,11 @@ from collections.abc import Sequence
 from datetime import timedelta, timezone
 from typing import TYPE_CHECKING
 
+from .fonte_x import e_do_x
 from .portas import Aula, Janelas
 
 if TYPE_CHECKING:
-    from .jornal import Edicao, ItemDoJornal
+    from .jornal import DicaDoJornal, Edicao, ItemDoJornal
 
 _BRT = timezone(timedelta(hours=-3))
 
@@ -30,6 +31,7 @@ MESES = (
 
 CORES = {
     "aprender": "#5b3fb5",
+    "ia": "#0e7c86",
     "tecnologia": "#1d5fb8",
     "mundo": "#21705a",
     "brasil": "#2f7d3a",
@@ -62,10 +64,12 @@ h3.sub{font:700 12px/1.2 var(--sans);letter-spacing:.14em;text-transform:upperca
 .item.sem{grid-template-columns:1fr}.item img{width:92px;height:72px;object-fit:cover;border:1px solid var(--fio)}
 .item h2{font:700 18px/1.25 var(--serif);margin:0 0 4px}.item p{margin:0;font-size:14.5px;color:#2b2b2e}
 .by{font:11px/1.3 var(--sans);text-transform:uppercase;letter-spacing:.1em;color:var(--cinza);margin-top:6px}
+.by.x{text-transform:none;letter-spacing:.02em}
 .vazio{color:var(--cinza);font-style:italic;font-family:var(--serif)}
 .aula{background:var(--creme);border-left:4px solid var(--c);padding:14px 16px;margin:0 0 12px}
 .aula h4{font:700 19px/1.2 var(--serif);margin:0 0 8px}.aula p{margin:0 0 10px;white-space:pre-line;font-size:15px}
 .aula .f{font-size:12px;color:var(--cinza)}.aula .f a{text-decoration:underline;word-break:break-all}
+.aula .ver{font-size:13px;color:var(--cinza)}.aula .ver a{text-decoration:underline;color:var(--tinta)}
 table{width:100%;border-collapse:collapse;font-size:14px;margin:0 0 10px}td{padding:6px 4px;border-bottom:1px solid var(--fio);vertical-align:top}
 td.p{white-space:nowrap;font:700 16px/1 var(--serif);text-align:center;width:64px}td.g{color:var(--cinza);font-size:12px;border-bottom:1px solid var(--fio)}
 .liga{font:700 12px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;margin:10px 0 4px}
@@ -115,7 +119,8 @@ def dominio(url: str) -> str:
 
 
 def _item(item: ItemDoJornal, *, lead: bool = False) -> str:
-    rodape = f'<div class="by">{_e(item.fonte)}{" · " + hora(item.data) if item.data else ""}</div>'
+    classe = "by x" if e_do_x(item.link) else "by"
+    rodape = f'<div class="{classe}">{_e(item.fonte)}{" · " + hora(item.data) if item.data else ""}</div>'
     resumo = f"<p>{_e(item.resumo)}</p>" if item.resumo else ""
     if lead:
         capa = f'<img src="{_e(item.capa)}" alt="">' if item.capa else ""
@@ -133,8 +138,24 @@ def _item(item: ItemDoJornal, *, lead: bool = False) -> str:
 def _lista(itens: Sequence[ItemDoJornal]) -> str:
     if not itens:
         return f'<p class="vazio">{NADA_RELEVANTE}</p>'
-    primeiro = next((item for item in itens if item.capa), itens[0])
+    podem_abrir = [item for item in itens if not e_do_x(item.link)]
+    if not podem_abrir:
+        return "".join(_item(item) for item in itens)
+    primeiro = next((item for item in podem_abrir if item.capa), podem_abrir[0])
     return _item(primeiro, lead=True) + "".join(_item(item) for item in itens if item is not primeiro)
+
+
+def _dica(dica: DicaDoJornal) -> str:
+    item = dica.item
+    quando = f" · {hora(item.data)}" if item.data else ""
+    return (
+        f'<div class="aula"><h4>Dica do dia · {_e(dica.titulo)}</h4><p>{_e(dica.como_aplicar)}</p>'
+        f'<div class="ver">{_e(item.fonte)}{quando} · <a href="{_e(item.link)}">Ver no X</a></div></div>'
+    )
+
+
+def frase(aviso: str) -> str:
+    return f"{aviso[:1].upper()}{aviso[1:]}."
 
 
 def _aula(aula: Aula) -> str:
@@ -217,7 +238,12 @@ def pagina_html(edicao: Edicao) -> str:
         partes.append(_abre_secao(numero, secao.titulo, CORES.get(secao.id, COR_PADRAO)))
         if secao.id == "futebol":
             partes += _futebol(edicao)
-        partes.append(_lista(secao.itens))
+        if secao.dica:
+            partes.append(_dica(secao.dica))
+        if secao.itens or not (secao.dica or secao.aviso):
+            partes.append(_lista(secao.itens))
+        if secao.aviso:
+            partes.append(f'<p class="vazio">{_e(frase(secao.aviso))}</p>')
         if secao.id == "carros" and edicao.para_aprender:
             partes.append('<h3 class="sub">Para aprender</h3>')
             partes += [_aula(aula) for aula in edicao.para_aprender]

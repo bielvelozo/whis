@@ -15,12 +15,14 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from dataclasses import replace
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from .atendente import Mensagem
+from .fonte_x import LeituraDoX, PostDoX, e_do_x
+from .fontes_do_jornal import FonteDoX
 from .busca import Citacao, Resposta
 from .conversa import Turno
 from .ferramentas import Ferramentas
@@ -30,6 +32,7 @@ from .portas import (
     Aula,
     Candidato,
     Daily,
+    Dica,
     Escolha,
     Formacao,
     ItemEscolhido,
@@ -420,11 +423,19 @@ class EditorFake:
         self.time_recebido = tuple(time)
         if self._erro is not None:
             raise self._erro
+        posts = [candidato for candidato in candidatos.get("ia", ()) if e_do_x(candidato.link)]
+        dica = (
+            Dica(posts[0], f"[fake] {posts[0].titulo}", "[fake] Como aplicar a dica do post no dia a dia.")
+            if posts
+            else None
+        )
         secoes = {
-            secao: _primeiros_por_fonte(lista, limites.get(secao, (3, 5))[0])
+            secao: _primeiros_por_fonte(
+                [c for c in lista if dica is None or c.id != dica.candidato.id], limites.get(secao, (3, 5))[0]
+            )
             for secao, lista in candidatos.items()
         }
-        return Escolha(secoes=secoes, time=_primeiros_por_fonte(time, 2), medida=self._medida)
+        return Escolha(secoes=secoes, time=_primeiros_por_fonte(time, 2), medida=self._medida, dica=dica)
 
 
 def _primeiros_por_fonte(candidatos: Iterable[Candidato], quantos: int) -> tuple[ItemEscolhido, ...]:
@@ -524,6 +535,44 @@ class PublicacaoFake:
         if self._erro is not None:
             raise self._erro
         return Publicacao(url=self._url, medida=self._medida)
+
+
+class LeitorDoXFake:
+    """Leitor do X que não abre navegador: dois posts por página, da madrugada do dia pedido.
+
+    A madrugada fica dentro das 24 h de qualquer hora do mesmo dia; os autores
+    são distintos para o limite de 2 por fonte não esconder nenhum.
+    """
+
+    def __init__(
+        self, posts: dict[str, tuple[PostDoX, ...]] | None = None, erro: Exception | None = None
+    ) -> None:
+        self._posts = posts
+        self._erro = erro
+        self.fontes_recebidas: tuple[FonteDoX, ...] = ()
+
+    def ler(self, fontes: Sequence[FonteDoX], hoje: date) -> LeituraDoX:
+        self.fontes_recebidas = tuple(fontes)
+        if self._erro is not None:
+            raise self._erro
+        if self._posts is not None:
+            return LeituraDoX(posts={fonte.nome: self._posts.get(fonte.nome, ()) for fonte in fontes})
+        madrugada = datetime.combine(hoje, time(0, 30), tzinfo=timezone(timedelta(hours=-3)))
+        return LeituraDoX(
+            posts={
+                fonte.nome: tuple(
+                    PostDoX(
+                        link=f"https://x.com/fake_{numero}_{ordem}/status/{numero}{ordem}",
+                        autor=f"fake_{numero}_{ordem}",
+                        texto=f"[fake] Dica {ordem + 1} de {fonte.nome}: rode os testes antes de cada commit.",
+                        data=madrugada + timedelta(minutes=10 * numero + ordem),
+                        curtidas=100 * (ordem + 1),
+                    )
+                    for ordem in range(2)
+                )
+                for numero, fonte in enumerate(fontes, 1)
+            }
+        )
 
 
 #: As reuniões de exemplo da Granola: uma com resumo e uma que ainda não foi resumida.

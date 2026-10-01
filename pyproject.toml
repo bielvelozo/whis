@@ -11,6 +11,7 @@ dependencies = [
     "mcp>=2.0",                 # o MCP oficial da Granola (reuniões), com OAuth
     "slack_sdk>=3.27",          # a DM do agente por Socket Mode (sem porta aberta)
     "pywin32>=306",             # RegisterHotKey e o loop de mensagens do atalho da palheta
+    "playwright>=1.47",         # o X do jornal, lido pelo Chrome instalado (sem baixar navegador)
 ]
 
 [project.optional-dependencies]

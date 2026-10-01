@@ -44,7 +44,14 @@ from .configuracao import Configuracao
 from .conversa import Conversas
 from .daily import ResultadoDaDaily, gerar_daily
 from .fontes import PortaFonte
-from .jornal import JornalNaoNasceu, PortasDoJornal, ResultadoDoJornal, caminho_da_edicao, gerar_jornal
+from .jornal import (
+    AVISO_DO_LOGIN_DO_X,
+    JornalNaoNasceu,
+    PortasDoJornal,
+    ResultadoDoJornal,
+    caminho_da_edicao,
+    gerar_jornal,
+)
 from .janela_da_palheta import Efeito, Gesto, Linha, Lista
 from .nota_viva import SECAO_DUVIDAS, SECAO_FAZER, SECAO_PONTOS
 from .obsidian import lancar as _lancar_no_windows
@@ -74,6 +81,7 @@ TITULO_DO_JORNAL = "O jornal de hoje está pronto"
 TITULO_DO_JORNAL_PARCIAL = "O jornal saiu com falta"
 TITULO_DO_JORNAL_SEM_PAGINA = "O jornal não foi publicado"
 TITULO_DO_JORNAL_QUE_NAO_NASCEU = "O jornal não nasceu"
+TITULO_DO_LOGIN_DO_X = "O login do X venceu"
 TITULO_DAS_REUNIOES = "Reuniões no vault"
 TITULO_SEM_REUNIOES_NOVAS = "Nada novo na Granola"
 TITULO_DAS_REUNIOES_QUE_NAO_VIERAM = "As reuniões não vieram"
@@ -369,7 +377,9 @@ def resultado_do_jornal(resultado: ResultadoDoJornal) -> Resultado:
     """O toast do jornal — o mesmo para `whis news` e para a palheta.
 
     Publicado, o botão abre a página; sem página, abre a nota no Obsidian.
+    Precedência: login do Claude > página que não saiu > login do X.
     """
+    x_vencido = AVISO_DO_LOGIN_DO_X in resultado.edicao.avisos
     if resultado.url is None:
         caminho = caminho_da_edicao(resultado.edicao.data)
         if _login.vencido(resultado.falha_da_publicacao):
@@ -379,10 +389,17 @@ def resultado_do_jornal(resultado: ResultadoDoJornal) -> Resultado:
                 nota=caminho,
             )
         motivo = resultado.falha_da_publicacao or "a publicação falhou"
+        tambem = "; o login do X também venceu" if x_vencido else ""
         return Resultado(
             TITULO_DO_JORNAL_SEM_PAGINA,
-            _encurtar(f"A nota está no vault ({caminho}); a página não saiu: {motivo}"),
+            _encurtar(f"A nota está no vault ({caminho}){tambem}; a página não saiu: {motivo}"),
             nota=caminho,
+        )
+    if x_vencido:
+        return Resultado(
+            TITULO_DO_LOGIN_DO_X,
+            "Rode 'python -m whis x-login' num terminal. O jornal saiu sem a parte do X.",
+            link=resultado.url,
         )
     titulo = TITULO_DO_JORNAL_PARCIAL if resultado.parcial else TITULO_DO_JORNAL
     return Resultado(titulo, _encurtar(texto_do_toast_do_jornal(resultado)), link=resultado.url)
@@ -602,6 +619,7 @@ def comandos_padrao(
                 editor=portas.editor,
                 formacao=portas.formacao,
                 publicacao=portas.publicacao,
+                leitor_do_x=portas.leitor_do_x,
             )
         except JornalNaoNasceu as erro:
             return resultado_do_jornal_que_nao_nasceu(erro)

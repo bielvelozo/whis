@@ -45,9 +45,11 @@ from claude_agent_sdk import (
     query,
 )
 
+from .fonte_x import e_do_x
 from .portas import (
     Aula,
     Candidato,
+    Dica,
     ErroDeEditor,
     ErroDeFormacao,
     ErroDePublicacao,
@@ -75,6 +77,7 @@ LIMITES_PADRAO = (3, 5)
 MAXIMO_DO_TIME = 2
 MAXIMO_POR_FONTE = 2
 AULAS_DE_CARRO = 2
+SECAO_DA_DICA = "ia"
 
 FERRAMENTAS_DA_FORMACAO = ["WebSearch", "WebFetch"]
 FERRAMENTAS_DA_PUBLICACAO = ["Artifact", "Read"]
@@ -111,12 +114,19 @@ disco de instrumentista, gospel, jazz, rock, indie. Itens marcados destaque=true
 acompanha: têm prioridade se forem relevantes.
 - Futebol: notícia relevante (transferência, lesão, decisão), não placar (o placar vem de outro lugar).
 - Carros: lançamentos de luxo e populares.
+- Dev com IA (seção "ia"): dica prática de desenvolvimento com IA — harness (Claude Code, Codex, Cursor \
+e afins), skills, hooks, subagentes, contexto (CLAUDE.md, AGENTS.md), prompts, economia de token, fluxo \
+de trabalho. Ignore hype, anúncio de produto sem dica, sorteio, curso pago e engajamento barato. Prefira \
+o que dá para aplicar amanhã. Os posts do X trazem "curtidas": é sinal, não regra.
 - Seção nova, sem regra acima: o que for relevante para o assunto dela.
 - Título em português, curto. Resumo em português, duas frases, informativo, sem adjetivo vazio, sem \
 "confira".
 Devolva em "secoes" uma lista por seção recebida, cada item {id, titulo, resumo}, e em "time" os itens \
 do time do coração. Respeite min e max de cada seção quando houver material; "time" tem no máximo 2 \
-itens."""
+itens.
+Quando o esquema pedir "dica", devolva nela o post do X mais aplicável da seção "ia": {id, titulo, \
+como_aplicar}. "como_aplicar" são duas ou três frases do que o post diz e de como usar no dia a dia, só \
+com o que está no texto do post — nunca comando, flag ou número que não esteja lá."""
 
 SISTEMA_FORMACAO = """\
 Você escreve a parte de FORMAÇÃO do jornal matinal de um desenvolvedor de software brasileiro que está \
@@ -145,6 +155,17 @@ _ITEM_ESCOLHIDO = {
         "resumo": {"type": "string"},
     },
     "required": ["id", "titulo", "resumo"],
+    "additionalProperties": False,
+}
+
+_DICA = {
+    "type": "object",
+    "properties": {
+        "id": {"type": "string"},
+        "titulo": {"type": "string"},
+        "como_aplicar": {"type": "string"},
+    },
+    "required": ["id", "titulo", "como_aplicar"],
     "additionalProperties": False,
 }
 
@@ -420,22 +441,29 @@ class EditorClaude(_AdaptadorDoJornal):
 
 
 def esquema_da_escolha(candidatos: dict[str, tuple[Candidato, ...]]) -> dict[str, Any]:
-    """Uma lista por seção recebida e a do time; os ids são conferidos depois."""
+    """Uma lista por seção recebida e a do time, mais a dica quando "ia" tem post do X."""
     lista = {"type": "array", "items": _ITEM_ESCOLHIDO}
+    propriedades: dict[str, Any] = {
+        "secoes": {
+            "type": "object",
+            "properties": {secao: lista for secao in candidatos},
+            "required": list(candidatos),
+            "additionalProperties": False,
+        },
+        "time": lista,
+    }
+    if _posts_da_dica(candidatos):
+        propriedades["dica"] = _DICA
     return {
         "type": "object",
-        "properties": {
-            "secoes": {
-                "type": "object",
-                "properties": {secao: lista for secao in candidatos},
-                "required": list(candidatos),
-                "additionalProperties": False,
-            },
-            "time": lista,
-        },
+        "properties": propriedades,
         "required": ["secoes", "time"],
         "additionalProperties": False,
     }
+
+
+def _posts_da_dica(candidatos: dict[str, tuple[Candidato, ...]]) -> tuple[Candidato, ...]:
+    return tuple(candidato for candidato in candidatos.get(SECAO_DA_DICA, ()) if e_do_x(candidato.link))
 
 
 def montar_pedido_de_escolha(
@@ -471,6 +499,8 @@ def _candidato_no_pedido(candidato: Candidato) -> dict[str, Any]:
     }
     if candidato.destaque:
         item["destaque"] = True
+    if candidato.curtidas is not None:
+        item["curtidas"] = candidato.curtidas
     return item
 
 
@@ -486,7 +516,8 @@ def interpretar_escolha(
     Título e resumo vazios caem para os do feed. Cada seção aceita no máximo
     `MAXIMO_POR_FONTE` itens da mesma fonte e no máximo o `max` dos limites; o
     time, no máximo `MAXIMO_DO_TIME`. Toda seção de `candidatos` aparece na
-    `Escolha`, vazia quando o modelo não escolheu nada.
+    `Escolha`, vazia quando o modelo não escolheu nada. A dica só vale para um
+    post do X de "ia", e sai da lista da seção para não aparecer duas vezes.
     """
     secoes_dados = dados.get("secoes") if isinstance(dados.get("secoes"), dict) else {}
     secoes = {
@@ -495,7 +526,22 @@ def interpretar_escolha(
         )
         for secao, lista in candidatos.items()
     }
-    return Escolha(secoes=secoes, time=_validar_lista(dados.get("time"), time, MAXIMO_DO_TIME))
+    dica = _validar_dica(dados.get("dica"), _posts_da_dica(candidatos))
+    if dica is not None:
+        secoes[SECAO_DA_DICA] = tuple(
+            item for item in secoes[SECAO_DA_DICA] if item.candidato.id != dica.candidato.id
+        )
+    return Escolha(secoes=secoes, time=_validar_lista(dados.get("time"), time, MAXIMO_DO_TIME), dica=dica)
+
+
+def _validar_dica(bruto: object, posts: Iterable[Candidato]) -> Dica | None:
+    if not isinstance(bruto, dict):
+        return None
+    candidato = {post.id: post for post in posts}.get(str(bruto.get("id", "")))
+    como_aplicar = _texto(bruto.get("como_aplicar"))
+    if candidato is None or not como_aplicar:
+        return None
+    return Dica(candidato=candidato, titulo=_texto(bruto.get("titulo")) or candidato.titulo, como_aplicar=como_aplicar)
 
 
 def _validar_lista(

@@ -8,17 +8,18 @@ from whis.fontes_do_jornal import (
     CAMINHO_DAS_FONTES,
     MODELO_DAS_FONTES,
     Fonte,
+    FonteDoX,
     garantir_fontes,
     interpretar_fontes,
     ler_fontes,
 )
 
 
-def test_o_modelo_tem_as_seis_secoes_o_time_e_os_nomes_da_spec():
+def test_o_modelo_tem_as_sete_secoes_o_time_e_os_nomes_da_spec():
     fontes = interpretar_fontes(MODELO_DAS_FONTES)
 
-    assert [s.id for s in fontes.secoes] == ["tecnologia", "mundo", "brasil", "musica", "futebol", "carros"]
-    assert [s.titulo for s in fontes.secoes][2] == "Política no Brasil"
+    assert [s.id for s in fontes.secoes] == ["ia", "tecnologia", "mundo", "brasil", "musica", "futebol", "carros"]
+    assert [s.titulo for s in fontes.secoes][3] == "Política no Brasil"
     assert fontes.time == Fonte("Corinthians", "https://ge.globo.com/rss/ge/futebol/times/corinthians/")
     assert fontes.nomes[0] == "Joe Satriani"
     assert fontes.nomes[-1] == "Focusrite"
@@ -27,7 +28,7 @@ def test_o_modelo_tem_as_seis_secoes_o_time_e_os_nomes_da_spec():
 
 
 def test_nomes_de_fonte_com_ponto_e_url_com_query_string_sao_lidos_inteiros():
-    musica = interpretar_fontes(MODELO_DAS_FONTES).secoes[3]
+    musica = interpretar_fontes(MODELO_DAS_FONTES).secoes[4]
 
     assert Fonte(
         "YouTube · Nord Keyboards",
@@ -59,7 +60,7 @@ def test_secao_nova_vira_secao_do_jornal_com_id_sem_acento_na_ordem_do_arquivo()
     assert fontes.secoes[0].id == "ciencia-e-saude"
     assert fontes.secoes[0].titulo == "Ciência e Saúde"
     assert (fontes.secoes[0].minimo, fontes.secoes[0].maximo) == (1, 2)
-    assert len(fontes.secoes) == 7
+    assert len(fontes.secoes) == 8
 
 
 def test_linha_invalida_e_ignorada_com_aviso(caplog):
@@ -99,6 +100,66 @@ def test_secao_sem_fonte_valida_fica_fora_com_aviso():
 
     assert [s.id for s in fontes.secoes] == ["mundo"]
     assert any("Vazia" in aviso for aviso in fontes.avisos)
+
+
+def test_o_modelo_abre_com_dev_com_ia_lida_do_x():
+    ia = interpretar_fontes(MODELO_DAS_FONTES).secoes[0]
+
+    assert (ia.id, ia.titulo, ia.minimo, ia.maximo) == ("ia", "Dev com IA", 4, 6)
+    assert ia.fontes == ()
+    assert [(f.nome, f.tipo) for f in ia.x][:2] == [("X · Seguindo", "seguindo"), ("X · Para você", "para-voce")]
+    assert [f.tipo for f in ia.x[2:]] == ["busca"] * 6
+    assert ia.x[2] == FonteDoX("X · Claude Code", "busca", '"claude code" min_faves:100')
+
+
+def test_as_tres_linhas_do_x_viram_fontes_do_x_da_secao():
+    fontes = interpretar_fontes(
+        "## Dev com IA (ia) · 4 a 6 itens\n"
+        "- X · Seguindo: x:seguindo\n"
+        "- X · Para você: x:para-voce\n"
+        '- X · Claude Code: x:busca "claude code" min_faves:100\n'
+        "- Simon Willison: https://simonwillison.net/atom/everything/\n"
+    )
+
+    [ia] = fontes.secoes
+    assert ia.x == (
+        FonteDoX("X · Seguindo", "seguindo"),
+        FonteDoX("X · Para você", "para-voce"),
+        FonteDoX("X · Claude Code", "busca", '"claude code" min_faves:100'),
+    )
+    assert ia.fontes == (Fonte("Simon Willison", "https://simonwillison.net/atom/everything/"),)
+    assert fontes.avisos == ()
+
+
+def test_secao_so_com_linhas_do_x_e_valida():
+    fontes = interpretar_fontes("## Dev com IA (ia)\n- X · Seguindo: x:seguindo\n")
+
+    assert [s.id for s in fontes.secoes] == ["ia"]
+    assert fontes.avisos == ()
+
+
+def test_linha_do_x_fora_de_ia_fica_na_secao_em_que_esta():
+    fontes = interpretar_fontes(
+        "## Tecnologia (tecnologia)\n- HN: https://news.ycombinator.com/rss\n- X · Rust: x:busca rust min_faves:50\n"
+    )
+
+    assert fontes.secoes[0].x == (FonteDoX("X · Rust", "busca", "rust min_faves:50"),)
+
+
+def test_linha_do_x_com_tipo_desconhecido_ou_busca_vazia_vira_aviso():
+    fontes = interpretar_fontes("## Dev com IA (ia)\n- A: x:qualquer\n- B: x:busca\n- C: x:seguindo\n")
+
+    assert [f.nome for f in fontes.secoes[0].x] == ["C"]
+    assert len(fontes.avisos) == 2
+    assert "x:qualquer" in fontes.avisos[0]
+    assert "x:busca" in fontes.avisos[1]
+
+
+def test_linha_do_x_no_time_e_ignorada_com_aviso():
+    fontes = interpretar_fontes("## Time\n- Corinthians: x:busca corinthians\n")
+
+    assert fontes.time is None
+    assert len(fontes.avisos) == 1
 
 
 def test_fontes_md_e_criado_uma_vez_com_o_modelo(tmp_path: Path):

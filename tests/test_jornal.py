@@ -19,11 +19,13 @@ from whis import jornal as _jornal
 from whis.configuracao import Configuracao
 from whis.efemeride import Efemeride
 from whis.feeds import Coleta
-from whis.fontes_do_jornal import CAMINHO_DAS_FONTES, MODELO_DAS_FONTES
+from whis.fonte_x import ErroDoX, LeituraDoX, LoginDoXVenceu, PostDoX
+from whis.fontes_do_jornal import CAMINHO_DAS_FONTES, MODELO_DAS_FONTES, FonteDoX
 from whis.jornal import (
     AVISO_DA_ESCOLHA,
     AVISO_DA_FORMACAO,
     AVISO_DA_PUBLICACAO,
+    AVISO_DO_LOGIN_DO_X,
     CAMINHO_DA_TRILHA,
     JornalNaoNasceu,
     gerar_jornal,
@@ -34,6 +36,7 @@ from whis.placar_espn import Gol, Jogo, Placar
 from whis.portas import (
     Aula,
     Candidato,
+    Dica,
     ErroDeEditor,
     ErroDeFormacao,
     ErroDePublicacao,
@@ -434,3 +437,246 @@ def test_capa_que_nao_baixa_deixa_o_item_sem_capa(cenario):
     brasil = next(s for s in resultado.edicao.secoes if s.id == "brasil")
     assert brasil.itens[0].capa is None
     assert list(publicacao.chamadas[0][1]) == ["img/1.jpg"]
+
+
+# -- Dev com IA: o X ----------------------------------------------------------
+
+FONTES_COM_X = """## Dev com IA (ia) · 4 a 6 itens
+- X · Seguindo: x:seguindo
+- X · Contexto: x:busca "context engineering" min_faves:30
+
+## Tecnologia (tecnologia) · 3 a 5 itens
+- Ars Technica: https://feeds.arstechnica.com/arstechnica/index
+- The Verge: https://www.theverge.com/rss/index.xml
+"""
+
+
+def post_do_x(autor: str, status: int, curtidas: int | None, *, horas: float = 1) -> PostDoX:
+    return PostDoX(
+        link=f"https://x.com/{autor}/status/{status}",
+        autor=autor,
+        texto=f"Dica de {autor} sobre agentes",
+        data=AGORA - timedelta(hours=horas),
+        curtidas=curtidas,
+    )
+
+
+class LeitorDublê:
+    def __init__(self, *, posts=None, falhas=None, erro: Exception | None = None) -> None:
+        self.posts = posts if posts is not None else {
+            "X · Seguindo": (post_do_x("bcherny", 1, 900), post_do_x("simonw", 2, 40)),
+            "X · Contexto": (post_do_x("dexhorthy", 3, 300),),
+        }
+        self.falhas = dict(falhas or {})
+        self.erro = erro
+        self.chamadas: list[tuple[tuple[FonteDoX, ...], date]] = []
+
+    def ler(self, fontes, hoje) -> LeituraDoX:
+        self.chamadas.append((tuple(fontes), hoje))
+        if self.erro:
+            raise self.erro
+        return LeituraDoX(
+            posts={f.nome: self.posts.get(f.nome, ()) for f in fontes if f.nome not in self.falhas},
+            falhas=dict(self.falhas),
+        )
+
+
+class EditorComDica(EditorDublê):
+    def escolher(self, candidatos, limites, time) -> Escolha:
+        escolha = super().escolher(candidatos, limites, time)
+        if not candidatos.get("ia"):
+            return escolha
+        primeiro = candidatos["ia"][0]
+        ia = tuple(i for i in escolha.secoes["ia"] if i.candidato.id != primeiro.id)
+        return replace(
+            escolha,
+            secoes={**escolha.secoes, "ia": ia},
+            dica=Dica(primeiro, "Teste antes do commit", "Ponha o comando de teste no CLAUDE.md."),
+        )
+
+
+def com_fontes_do_x(cenario, texto: str = FONTES_COM_X):
+    arquivo = cenario["vault"] / CAMINHO_DAS_FONTES
+    arquivo.parent.mkdir(parents=True, exist_ok=True)
+    arquivo.write_text(texto, encoding="utf-8")
+    return cenario
+
+
+def secao(resultado, id_: str):
+    return next(s for s in resultado.edicao.secoes if s.id == id_)
+
+
+def test_os_posts_do_x_entram_na_secao_com_ids_proprios_e_a_fonte_do_autor(cenario):
+    com_fontes_do_x(cenario)
+    editor, leitor = EditorDublê(), LeitorDublê()
+
+    resultado = gerar(cenario, editor=editor, leitor_do_x=leitor)
+
+    recebidos = editor.recebido[0]["ia"]
+    assert [c.id for c in recebidos] == ["ia-x1", "ia-x2", "ia-x3"]
+    assert [c.fonte for c in recebidos] == ["@bcherny", "@dexhorthy", "@simonw"]
+    assert recebidos[0].curtidas == 900
+    [(fontes, hoje)] = leitor.chamadas
+    assert [f.nome for f in fontes] == ["X · Seguindo", "X · Contexto"]
+    assert hoje == date(2026, 9, 25)
+    assert [i.link for i in secao(resultado, "ia").itens] == [
+        "https://x.com/bcherny/status/1",
+        "https://x.com/dexhorthy/status/3",
+    ]
+    assert resultado.parcial is False
+
+
+def test_o_leitor_e_chamado_uma_vez_mesmo_quando_a_espera_da_rede_repete_a_coleta(cenario):
+    com_fontes_do_x(cenario)
+    sem_rede = Coleta(
+        candidatos={"tecnologia": ()},
+        time=(),
+        fontes_com_falha=("Ars Technica (ConnectError)", "The Verge (ConnectError)"),
+    )
+    cenario["coletas"] = [sem_rede, coleta_padrao()]
+    leitor = LeitorDublê()
+
+    gerar(cenario, leitor_do_x=leitor)
+
+    assert len(leitor.chamadas) == 1
+
+
+def test_as_linhas_do_x_nao_bastam_para_o_jornal_nascer(cenario):
+    com_fontes_do_x(cenario, "## Dev com IA (ia)\n- X · Seguindo: x:seguindo\n")
+    leitor = LeitorDublê()
+
+    with pytest.raises(JornalNaoNasceu):
+        gerar(cenario, leitor_do_x=leitor)
+
+    assert leitor.chamadas == []
+
+
+def test_login_do_x_vencido_vira_aviso_da_edicao_e_da_secao(cenario):
+    com_fontes_do_x(cenario)
+
+    resultado = gerar(cenario, leitor_do_x=LeitorDublê(erro=LoginDoXVenceu("o X pediu login")))
+
+    assert AVISO_DO_LOGIN_DO_X in resultado.edicao.avisos
+    assert secao(resultado, "ia").aviso == AVISO_DO_LOGIN_DO_X
+    assert secao(resultado, "ia").itens == ()
+    assert resultado.parcial is True
+
+
+def test_o_x_sem_chrome_vira_x_indisponivel(cenario):
+    com_fontes_do_x(cenario)
+
+    resultado = gerar(cenario, leitor_do_x=LeitorDublê(erro=ErroDoX("o Chrome não foi encontrado")))
+
+    assert "X indisponível hoje: o Chrome não foi encontrado" in resultado.edicao.avisos
+    assert resultado.parcial is True
+
+
+def test_todas_as_paginas_fora_viram_x_indisponivel(cenario):
+    com_fontes_do_x(cenario)
+    falhas = {"X · Seguindo": "tempo esgotado", "X · Contexto": "a página do X mudou"}
+
+    resultado = gerar(cenario, leitor_do_x=LeitorDublê(falhas=falhas))
+
+    assert "X indisponível hoje: tempo esgotado" in resultado.edicao.avisos
+    assert not any(f.startswith("X ·") for f in resultado.edicao.fontes_com_falha)
+
+
+def test_uma_pagina_fora_vai_para_o_rodape_e_as_outras_seguem(cenario):
+    com_fontes_do_x(cenario)
+
+    resultado = gerar(cenario, leitor_do_x=LeitorDublê(falhas={"X · Contexto": "tempo esgotado"}))
+
+    assert "X · Contexto (tempo esgotado)" in resultado.edicao.fontes_com_falha
+    assert not any(a.startswith("X indisponível") for a in resultado.edicao.avisos)
+    assert [i.fonte for i in secao(resultado, "ia").itens] == ["@bcherny", "@simonw"]
+    assert resultado.parcial is False
+
+
+def test_sem_leitor_o_x_e_ignorado_sem_aviso(cenario):
+    com_fontes_do_x(cenario)
+
+    resultado = gerar(cenario)
+
+    assert secao(resultado, "ia").aviso is None
+    assert not any("X" in aviso for aviso in resultado.edicao.avisos)
+
+
+def test_sem_linha_do_x_o_leitor_nao_e_chamado(cenario):
+    com_fontes_do_x(cenario, FONTES_COM_X.split("\n\n", 1)[1])
+    leitor = LeitorDublê()
+
+    gerar(cenario, leitor_do_x=leitor)
+
+    assert leitor.chamadas == []
+
+
+def test_a_dica_entra_na_secao_e_o_post_dela_nao_volta_amanha(cenario):
+    com_fontes_do_x(cenario)
+
+    resultado = gerar(cenario, editor=EditorComDica(), leitor_do_x=LeitorDublê())
+    gerar(cenario, editor=EditorComDica(), leitor_do_x=LeitorDublê(), agora=AGORA + timedelta(days=1))
+
+    dica = secao(resultado, "ia").dica
+    assert (dica.titulo, dica.como_aplicar) == ("Teste antes do commit", "Ponha o comando de teste no CLAUDE.md.")
+    assert dica.item.link == "https://x.com/bcherny/status/1"
+    assert "https://x.com/bcherny/status/1" not in [i.link for i in secao(resultado, "ia").itens]
+    assert "https://x.com/bcherny/status/1" in resultado.edicao.links()
+    assert "https://x.com/bcherny/status/1" in cenario["ja_publicados"]
+
+
+def test_a_pagina_mostra_a_dica_e_os_posts_do_x_sem_destaque_grande(cenario):
+    com_fontes_do_x(cenario)
+    publicacao = PublicacaoDublê()
+
+    gerar(cenario, editor=EditorComDica(), leitor_do_x=LeitorDublê(), publicacao=publicacao)
+
+    pagina = publicacao.chamadas[0][0]
+    ia = pagina[pagina.index("Dev com IA"):pagina.index("Tecnologia</h2>")]
+    assert "--c:#0e7c86" in pagina
+    assert "Dica do dia · Teste antes do commit" in ia
+    assert "Ponha o comando de teste no CLAUDE.md." in ia
+    assert '<a href="https://x.com/bcherny/status/1">Ver no X</a>' in ia
+    assert 'class="lead"' not in ia
+    assert '<div class="by x">@dexhorthy' in ia
+
+
+def test_a_nota_tem_a_dica_do_dia_com_link_e_como_aplicar(cenario):
+    com_fontes_do_x(cenario)
+
+    gerar(cenario, editor=EditorComDica(), leitor_do_x=LeitorDublê())
+
+    ia = nota_de(cenario).split("## Dev com IA")[1].split("## Tecnologia")[0]
+    assert "### Dica do dia" in ia
+    assert "**[Teste antes do commit](https://x.com/bcherny/status/1)** — _@bcherny" in ia
+    assert "Ponha o comando de teste no CLAUDE.md." in ia
+    assert ia.index("### Dica do dia") < ia.index("### [Título ia-x2](https://x.com/dexhorthy/status/3)")
+
+
+def test_secao_vazia_pelo_x_mostra_o_aviso_no_lugar_de_nada_relevante(cenario):
+    com_fontes_do_x(cenario)
+    publicacao = PublicacaoDublê()
+
+    gerar(cenario, leitor_do_x=LeitorDublê(erro=LoginDoXVenceu("o X pediu login")), publicacao=publicacao)
+
+    ia_da_nota = nota_de(cenario).split("## Dev com IA")[1].split("## Tecnologia")[0]
+    assert "_O login do X venceu: rode python -m whis x-login._" in ia_da_nota
+    assert "Nada relevante" not in ia_da_nota
+    pagina = publicacao.chamadas[0][0]
+    ia_da_pagina = pagina[pagina.index("Dev com IA</h2>"):pagina.index("Tecnologia</h2>")]
+    assert "O login do X venceu: rode python -m whis x-login." in ia_da_pagina
+    assert "Nada relevante" not in ia_da_pagina
+
+
+def test_noticia_de_rss_ainda_pode_ser_destaque_grande_ao_lado_de_post_do_x():
+    from whis.jornal import ItemDoJornal
+    from whis.pagina_do_jornal import _lista
+
+    itens = (
+        ItemDoJornal("Post", "", "https://x.com/a/status/1", "@a"),
+        ItemDoJornal("Blog", "", "https://simonwillison.net/1", "Simon Willison"),
+    )
+
+    html = _lista(itens)
+
+    assert html.startswith('<article class="lead"><a href="https://simonwillison.net/1">')
+    assert _lista(itens[:1]).startswith('<article class="item sem">')

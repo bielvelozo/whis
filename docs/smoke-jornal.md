@@ -42,7 +42,7 @@ python -m whis news --simular
 **Sucesso:** o mesmo, agora com títulos em português, resumos, *Aprender
 hoje* e *Para aprender*, e a linha de custo (≈ US$ 0,60) e do plano.
 **Falha:** "Faltou: seleção automática indisponível" = o editor não
-respondeu; olhe `bandeja.log`. Credencial vencida: `claude login`.
+respondeu; olhe `bandeja.log`. Credencial vencida: `claude auth login`.
 
 ## Passo 3 — A edição de verdade
 
@@ -102,3 +102,62 @@ placar (ou "sem jogo"), e o consumo do plano. Preencha:
 
 Se uma edição passar de 15 min ou de US$ 2, olhe primeiro a formação (buscas)
 e o tamanho dos candidatos no `bandeja.log`.
+
+## Dev com IA — o X
+
+A seção lê o X por um Chrome com um perfil só do Whis (ADR 0003). Ela só
+aparece depois destes passos; antes deles o jornal sai como sempre.
+
+### Passo X1 — A conta e quem ela segue
+
+Crie uma conta do X só para o Whis, **com o idioma em inglês** (Settings →
+Accessibility, display and languages → Languages). Siga a lista inicial de
+`.scratch/jornal-dev-com-ia/spec.md`, conferindo cada @.
+
+### Passo X2 — O login
+
+```
+python -m whis x-login
+```
+
+Abre o Chrome na tela de login do X. Entre com a conta do Whis e espere a
+home carregar.
+
+**Sucesso:** "Sessão do X salva".
+**Falha:** "Login não concluído" — a janela fechou ou passaram 10 minutos.
+
+### Passo X3 — O bloco em `fontes.md`
+
+Cole no **topo** de `noticias/fontes.md`, logo depois de `# Fontes do
+jornal` (a ordem do arquivo é a ordem do jornal):
+
+```
+## Dev com IA (ia) · 4 a 6 itens
+- X · Seguindo: x:seguindo
+- X · Para você: x:para-voce
+- X · Claude Code: x:busca "claude code" min_faves:100
+- X · Outros harness: x:busca (codex OR cursor OR "gemini cli" OR opencode) (agent OR cli) min_faves:50
+- X · Skills e hooks: x:busca (claude OR codex) (skills OR hooks OR subagents OR "slash commands" OR MCP) min_faves:50
+- X · Contexto: x:busca ("context engineering" OR CLAUDE.md OR AGENTS.md OR "plan mode") min_faves:30
+- X · Tokens e custo: x:busca ("prompt caching" OR "token usage" OR "context window" OR compact) (claude OR codex OR cursor) min_faves:30
+- X · Fluxo de trabalho: x:busca ("agentic coding" OR "spec-driven" OR "parallel agents" OR worktrees) min_faves:50
+```
+
+### Passo X4 — Uma edição com a seção
+
+```
+python -m whis news --simular
+```
+
+**Sucesso:** na lista de seções, `Dev com IA` com 4 a 6 itens; na página da
+pasta temporária, a seção 02 com a *Dica do dia* e os posts com "Ver no X".
+**Falha:** "X indisponível hoje: …" — o motivo diz o que faltou (Chrome,
+perfil em uso, página mudou). "O login do X venceu" — volte ao passo X2.
+
+### Passo X5 — O login vencido
+
+Feche o Chrome, apague a pasta `%LOCALAPPDATA%\whis\navegador-x` e rode o
+passo X4 de novo.
+
+**Sucesso:** a seção diz "O login do X venceu: rode python -m whis x-login" e
+o resto do jornal sai. Refaça o passo X2 para voltar.

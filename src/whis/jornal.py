@@ -33,6 +33,7 @@ from . import vault as _vault
 from .configuracao import Configuracao
 from .efemeride import Efemeride, buscar_efemeride
 from .feeds import Coleta, coletar
+from .fonte_x import ErroDoX, LoginDoXVenceu, PortaDoX, candidatos_do_x
 from .fontes_do_jornal import (
     CAMINHO_DAS_FONTES,
     MODELO_DAS_FONTES,
@@ -82,6 +83,8 @@ UA_DAS_CAPAS = (
 AVISO_DA_ESCOLHA = "seleção automática indisponível; itens por ordem de chegada"
 AVISO_DA_FORMACAO = "formação indisponível hoje"
 AVISO_DA_PUBLICACAO = "a página não foi publicada; esta nota existe"
+AVISO_DO_LOGIN_DO_X = "o login do X venceu: rode python -m whis x-login"
+INICIO_DO_X_INDISPONIVEL = "X indisponível hoje"
 
 _NOTA_DA_EDICAO = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 _LINK_DA_NOTA = re.compile(r"(?<!!)\[[^\]]*\]\((https?://[^)\s]+)\)")
@@ -102,10 +105,22 @@ class ItemDoJornal:
 
 
 @dataclass(frozen=True)
+class DicaDoJornal:
+    """A Dica do dia: o post e o que o editor escreveu sobre como aplicá-lo."""
+
+    item: ItemDoJornal
+    titulo: str
+    como_aplicar: str
+
+
+@dataclass(frozen=True)
 class SecaoDoJornal:
     id: str
     titulo: str
     itens: tuple[ItemDoJornal, ...] = ()
+    dica: DicaDoJornal | None = None
+    #: Por que o X não entrou na seção hoje; também está em `Edicao.avisos`.
+    aviso: str | None = None
 
 
 @dataclass(frozen=True)
@@ -131,8 +146,10 @@ class Edicao:
     artifact: str | None = None
 
     def links(self) -> tuple[str, ...]:
-        return tuple(item.link for secao in self.secoes for item in secao.itens) + tuple(
-            item.link for item in self.time
+        return (
+            tuple(item.link for secao in self.secoes for item in secao.itens)
+            + tuple(secao.dica.item.link for secao in self.secoes if secao.dica)
+            + tuple(item.link for item in self.time)
         )
 
 
@@ -151,11 +168,12 @@ class ResultadoDoJornal:
 
 @dataclass(frozen=True)
 class PortasDoJornal:
-    """As três portas do Claude que uma edição usa, montadas juntas pela casca."""
+    """As portas que uma edição usa, montadas juntas pela casca: as três do Claude e o leitor do X."""
 
     editor: PortaEditor
     formacao: PortaFormacao
     publicacao: PortaPublicacao
+    leitor_do_x: PortaDoX | None = None
 
 
 class JornalNaoNasceu(RuntimeError):
@@ -170,6 +188,7 @@ def gerar_jornal(
     formacao: PortaFormacao,
     publicacao: PortaPublicacao,
     rede: httpx.BaseTransport | None = None,
+    leitor_do_x: PortaDoX | None = None,
     simular: bool = False,
     pasta_da_edicao: Path | None = None,
     espera_sem_rede_s: float = 60.0,
@@ -202,12 +221,13 @@ def gerar_jornal(
         espera_da_segunda_rodada_s=espera_da_segunda_rodada_s,
         dormir=dormir,
     )
+    coleta, avisos_do_x = _ler_o_x(leitor_do_x, fontes, coleta, agora, ja_publicados)
 
     tem_futebol = any(secao.id == SECAO_DO_FUTEBOL for secao in fontes.secoes)
     placar = _placar(agora, rede) if tem_futebol else None
     efemeride = _efemeride(agora, rede) if tem_futebol else None
 
-    avisos: list[str] = []
+    avisos: list[str] = list(dict.fromkeys(avisos_do_x.values()))
     limites = {secao.id: (secao.minimo, secao.maximo) for secao in fontes.secoes}
     escolha = _escolher(editor, coleta, limites, avisos)
     trilha = ler_trilha(vault)
@@ -226,6 +246,7 @@ def gerar_jornal(
         placar,
         efemeride,
         avisos,
+        avisos_do_x,
     )
     capas = baixar_capas(edicao, pasta, rede=rede)
     edicao = _com_capas(edicao, capas)
@@ -401,6 +422,43 @@ def _coletar_esperando_a_rede(
     raise JornalNaoNasceu(f"nenhum dos {total} feeds respondeu — sem rede?")
 
 
+def _ler_o_x(
+    leitor: PortaDoX | None,
+    fontes: FontesDoJornal,
+    coleta: Coleta,
+    agora: datetime,
+    ja_publicados: frozenset[str],
+) -> tuple[Coleta, dict[str, str]]:
+    """Uma leitura do X por edição, somada às seções das linhas `x:`.
+
+    Devolve a coleta com os posts e as páginas que falharam sozinhas no
+    rodapé, e `{seção: aviso}` quando o X inteiro ficou de fora.
+    """
+    do_x = [(secao.id, fonte) for secao in fontes.secoes for fonte in secao.x]
+    if leitor is None or not do_x:
+        return coleta, {}
+    secoes = list(dict.fromkeys(secao for secao, _fonte in do_x))
+    try:
+        leitura = leitor.ler(tuple(fonte for _secao, fonte in do_x), agora.astimezone(BRT).date())
+    except LoginDoXVenceu as erro:
+        _log.error("O X ficou fora da edição: %s", erro)
+        return coleta, dict.fromkeys(secoes, AVISO_DO_LOGIN_DO_X)
+    except ErroDoX as erro:
+        _log.error("O X ficou fora da edição: %s", erro)
+        return coleta, dict.fromkeys(secoes, f"{INICIO_DO_X_INDISPONIVEL}: {erro}")
+    if len(leitura.falhas) >= len(do_x):
+        motivo = next(iter(leitura.falhas.values()))
+        _log.error("Nenhuma página do X respondeu: %s", motivo)
+        return coleta, dict.fromkeys(secoes, f"{INICIO_DO_X_INDISPONIVEL}: {motivo}")
+
+    candidatos = dict(coleta.candidatos)
+    for secao in secoes:
+        posts = [post for id_, fonte in do_x if id_ == secao for post in leitura.posts.get(fonte.nome, ())]
+        candidatos[secao] = candidatos.get(secao, ()) + candidatos_do_x(secao, posts, agora, ja_publicados)
+    falhas = tuple(f"{nome} ({motivo})" for nome, motivo in leitura.falhas.items())
+    return replace(coleta, candidatos=candidatos, fontes_com_falha=coleta.fontes_com_falha + falhas), {}
+
+
 def _placar(agora: datetime, rede: httpx.BaseTransport | None) -> Placar:
     try:
         return buscar_placar(agora, transporte=rede)
@@ -488,12 +546,22 @@ def _montar_edicao(
     placar: Placar | None,
     efemeride: Efemeride | None,
     avisos: list[str],
+    avisos_do_x: dict[str, str],
 ) -> Edicao:
+    def dica_da(secao: str) -> DicaDoJornal | None:
+        dica = escolha.dica
+        if dica is None or dica.candidato.secao != secao:
+            return None
+        item = _item(ItemEscolhido(dica.candidato, dica.titulo, ""))
+        return DicaDoJornal(item=item, titulo=dica.titulo, como_aplicar=dica.como_aplicar)
+
     secoes = tuple(
         SecaoDoJornal(
             id=secao.id,
             titulo=secao.titulo,
             itens=tuple(_item(escolhido) for escolhido in escolha.secoes.get(secao.id, ())),
+            dica=dica_da(secao.id),
+            aviso=avisos_do_x.get(secao.id),
         )
         for secao in fontes.secoes
     )

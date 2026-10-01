@@ -809,7 +809,7 @@ def montar_jornal(edicao: "Edicao") -> str:
     A imagem aponta a capa original da fonte: as reduzidas (`img/N.jpg`) só
     existem no artifact, não no vault.
     """
-    from .pagina_do_jornal import NADA_RELEVANTE, data_por_extenso, hora, texto_do_custo, texto_do_plano
+    from .pagina_do_jornal import NADA_RELEVANTE, data_por_extenso, frase, hora, texto_do_custo, texto_do_plano
 
     def janelas(janela) -> str:
         if janela is None:
@@ -888,11 +888,17 @@ def montar_jornal(edicao: "Edicao") -> str:
                 prefixo = f"{e.ano}: " if e.ano else ""
                 fonte = f" ([Wikipédia]({e.link}))" if e.link else ""
                 linhas += ["### Curiosidade do dia", "", f"{prefixo}{e.texto}{fonte}", ""]
+        if secao.dica:
+            d = secao.dica
+            rodape = d.item.fonte + (f" · {hora(d.item.data)}" if d.item.data else "")
+            linhas += ["### Dica do dia", "", f"**[{d.titulo}]({d.item.link})** — _{rodape}_", "", d.como_aplicar, ""]
         if secao.itens:
             for i in secao.itens:
                 linhas += item(i)
-        else:
+        elif not (secao.dica or secao.aviso):
             linhas += [f"_{NADA_RELEVANTE}_", ""]
+        if secao.aviso:
+            linhas += [f"_{frase(secao.aviso)}_", ""]
         if secao.id == "carros" and edicao.para_aprender:
             linhas += ["### Para aprender", ""]
             for a in edicao.para_aprender:

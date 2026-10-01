@@ -121,3 +121,19 @@ def area_de_transferencia_trancada(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(area_de_transferencia, "lembrar_janela_anterior", lambda: None)
     for nome in ("ler", "copiar", "colar"):
         monkeypatch.setattr(area_de_transferencia, nome, recusar)
+
+
+@pytest.fixture(autouse=True)
+def navegador_trancado(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nenhum teste abre o Chrome com a conta do X de quem roda a suíte.
+
+    O modelo de `fontes.md` tem linhas `x:`; quem chega no leitor de verdade
+    abriria o perfil do Whis e navegaria no X. Quem testa o jornal injeta um
+    `LeitorDoXFake`.
+    """
+    from whis import fonte_x
+
+    def recusar():
+        raise AssertionError("teste chegou no navegador de verdade — injete um LeitorDoXFake")
+
+    monkeypatch.setattr(fonte_x, "_playwright", recusar)
