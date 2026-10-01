@@ -8,7 +8,7 @@ minuto e a daily quarenta segundos.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
-`news`, `note`, `doubt`, `do`, `ask`, `open`, `settings`, `stash`,
+`news`, `meetings`, `note`, `doubt`, `do`, `ask`, `open`, `settings`, `stash`,
 `prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
 portas de verdade — as fontes, o roteiro, a busca — entram por
@@ -50,7 +50,8 @@ from .nota_viva import SECAO_DUVIDAS, SECAO_FAZER, SECAO_PONTOS
 from .obsidian import lancar as _lancar_no_windows
 from .obsidian import uri_da_nota
 from .pergunta import responder
-from .portas import PortaDaily
+from .portas import ErroDaGranola, LoginNecessario, PortaDaily, PortaReunioes
+from .reunioes import ResultadoDasReunioes, puxar_reunioes
 
 _log = logging.getLogger("whis.palheta")
 
@@ -73,15 +74,20 @@ TITULO_DO_JORNAL = "O jornal de hoje está pronto"
 TITULO_DO_JORNAL_PARCIAL = "O jornal saiu com falta"
 TITULO_DO_JORNAL_SEM_PAGINA = "O jornal não foi publicado"
 TITULO_DO_JORNAL_QUE_NAO_NASCEU = "O jornal não nasceu"
+TITULO_DAS_REUNIOES = "Reuniões no vault"
+TITULO_SEM_REUNIOES_NOVAS = "Nada novo na Granola"
+TITULO_DAS_REUNIOES_QUE_NAO_VIERAM = "As reuniões não vieram"
+TITULO_DO_LOGIN_DA_GRANOLA = "A Granola pediu login"
 
 NOME_DA_DAILY = "daily"
 NOME_DO_JORNAL = "news"
+NOME_DAS_REUNIOES = "meetings"
 NOME_DE_CONFIGURAR = "settings"
 
 #: A ordem em que as ações aparecem na janela: as que o usuário pediu
 #: primeiro, e existem mesmo com o campo vazio.
 ORDEM_DAS_ACOES = (
-    "open", "daily", NOME_DO_JORNAL, "prompts", "stash", "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR,
+    "open", "daily", NOME_DO_JORNAL, NOME_DAS_REUNIOES, "prompts", "stash", "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR,
 )
 
 #: Quanto da resposta cabe no toast: o resto está na nota que o botão abre.
@@ -386,6 +392,46 @@ def resultado_do_jornal_que_nao_nasceu(erro: JornalNaoNasceu) -> Resultado:
     return Resultado(TITULO_DO_JORNAL_QUE_NAO_NASCEU, _encurtar(str(erro)))
 
 
+def resultado_das_reunioes(resultado: ResultadoDasReunioes) -> Resultado:
+    """O toast de `meetings` — o mesmo para a palheta e para `whis meetings`.
+
+    Com nota nova, o botão abre a mais recente; reunião ainda sem resumo é dita
+    à parte, porque logo depois da reunião é o caso mais provável.
+    """
+    if resultado.nada_veio:
+        return Resultado(TITULO_DAS_REUNIOES_QUE_NAO_VIERAM, _encurtar(resultado.falhas[0]))
+    if not resultado.novas:
+        if resultado.sem_resumo:
+            texto = (
+                f"{_quantas(len(resultado.sem_resumo), 'reunião ainda sem resumo', 'reuniões ainda sem resumo')}; "
+                f"puxe de novo em alguns minutos."
+            )
+        elif resultado.ja_no_vault:
+            texto = f"{_quantas(resultado.ja_no_vault, 'reunião', 'reuniões')} dos últimos 30 dias, todas já no vault."
+        else:
+            texto = "Nenhuma reunião nos últimos 30 dias."
+        return Resultado(TITULO_SEM_REUNIOES_NOVAS, texto)
+    partes = [
+        f"{_quantas(len(resultado.novas), 'reunião nova', 'reuniões novas')}: "
+        + ", ".join(resultado.titulos_novos)
+    ]
+    if resultado.falhas:
+        partes.append(_quantas(len(resultado.falhas), "não veio", "não vieram"))
+    if resultado.sem_resumo:
+        partes.append(_quantas(len(resultado.sem_resumo), "ainda sem resumo", "ainda sem resumo"))
+    return Resultado(TITULO_DAS_REUNIOES, _encurtar("; ".join(partes)), nota=resultado.novas[-1])
+
+
+def resultado_das_reunioes_que_falharam(erro: ErroDaGranola) -> Resultado:
+    if isinstance(erro, LoginNecessario):
+        return Resultado(TITULO_DO_LOGIN_DA_GRANOLA, "Rode meetings na palheta para entrar de novo.")
+    return Resultado(TITULO_DAS_REUNIOES_QUE_NAO_VIERAM, _encurtar(str(erro)))
+
+
+def _quantas(numero: int, singular: str, plural: str) -> str:
+    return f"{numero} {singular if numero == 1 else plural}"
+
+
 def resultado_da_resposta(resposta: Resposta, nota: str) -> Resultado:
     """O toast de `ask`: o começo da resposta; a nota tem o resto e as fontes."""
     if not resposta.achou:
@@ -524,6 +570,7 @@ def comandos_padrao(
     relogio: Callable[[], datetime] | None = None,
     area: PortaAreaDeTransferencia | None = None,
     portas_do_jornal: Callable[[Configuracao], PortasDoJornal] | None = None,
+    reunioes: Callable[[Configuracao], PortaReunioes] | None = None,
 ) -> tuple[Comando, ...]:
     """Os comandos que tocam o vault, com as portas injetadas.
 
@@ -559,6 +606,15 @@ def comandos_padrao(
         except JornalNaoNasceu as erro:
             return resultado_do_jornal_que_nao_nasceu(erro)
         return resultado_do_jornal(resultado)
+
+    def puxar(_argumento: str, configuracao: Configuracao) -> Resultado:
+        if reunioes is None:
+            raise RuntimeError("As reuniões da Granola não estão disponíveis nesta execução.")
+        try:
+            resultado = puxar_reunioes(configuracao, reunioes(configuracao))
+        except ErroDaGranola as erro:
+            return resultado_das_reunioes_que_falharam(erro)
+        return resultado_das_reunioes(resultado)
 
     def anotar_em(secao: str, nome: str) -> Rodar:
         def anotar(texto: str, configuracao: Configuracao) -> Resultado:
@@ -639,6 +695,14 @@ def comandos_padrao(
             rotulo="Generate news",
             descricao="Today's news in noticias/ and the page on your phone (~7 min)",
             icone="📰",
+        ),
+        Comando(
+            NOME_DAS_REUNIOES,
+            "puxa as reuniões novas da Granola para reunioes/",
+            puxar,
+            rotulo="Pull meetings",
+            descricao="Granola meetings into reunioes/; the first time opens the Granola login",
+            icone="◷",
         ),
         Comando(
             "ask",

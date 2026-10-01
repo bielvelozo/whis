@@ -1,6 +1,6 @@
-"""Portas dos serviços externos: o resumo do dia, a daily e as três do jornal.
+"""Portas dos serviços externos: o resumo do dia, a daily, as três do jornal e a Granola.
 
-Nem o diário, nem a daily, nem o jornal falam com um provedor concreto —
+Nem o diário, nem a daily, nem o jornal, nem o coletor de reuniões falam com um provedor concreto —
 falam com estas portas. Os adaptadores reais (Claude) implementam os
 protocolos daqui; os fakes de `whis.fakes` fazem o mesmo para os
 testes. Trocar de provedor não toca nenhuma das costuras.
@@ -8,6 +8,7 @@ testes. Trocar de provedor não toca nenhuma das costuras.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -233,4 +234,46 @@ class PortaPublicacao(Protocol):
         self, html: Path, capas: dict[str, Path], url_atual: str | None
     ) -> Publicacao:
         """`capas` é `{"img/N.jpg": caminho local}`. Levanta `ErroDePublicacao`."""
+        ...
+
+
+@dataclass(frozen=True)
+class ReuniaoListada:
+    """Uma reunião como a lista da Granola a traz: o bastante para saber se é nova."""
+
+    id: str
+    titulo: str
+    inicio: datetime
+
+
+@dataclass(frozen=True)
+class Reuniao:
+    """Uma reunião detalhada. `resumo` vazio é reunião cujo resumo a Granola ainda gera."""
+
+    id: str
+    titulo: str
+    inicio: datetime
+    participantes: tuple[str, ...] = ()
+    resumo: str = ""
+    url: str = ""
+
+
+class ErroDaGranola(RuntimeError):
+    """A Granola não respondeu, respondeu erro, ou mandou o que não dá para ler."""
+
+
+class LoginNecessario(ErroDaGranola):
+    """Não há login válido, e esta execução não pode abrir o navegador para pedir um."""
+
+
+@runtime_checkable
+class PortaReunioes(Protocol):
+    """As reuniões da conta da Granola do usuário."""
+
+    def listar(self) -> tuple[ReuniaoListada, ...]:
+        """As reuniões dos últimos 30 dias. Levanta `ErroDaGranola`."""
+        ...
+
+    def detalhar(self, ids: Sequence[str]) -> tuple[Reuniao, ...]:
+        """Resumo, participantes e link de até 10 reuniões. Levanta `ErroDaGranola`."""
         ...

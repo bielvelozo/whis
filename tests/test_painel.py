@@ -86,7 +86,7 @@ def test_campos_cobrem_toda_chave_do_modelo_e_nenhuma_a_mais():
     do_modelo |= {"[daily].ativa", "[daily].referencias_pessoais", "[daily].contexto_do_time", "[daily].horarios"}
 
     assert {campo.caminho for campo in CAMPOS} == do_modelo
-    assert len(CAMPOS) == 26
+    assert len(CAMPOS) == 27
 
 
 def test_os_quatro_segredos_os_dois_caminhos_e_as_listas_tem_o_tipo_certo():
@@ -102,7 +102,7 @@ def test_os_quatro_segredos_os_dois_caminhos_e_as_listas_tem_o_tipo_certo():
     assert por_tipo[Tipo.BOOLEANO] == {"[daily].ativa", "[noticias].ativa"}
     assert por_tipo[Tipo.INTEIRO] == {"[busca].maximo_de_notas", "[git].profundidade"}
     assert por_tipo[Tipo.HORA] == {
-        "[diario].inicio_do_dia", "[diario].hora_da_tarefa", "[noticias].horario",
+        "[diario].inicio_do_dia", "[diario].hora_da_tarefa", "[noticias].horario", "[granola].horario",
     }
 
 

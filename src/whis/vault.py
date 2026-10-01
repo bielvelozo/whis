@@ -3,8 +3,8 @@
 A zona de propriedade é uma invariante deste módulo, não só dos testes — e ela
 é **por coletor**: `escrever` recebe as zonas que aquela chamada permite. O
 do diário escreve só em `diario/`; o da daily, só em `daily/`. Nenhum alcança
-a zona do outro. `reunioes/` e `transcricoes/` só são lidas: nenhum coletor
-escreve nelas desde que a gravação saiu do Whis.
+a zona do outro. O coletor da Granola escreve só em `reunioes/`;
+`transcricoes/` só é lida, desde que a gravação saiu do Whis.
 
 `notas/` é a zona do usuário e é recusada para todos eles. A nota viva
 `daily/atual.md` é a terceira zona: mora em `daily/`, mas o que o agente pode
@@ -36,7 +36,7 @@ from .nota_viva import (
     NotaViva,
     sem_brancos_nas_pontas,
 )
-from .portas import ResumoDoDia
+from .portas import ResumoDoDia, Reuniao
 
 if TYPE_CHECKING:  # ambos importam este módulo em tempo de execução
     from .busca import Resposta
@@ -77,6 +77,9 @@ ZONAS_DAS_RESPOSTAS = (PASTA_RESPOSTAS,)
 #: A única pasta em que o jornal escreve; `noticias/fontes.md` ali é do usuário.
 ZONAS_DO_JORNAL = (PASTA_NOTICIAS,)
 
+#: A única pasta em que o coletor da Granola escreve.
+ZONAS_DAS_REUNIOES = (PASTA_REUNIOES,)
+
 #: A nota viva: a única nota que agente e usuário mantêm juntos.
 CAMINHO_DA_NOTA_VIVA = f"{PASTA_DAILY}/atual.md"
 
@@ -93,6 +96,7 @@ _NADA_REGISTRADO = "_(nada registrado)_"
 TIPO_DIARIO = "diario"
 TIPO_DAILY = "daily"
 TIPO_RESPOSTA = "resposta"
+TIPO_REUNIAO = "reuniao"
 
 #: O callout recolhido com as fontes de uma resposta: a spec diz que a fonte
 #: não aparece por padrão — recolhida, ela não aparece e continua na nota
@@ -234,6 +238,40 @@ def reunioes_na_janela(vault: Path, janela: Janela) -> tuple[str, ...]:
         if momento is not None and janela.contem(momento):
             encontradas.append((momento, f"{PASTA_REUNIOES}/{arquivo.name}"))
     return tuple(caminho for _, caminho in sorted(encontradas))
+
+
+def caminho_da_reuniao(inicio: datetime, titulo: str) -> str:
+    """`reunioes/YYYY-MM-DD-HHMM-<slug>.md`, na hora local — o prefixo que `reunioes_na_janela` lê."""
+    return f"{PASTA_REUNIOES}/{inicio.astimezone():%Y-%m-%d-%H%M}-{_slug(titulo, TIPO_REUNIAO)}.md"
+
+
+def montar_reuniao(reuniao: Reuniao) -> str:
+    """A nota de uma reunião da Granola: frontmatter, título, quando, e o resumo literal.
+
+    Sem campo `data`, pela mesma armadilha de `montar_resposta`: a data fica no
+    nome do arquivo e na linha abaixo do título. `granola_id` é o que diz que a
+    reunião já está no vault, mesmo que o título mude na Granola.
+    """
+    frontmatter = _frontmatter(
+        {
+            "tipo": TIPO_REUNIAO,
+            "participantes": list(reuniao.participantes),
+            "granola": reuniao.url,
+            "granola_id": reuniao.id,
+        }
+    )
+    inicio = reuniao.inicio.astimezone()
+    quando = f"{_data_por_extenso(inicio.date())}, {inicio:%H:%M}"
+    return frontmatter + "\n".join([f"# {reuniao.titulo}", "", quando, "", reuniao.resumo.strip(), ""])
+
+
+def granola_ids_no_vault(vault: Path) -> frozenset[str]:
+    """Os `granola_id` das notas de `reunioes/`: as reuniões que não precisam ser puxadas."""
+    pasta = Path(vault) / PASTA_REUNIOES
+    if not pasta.is_dir():
+        return frozenset()
+    ids = (_texto_do_frontmatter(arquivo, "granola_id") for arquivo in pasta.glob("*.md"))
+    return frozenset(valor for valor in ids if valor)
 
 
 def montar_diario(
@@ -402,11 +440,11 @@ def caminho_da_resposta(momento: datetime, pergunta: str) -> str:
     return f"{PASTA_RESPOSTAS}/{momento:%Y-%m-%d-%H%M}-{_slug(pergunta)}.md"
 
 
-def _slug(texto: str) -> str:
-    """Só `a-z`, `0-9` e hífen, até 60 caracteres; sem nada aproveitável, `resposta`."""
+def _slug(texto: str, padrao: str = TIPO_RESPOSTA) -> str:
+    """Só `a-z`, `0-9` e hífen, até 60 caracteres; sem nada aproveitável, `padrao`."""
     ascii_ = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
     slug = re.sub(r"[^A-Za-z0-9]+", "-", ascii_).strip("-").lower()
-    return slug[:60].strip("-") or TIPO_RESPOSTA
+    return slug[:60].strip("-") or padrao
 
 
 def montar_resposta(*, pergunta: str, resposta: "Resposta") -> str:
@@ -675,6 +713,18 @@ def _data_do_nome(nome: str) -> date | None:
 
 def _momento_do_frontmatter(arquivo: Path, chave: str) -> datetime | None:
     """Lê um campo de data-hora do frontmatter, sempre devolvendo algo aware."""
+    valor = _texto_do_frontmatter(arquivo, chave)
+    if valor is None:
+        return None
+    try:
+        momento = datetime.fromisoformat(valor)
+    except ValueError:
+        return None
+    return momento if momento.tzinfo else momento.astimezone()
+
+
+def _texto_do_frontmatter(arquivo: Path, chave: str) -> str | None:
+    """O valor de um campo do frontmatter, sem aspas; `None` sem frontmatter ou sem o campo."""
     try:
         linhas = arquivo.read_text(encoding="utf-8").splitlines()
     except OSError:
@@ -686,13 +736,8 @@ def _momento_do_frontmatter(arquivo: Path, chave: str) -> datetime | None:
         if linha.strip() == "---":
             return None
         nome, separador, valor = linha.partition(":")
-        if not separador or nome.strip() != chave:
-            continue
-        try:
-            momento = datetime.fromisoformat(valor.strip().strip('"').strip("'"))
-        except ValueError:
-            return None
-        return momento if momento.tzinfo else momento.astimezone()
+        if separador and nome.strip() == chave:
+            return valor.strip().strip('"').strip("'")
     return None
 
 

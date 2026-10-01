@@ -240,6 +240,7 @@ def test_o_vigia_nunca_vigia_a_limpeza_que_saiu():
     assert automacao.agendar_vigia(configuracao, executar=tudo_agendado) == [
         "Whis-Daily",
         "Whis-Noticias",
+        "Whis-Reunioes",
     ]
     assert "Whis-Limpeza" not in " ".join(" ".join(c) for c in tudo_agendado.comandos)
 

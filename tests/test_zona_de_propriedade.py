@@ -9,8 +9,8 @@ import pytest
 from whis import vault as modulo_vault
 
 
-def test_nenhuma_zona_de_escrita_alcanca_reunioes_nem_transcricoes():
-    """Desde que a gravação saiu do Whis, as duas pastas só são lidas."""
+def test_so_o_coletor_da_granola_alcanca_reunioes_e_ninguem_alcanca_transcricoes():
+    """`reunioes/` é do coletor da Granola; `transcricoes/` só é lida desde que a gravação saiu."""
     zonas = {
         nome: valor
         for nome, valor in vars(modulo_vault).items()
@@ -18,8 +18,11 @@ def test_nenhuma_zona_de_escrita_alcanca_reunioes_nem_transcricoes():
     }
 
     assert zonas
+    assert modulo_vault.ZONAS_DAS_REUNIOES == ("reunioes",)
     for nome, permitidas in zonas.items():
-        assert "reunioes" not in permitidas and "transcricoes" not in permitidas, nome
+        assert "transcricoes" not in permitidas, nome
+        if nome != "ZONAS_DAS_REUNIOES":
+            assert "reunioes" not in permitidas, nome
 
 
 @pytest.mark.parametrize(

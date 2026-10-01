@@ -20,7 +20,7 @@ O motivo é o uso real: entre 16/09 e 30/09 foram 5 gravações (6,8 GB de WAV),
 
 - **Consertar a gravação própria** (cortar o áudio antes da Deepgram, trocar de provedor): não seguido — o usuário escolheu voltar ao Granola.
 - **Só tirar os botões e deixar o código**: oferecido e não escolhido; o usuário pediu a remoção de toda a gravação própria.
-- **Puxar as reuniões do Granola automaticamente**: não construído. No Basic, o único caminho oficial automático é o MCP: traz o resumo, não traz a transcrição e exige login pelo navegador.
+- **Puxar as reuniões do Granola automaticamente**: construído no mesmo dia, depois do teste abaixo, pelo único caminho oficial automático do Basic, o MCP. Ele traz o resumo, mas não a transcrição, e o login é pelo navegador. São três peças: `whis meetings`, o comando `meetings` da palheta e a tarefa `Whis-Reunioes`. Spec em `.scratch/reunioes-granola/spec.md`.
 
 ## O MCP testado no plano Basic (2026-09-30)
 
