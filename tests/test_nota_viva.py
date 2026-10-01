@@ -138,15 +138,25 @@ def test_anotar_em_fazer_escreve_a_caixa_e_a_secao_nasce_depois_de_fazendo():
     assert texto.replace("## Fazer\n- [ ] responder o ribeiro\n\n", "", 1) == NOTA
 
 
-def test_anotar_em_duvidas_so_a_pedido_e_nunca_nas_secoes_do_agente_ou_em_falar():
+def test_anotar_em_duvidas_e_nunca_em_falar():
     nota = NotaViva.de_texto(NOTA)
 
     nota.anotar("o pix expira?", SECAO_DUVIDAS)
 
     assert "- o pix pendente expira sozinho?\n- o pix expira?\n" in trecho(nota.texto(), SECAO_DUVIDAS)
-    for proibida in (SECAO_FIZ, SECAO_FAZENDO, SECAO_FALAR):
-        with pytest.raises(ValueError):
-            nota.anotar("x", proibida)
+    with pytest.raises(ValueError):
+        nota.anotar("x", SECAO_FALAR)
+
+
+def test_anotar_em_fiz_e_fazendo_entra_sem_caixa_no_fim_da_secao():
+    nota = NotaViva.de_texto(NOTA)
+
+    assert nota.anotar("subi o pix", SECAO_FIZ) == "- subi o pix"
+    assert nota.anotar("revisando o checkout", SECAO_FAZENDO) == "- revisando o checkout"
+
+    texto = nota.texto()
+    assert "1. Planejei e ativei o pix transparente da AppMax no checkout\n- subi o pix\n\n## O que estou fazendo\n" in texto
+    assert "2. Testando no android  \n- revisando o checkout\n\n\t   \n" in texto
 
 
 def test_a_secao_nova_entra_na_ordem_das_cinco_mesmo_sem_a_seguinte_imediata():
@@ -202,3 +212,147 @@ def test_o_modelo_tem_as_seis_secoes_na_ordem_e_nenhuma_explicacao():
     assert "\ndata:" not in MODELO_DA_NOTA_VIVA, "campo `data` vira link da Daily notes do Obsidian"
     assert ">" not in MODELO_DA_NOTA_VIVA
     assert [linha for linha in MODELO_DA_NOTA_VIVA.splitlines() if linha and not linha.startswith(("##", "---", "tipo:"))] == []
+
+
+# -- concluir ------------------------------------------------------------------
+
+#: *O que estou fazendo* com sub-item, linha em branco e embed dentro da subárvore,
+#: espaço à direita e o item vazio que o Obsidian deixa.
+FAZENDO = (
+    "---\n"
+    "tipo: daily-atual\n"
+    "---\n"
+    "\n"
+    "## O que eu fiz\n"
+    "\n"
+    "- já estava aqui\n"
+    "\n"
+    "## O que estou fazendo\n"
+    "\n"
+    "- FN-1786 foto extra \n"
+    "\t- revisar o hub\n"
+    "\n"
+    "\t\t![[print.png]]\n"
+    "- Achados do ribeiro\n"
+    "\t- Problema A\n"
+    "\t- Problema B\n"
+    "- \n"
+    "\n"
+    "## Dúvidas\n"
+    "\n"
+    "- o pix expira?\n"
+)
+BLOCO_DA_FOTO = "- FN-1786 foto extra \n\t- revisar o hub\n\n\t\t![[print.png]]\n"
+
+
+def item(nota: NotaViva, texto: str):
+    return next(candidato for candidato in nota.itens(SECAO_FAZENDO) if candidato.texto == texto)
+
+
+def concluir(nota: NotaViva, *textos: str) -> None:
+    for texto in textos:
+        alvo = item(nota, texto)
+        assert nota.concluir(alvo.inicio, alvo.linha) is not None
+
+
+def test_itens_trazem_a_subarvore_literal_e_os_pais_sem_o_item_vazio():
+    itens = NotaViva.de_texto(FAZENDO).itens(SECAO_FAZENDO)
+
+    assert [i.texto for i in itens] == [
+        "FN-1786 foto extra",
+        "revisar o hub",
+        "Achados do ribeiro",
+        "Problema A",
+        "Problema B",
+    ]
+    foto, hub, achados, problema_a, _ = itens
+    assert foto.linhas == ("- FN-1786 foto extra ", "\t- revisar o hub", "", "\t\t![[print.png]]")
+    assert foto.ancestrais == () and hub.ancestrais == (foto.inicio,)
+    assert problema_a.ancestrais == (achados.inicio,)
+
+
+def test_concluir_leva_o_item_e_a_subarvore_para_o_fim_de_fiz_e_o_resto_fica_byte_a_byte():
+    nota = NotaViva.de_texto(FAZENDO)
+    foto = item(nota, "FN-1786 foto extra")
+
+    assert nota.concluir(foto.inicio, foto.linha) == foto.linhas
+    assert nota.texto() == FAZENDO.replace(BLOCO_DA_FOTO, "", 1).replace(
+        "- já estava aqui\n", "- já estava aqui\n" + BLOCO_DA_FOTO, 1
+    )
+
+
+def test_concluir_um_sub_item_copia_o_pai_que_fica_em_fazendo():
+    nota = NotaViva.de_texto(FAZENDO)
+    problema_a = item(nota, "Problema A")
+
+    assert nota.concluir(problema_a.inicio, problema_a.linha) == ("- Achados do ribeiro", "\t- Problema A")
+    texto = nota.texto()
+    assert "- já estava aqui\n- Achados do ribeiro\n\t- Problema A\n\n## O que estou fazendo\n" in texto
+    assert "- Achados do ribeiro\n\t- Problema B\n- \n" in trecho(texto, SECAO_FAZENDO)
+
+
+def test_concluir_dois_irmaos_copia_o_pai_uma_vez_so():
+    nota = NotaViva.de_texto(FAZENDO)
+
+    concluir(nota, "Problema A", "Problema B")
+
+    assert trecho(nota.texto(), SECAO_FIZ).endswith(
+        "- já estava aqui\n- Achados do ribeiro\n\t- Problema A\n\t- Problema B\n"
+    )
+
+
+def test_concluir_o_pai_depois_dos_filhos_nao_o_repete():
+    nota = NotaViva.de_texto(FAZENDO)
+
+    concluir(nota, "Problema A", "Problema B", "Achados do ribeiro")
+
+    texto = nota.texto()
+    assert trecho(texto, SECAO_FIZ).count("- Achados do ribeiro") == 1
+    assert "Achados" not in trecho(texto, SECAO_FAZENDO)
+
+
+def test_o_pai_nao_casa_com_o_mesmo_texto_em_outra_profundidade_de_fiz():
+    nota = NotaViva.de_texto(FAZENDO.replace("- já estava aqui\n", "- já estava aqui\n\t- Achados do ribeiro\n", 1))
+
+    concluir(nota, "Problema A")
+
+    assert "- já estava aqui\n\t- Achados do ribeiro\n- Achados do ribeiro\n\t- Problema A\n" in nota.texto()
+
+
+def test_concluir_sem_fiz_abre_a_secao_no_lugar_dela():
+    nota = NotaViva.de_texto(FAZENDO.replace("## O que eu fiz\n\n- já estava aqui\n\n", "", 1))
+
+    concluir(nota, "FN-1786 foto extra")
+
+    assert nota.texto().startswith(
+        "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n"
+        + BLOCO_DA_FOTO
+        + "\n## O que estou fazendo\n\n- Achados do ribeiro\n"
+    )
+
+
+def test_concluir_preserva_o_crlf():
+    nota = NotaViva.de_texto(FAZENDO.replace("\n", "\r\n"))
+
+    concluir(nota, "FN-1786 foto extra")
+
+    texto = nota.texto()
+    assert "\n" not in texto.replace("\r\n", "")
+    assert "- já estava aqui\r\n- FN-1786 foto extra \r\n" in texto
+
+
+def test_com_a_nota_mudada_acha_pela_linha_unica_ou_nao_mexe():
+    achados = item(NotaViva.de_texto(FAZENDO), "Achados do ribeiro")
+    topo = "## O que estou fazendo\n\n"
+
+    deslocada = NotaViva.de_texto(FAZENDO.replace(topo, topo + "- novo no topo\n", 1))
+    assert deslocada.concluir(achados.inicio, achados.linha) is not None
+    assert "- Achados do ribeiro" in trecho(deslocada.texto(), SECAO_FIZ)
+
+    renomeada = FAZENDO.replace("- Achados do ribeiro\n", "- Achados do Ribeiro\n", 1)
+    sumida = NotaViva.de_texto(renomeada)
+    assert sumida.concluir(achados.inicio, achados.linha) is None
+    assert sumida.texto() == renomeada
+
+    repetida = FAZENDO.replace("- \n", "- Achados do ribeiro\n", 1).replace(topo, topo + "- novo\n", 1)
+    assert NotaViva.de_texto(repetida).concluir(achados.inicio, achados.linha) is None

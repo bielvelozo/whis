@@ -35,11 +35,12 @@ from whis.fakes import (
     BuscaFake,
     PublicacaoDoDeckFake,
 )
-from whis.janela_da_palheta import Acao, comando_destacado, comando_pelo_rotulo, completar, filtrar
+from whis.janela_da_palheta import Acao, Efeito, Linha, comando_destacado, comando_pelo_rotulo, completar, filtrar
 from whis.palheta import (
     ORDEM_DAS_ACOES,
     Comando,
     ComandoDesconhecido,
+    ListaDoFazendo,
     Palheta,
     Resultado,
     comandos_padrao,
@@ -51,7 +52,9 @@ FUSO = timezone(timedelta(hours=-3))
 MOMENTO = datetime(2026, 9, 12, 14, 3, tzinfo=FUSO)
 PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 NOTA_DA_RESPOSTA = "respostas/2026-09-12-1403-o-que-ficou-decidido-sobre-a-retencao-de-180-dias.md"
-COMANDOS = ("daily", "news", "meetings", "note", "doubt", "do", "ask", "open", "settings", "prompts", "stash")
+COMANDOS = (
+    "daily", "did", "doing", "done", "news", "meetings", "note", "doubt", "do", "ask", "open", "settings", "prompts", "stash",
+)
 
 
 class AvisoEspiao:
@@ -263,7 +266,33 @@ def test_do_escreve_a_caixa_em_fazer_para_ele_marcar(montar, caminho_do_vault: P
     assert botao[1].endswith("&file=daily%2Fatual")
 
 
-@pytest.mark.parametrize("comando", ["note", "doubt", "do"])
+def test_did_e_doing_escrevem_em_fiz_e_fazendo_sem_caixa(montar, caminho_do_vault: Path, aviso):
+    palheta = montar()
+    escrever_nota_da_daily(caminho_do_vault)
+
+    palheta.despachar("did FN-131 deploy do frete")
+    assert aviso.ultimo()[:2] == ("Anotado em O que eu fiz", "FN-131 deploy do frete")
+    palheta.despachar("doing FN-140 revisão do checkout")
+    titulo, texto, botao = aviso.ultimo()
+    assert (titulo, texto) == ("Anotado em O que estou fazendo", "FN-140 revisão do checkout")
+    assert botao[1].endswith("&file=daily%2Fatual")
+
+    nota = (caminho_do_vault / "daily" / "atual.md").read_bytes().decode("utf-8")
+    assert "\t- subiu em produção\n- FN-131 deploy do frete\n\n## O que estou fazendo\n" in nota
+    assert "- FN-130 diário automático\n- FN-140 revisão do checkout\n\n## Fazer\n" in nota
+
+
+def test_done_abre_a_lista_e_fora_da_janela_explica(montar, aviso):
+    palheta = montar()
+    done = next(comando for comando in palheta.comandos if comando.nome == "done")
+
+    assert isinstance(done.lista(palheta.configuracao), ListaDoFazendo)
+    assert done.parametro == "search"
+    palheta.despachar("done")
+    assert aviso.ultimo()[0] == "Done"
+
+
+@pytest.mark.parametrize("comando", ["did", "doing", "note", "doubt", "do"])
 def test_anotar_sem_texto_pede_o_texto_e_nao_escreve(montar, caminho_do_vault: Path, aviso, comando):
     palheta = montar()
 
@@ -272,6 +301,91 @@ def test_anotar_sem_texto_pede_o_texto_e_nao_escreve(montar, caminho_do_vault: P
     assert not (caminho_do_vault / "daily" / "atual.md").exists()
     titulo, texto, botao = aviso.ultimo()
     assert titulo == "Anotar o quê?" and comando in texto and botao is None
+
+
+# -- done ------------------------------------------------------------------------
+
+NOTA_DO_DONE = (
+    "---\ntipo: daily-atual\n---\n\n"
+    "## O que eu fiz\n\n- já estava aqui\n\n"
+    "## O que estou fazendo\n\n"
+    "- Revisão do checkout\n"
+    "\t- botão do pix\n"
+    "- Ajustes do flywheel\n"
+    "\n## Falar\n\n- sexta saio cedo\n"
+)
+
+
+@pytest.fixture
+def lista_do_fazendo(configuracao_do_diario, caminho_do_vault: Path) -> ListaDoFazendo:
+    escrever_nota_da_daily(caminho_do_vault, NOTA_DO_DONE)
+    return ListaDoFazendo(configuracao_do_diario())
+
+
+def nota_viva_de(vault: Path) -> str:
+    return (vault / "daily" / "atual.md").read_bytes().decode("utf-8")
+
+
+def test_a_lista_do_done_mostra_os_itens_de_fazendo_com_o_caminho_dos_pais(lista_do_fazendo):
+    assert lista_do_fazendo.linhas("") == [
+        Linha("◔", "Revisão do checkout"),
+        Linha("◔", "botão do pix", "em: Revisão do checkout"),
+        Linha("◔", "Ajustes do flywheel"),
+    ]
+    assert lista_do_fazendo.detalhe(0) == "- Revisão do checkout\n\t- botão do pix"
+    assert lista_do_fazendo.nome == "Done"
+    assert [gesto.tecla for gesto in lista_do_fazendo.gestos] == ["<Return>"]
+
+
+def test_a_lista_do_done_filtra_sem_acento_nem_maiuscula(lista_do_fazendo):
+    assert [linha.titulo for linha in lista_do_fazendo.linhas("REVISAO")] == ["Revisão do checkout"]
+    assert lista_do_fazendo.linhas("vagas") == [] and lista_do_fazendo.vazia == "No item matches"
+
+
+def test_enter_move_para_fiz_e_a_lista_fica_aberta_sem_o_item(lista_do_fazendo, caminho_do_vault: Path):
+    lista_do_fazendo.linhas("")
+    [enter] = lista_do_fazendo.gestos
+
+    efeito = enter.rodar(2, "")
+
+    assert not enter.esconde
+    assert efeito == Efeito(mensagem="Moved: Ajustes do flywheel")
+    assert "- já estava aqui\n- Ajustes do flywheel\n\n## O que estou fazendo\n" in nota_viva_de(caminho_do_vault)
+    assert [linha.titulo for linha in lista_do_fazendo.linhas("")] == ["Revisão do checkout", "botão do pix"]
+
+
+def test_enter_numa_busca_move_o_item_filtrado(lista_do_fazendo, caminho_do_vault: Path):
+    lista_do_fazendo.linhas("pix")
+
+    lista_do_fazendo.gestos[0].rodar(0, "pix")
+
+    assert "- já estava aqui\n- Revisão do checkout\n\t- botão do pix\n" in nota_viva_de(caminho_do_vault)
+
+
+def test_a_nota_mudada_entre_ler_e_mover_nao_mexe_e_avisa_no_rodape(lista_do_fazendo, caminho_do_vault: Path):
+    lista_do_fazendo.linhas("")
+    mudada = NOTA_DO_DONE.replace("- Ajustes do flywheel\n", "- Ajustes do flywheel v2\n")
+    escrever_nota_da_daily(caminho_do_vault, mudada)
+
+    efeito = lista_do_fazendo.gestos[0].rodar(2, "")
+
+    assert efeito == Efeito(mensagem="The note changed — try again")
+    assert nota_viva_de(caminho_do_vault) == mudada
+
+
+def test_sem_selecao_o_enter_nao_faz_nada(lista_do_fazendo, caminho_do_vault: Path):
+    lista_do_fazendo.linhas("vagas")
+
+    assert lista_do_fazendo.gestos[0].rodar(None, "vagas") is None
+    assert nota_viva_de(caminho_do_vault) == NOTA_DO_DONE
+
+
+def test_a_lista_vazia_ensina_o_doing(configuracao_do_diario, caminho_do_vault: Path):
+    escrever_nota_da_daily(caminho_do_vault, "---\ntipo: daily-atual\n---\n\n## O que estou fazendo\n\n")
+    lista = ListaDoFazendo(configuracao_do_diario())
+
+    assert lista.linhas("") == []
+    assert lista.vazia == "Nothing in O que estou fazendo — type: doing <text>"
 
 
 # -- ask -----------------------------------------------------------------------
@@ -427,12 +541,14 @@ def test_texto_vazio_nao_faz_nada_e_comando_desconhecido_diz_o_que_existe(montar
     assert "'vagas'" in texto and "ask <question>" in texto
 
 
-def test_sao_os_onze_comandos_e_nenhum_futuro_nem_ajuda(montar):
+def test_sao_os_catorze_comandos_e_nenhum_futuro_nem_ajuda(montar):
     palheta = montar()
 
     assert {comando.nome for comando in palheta.comandos} == set(COMANDOS)
     assert [acao.nome for acao in palheta.acoes()] == list(ORDEM_DAS_ACOES)
-    assert [acao.rotulo_atual() for acao in palheta.acoes()[:3]] == ["Open note", "Generate daily", "Generate news"]
+    assert [acao.rotulo_atual() for acao in palheta.acoes()[:5]] == [
+        "Open note", "Generate daily", "Did", "Doing", "Mark done",
+    ]
     assert all(acao.icone and acao.descricao for acao in palheta.acoes())
 
 
@@ -510,6 +626,9 @@ def test_a_busca_com_o_login_do_claude_vencido_pede_o_login(montar, aviso):
 ACOES = (
     Acao("open", "▤", "Open note", "daily/atual.md in Obsidian"),
     Acao("daily", "☀", "Generate daily"),
+    Acao("did", "✓", "Did", aceita_argumento=True),
+    Acao("doing", "◔", "Doing", aceita_argumento=True),
+    Acao("done", "☑", "Mark done", aceita_argumento=True),
     Acao("news", "📰", "Generate news"),
     Acao("meetings", "◷", "Pull meetings"),
     Acao("prompts", "❝", "Search prompts", aceita_argumento=True),
@@ -528,13 +647,13 @@ def test_com_o_campo_vazio_todas_as_acoes_aparecem_nas_tres_pedidas_primeiro():
 
 
 def test_a_lista_filtra_pelo_comeco_da_primeira_palavra():
-    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "doubt", "do"]
-    assert [acao.nome for acao in filtrar(ACOES, "Do")] == ["do", "doubt"]
+    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "did", "doing", "done", "doubt", "do"]
+    assert [acao.nome for acao in filtrar(ACOES, "Do")] == ["do", "doing", "done", "doubt"]
 
 
 def test_o_nome_exato_vem_na_frente_de_quem_so_comeca_igual():
     """Digitar `do` e apertar Tab tem que completar `do `, não `doubt `."""
-    assert [acao.nome for acao in filtrar(ACOES, "do")] == ["do", "doubt"]
+    assert [acao.nome for acao in filtrar(ACOES, "do")] == ["do", "doing", "done", "doubt"]
     assert completar(filtrar(ACOES, "do")[0]) == "do "
     assert [acao.nome for acao in filtrar(ACOES, "ask qual foi")] == ["ask"]
     assert filtrar(ACOES, "vagas") == ()
@@ -545,7 +664,7 @@ def test_o_rotulo_tambem_filtra_e_o_nome_do_comando_vem_primeiro():
     assert [acao.nome for acao in filtrar(ACOES, "generate daily")] == ["daily", "news"]
     assert [acao.nome for acao in filtrar(ACOES, "Open note")] == ["open"]
     assert [acao.nome for acao in filtrar(ACOES, "no")] == ["note", "open"]
-    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "doubt", "do"]
+    assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "did", "doing", "done", "doubt", "do"]
 
 
 def test_a_primeira_palavra_ganha_destaque_so_quando_e_um_comando():
@@ -575,10 +694,11 @@ def test_o_texto_igual_ao_rotulo_vira_o_comando():
 
 def test_tab_completa_o_comando_e_deixa_o_espaco_quando_ha_argumento():
     assert completar(ACOES[1]) == "daily"
-    assert completar(ACOES[6]) == "ask "
-    assert completar(ACOES[7]) == "note "
-    assert completar(ACOES[9]) == "do "
-    assert completar(ACOES[10]) == "settings"
+    assert completar(ACOES[4]) == "done "
+    assert completar(ACOES[9]) == "ask "
+    assert completar(ACOES[10]) == "note "
+    assert completar(ACOES[12]) == "do "
+    assert completar(ACOES[13]) == "settings"
 
 
 def test_o_rotulo_de_uma_acao_pode_ser_funcao():
@@ -700,9 +820,9 @@ def test_a_janela_de_verdade_filtra_destaca_e_some_no_enter_e_no_esc():
         janela.definir_acoes(ACOES[:3])
         janela.mostrar()
         janela.raiz.update()
-        assert janela.titulos_desenhados() == ["Open note", "Generate daily", "Generate news"]
+        assert janela.titulos_desenhados() == ["Open note", "Generate daily", "Did"]
         janela._clicar(2)
-        assert enviados[-1] == "news"
+        assert enviados[-1] == "did"
     finally:
         janela.raiz.destroy()
 

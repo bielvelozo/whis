@@ -38,7 +38,7 @@ SECOES = (
     SECAO_FALAR,
 )
 
-SECOES_ANOTAVEIS = (SECAO_PONTOS, SECAO_DUVIDAS, SECAO_FAZER)
+SECOES_ANOTAVEIS = (SECAO_FIZ, SECAO_FAZENDO, SECAO_PONTOS, SECAO_DUVIDAS, SECAO_FAZER)
 
 SECOES_COM_CAIXA = (SECAO_FAZER,)
 
@@ -78,6 +78,30 @@ _TAB = 4
 class _Bloco:
     titulo: str | None
     linhas: list[str]
+
+
+@dataclass(frozen=True)
+class Item:
+    """Um item de lista de uma seção, com a subárvore que viaja com ele.
+
+    `linhas` são a linha do item e tudo o que está mais indentado embaixo dela,
+    literais, sem as linhas em branco do fim. `inicio` é a posição da linha do
+    item no corpo da seção (as linhas sem o título); `ancestrais` são os
+    `inicio` dos itens que o contêm, de fora para dentro.
+    """
+
+    texto: str
+    linhas: tuple[str, ...]
+    inicio: int
+    ancestrais: tuple[int, ...]
+
+    @property
+    def linha(self) -> str:
+        return self.linhas[0]
+
+    @property
+    def fim(self) -> int:
+        return self.inicio + len(self.linhas)
 
 
 class NotaViva:
@@ -129,7 +153,7 @@ class NotaViva:
         return True
 
     def anotar(self, texto: str, secao: str = SECAO_PONTOS) -> str:
-        """`- texto` no fim de *Pontos*, *Dúvidas* ou *Fazer*, a pedido dele.
+        """`- texto` no fim de uma seção que tem comando (`did`, `doing`, `note`, `doubt`, `do`), a pedido dele.
 
         Em *Fazer* o item nasce `- [ ] texto`: a caixa é dele, e marcá-la é o
         gesto que fecha a tarefa. O agente nunca mais volta nessa linha.
@@ -138,6 +162,72 @@ class NotaViva:
             raise ValueError(f"Só se anota em {' ou '.join(SECOES_ANOTAVEIS)}; {secao!r} não tem comando.")
         com_caixa = _chave(secao) in {_chave(secao_marcavel) for secao_marcavel in SECOES_COM_CAIXA}
         return self.acrescentar(secao, f"{CAIXA}{texto.strip()}" if com_caixa else texto)[0]
+
+    def itens(self, titulo: str) -> tuple[Item, ...]:
+        """Os itens de lista de uma seção, os aninhados inclusive, na ordem da nota."""
+        bloco = self._bloco(titulo)
+        return _itens(_corpo(bloco)) if bloco else ()
+
+    def concluir(self, posicao: int, linha: str) -> tuple[str, ...] | None:
+        """Leva um item de *O que estou fazendo* para *O que eu fiz*, a pedido dele (`done`).
+
+        O item é reencontrado pela linha literal na `posicao` do corpo, ou pela
+        linha literal se ela for única na seção: ele pode ter mexido na nota
+        desde que a lista foi lida. Sem item, `None` e nada muda. A subárvore
+        sai inteira e literal; os pais ficam, e entram em *O que eu fiz* como
+        cabeçalho, sem repetir um elo que já esteja lá. Devolve as linhas que
+        entraram em *O que eu fiz*.
+        """
+        item = self._reencontrar(SECAO_FAZENDO, posicao, linha)
+        if item is None:
+            return None
+        por_inicio = {candidato.inicio: candidato for candidato in self.itens(SECAO_FAZENDO)}
+        cadeia = (*(por_inicio[inicio] for inicio in item.ancestrais), item)
+        origem = self._bloco(SECAO_FAZENDO)
+        assert origem is not None
+        del origem.linhas[1 + item.inicio : 1 + item.fim]
+
+        entraram, elo = self._garantir_cadeia(SECAO_FIZ, cadeia)
+        destino = self._bloco(SECAO_FIZ)
+        assert destino is not None
+        filhos = list(item.linhas[1:])
+        destino.linhas[1 + elo.fim : 1 + elo.fim] = filhos
+        return (*entraram, *filhos)
+
+    def _reencontrar(self, titulo: str, posicao: int, linha: str) -> Item | None:
+        itens = self.itens(titulo)
+        no_lugar = next((item for item in itens if item.inicio == posicao and item.linha == linha), None)
+        if no_lugar is not None:
+            return no_lugar
+        iguais = [item for item in itens if item.linha == linha]
+        return iguais[0] if len(iguais) == 1 else None
+
+    def _garantir_cadeia(self, titulo: str, cadeia: Sequence[Item]) -> tuple[tuple[str, ...], Item]:
+        """Cada elo em `titulo` como filho direto do anterior; o que falta entra com a linha literal.
+
+        Devolve as linhas que entraram e o último elo como está na seção.
+        """
+        bloco = self._bloco(titulo) or self._abrir_secao(titulo)
+        entraram: list[str] = []
+        pai: Item | None = None
+        for elo in cadeia:
+            existente = self._filho(titulo, pai, elo.texto)
+            if existente is None:
+                posicao = pai.fim if pai else _fim_do_conteudo(_corpo(bloco))
+                bloco.linhas.insert(1 + posicao, elo.linha)
+                entraram.append(elo.linha)
+                existente = next(item for item in self.itens(titulo) if item.inicio == posicao)
+            pai = existente
+        assert pai is not None
+        return tuple(entraram), pai
+
+    def _filho(self, titulo: str, pai: Item | None, texto: str) -> Item | None:
+        """O item de `texto` filho direto de `pai`, ou de nível raiz sem pai."""
+        esperado = (pai.inicio,) if pai else ()
+        return next(
+            (item for item in self.itens(titulo) if item.texto == texto and item.ancestrais[-1:] == esperado),
+            None,
+        )
 
     def _bloco(self, titulo: str) -> _Bloco | None:
         chave = _chave(titulo)
@@ -204,6 +294,38 @@ def _fim_do_conteudo(corpo: Sequence[str]) -> int:
     return 0
 
 
+def _itens(corpo: Sequence[str]) -> tuple[Item, ...]:
+    itens: list[Item] = []
+    abertos: list[tuple[int, int]] = []
+    for indice, linha in enumerate(corpo):
+        if not linha.strip():
+            continue
+        nivel = _nivel(linha)
+        while abertos and abertos[-1][0] >= nivel:
+            abertos.pop()
+        partes = _ITEM.match(linha)
+        if partes is None or not partes["texto"].strip():
+            continue
+        fim = _fim_da_subarvore(corpo, indice, nivel)
+        ancestrais = tuple(inicio for _, inicio in abertos)
+        itens.append(Item(partes["texto"].strip(), tuple(corpo[indice:fim]), indice, ancestrais))
+        abertos.append((nivel, indice))
+    return tuple(itens)
+
+
+def _fim_da_subarvore(corpo: Sequence[str], inicio: int, nivel: int) -> int:
+    """Onde acaba o que pertence ao item: a última linha mais indentada que ele."""
+    fim = inicio + 1
+    for indice in range(inicio + 1, len(corpo)):
+        linha = corpo[indice]
+        if not linha.strip():
+            continue
+        if _nivel(linha) <= nivel:
+            break
+        fim = indice + 1
+    return fim
+
+
 def _nivel(linha: str) -> int:
     indentacao = linha[: len(linha) - len(linha.lstrip(" \t"))]
     return len(indentacao.expandtabs(_TAB))
@@ -240,6 +362,11 @@ def sem_brancos_nas_pontas(linhas: Sequence[str]) -> tuple[str, ...]:
     while fim > inicio and not linhas[fim - 1].strip():
         fim -= 1
     return tuple(linhas[inicio:fim])
+
+
+def contem(texto: str, busca: str) -> bool:
+    """`busca` aparece em `texto`, sem diferenciar maiúscula nem acento."""
+    return _chave(busca) in _chave(texto)
 
 
 def _chave(titulo: str) -> str:

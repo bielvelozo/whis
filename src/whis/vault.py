@@ -30,6 +30,8 @@ from .fontes import ORDEM_DAS_FONTES, Evento, Janela, nome_legivel
 from .nota_viva import (
     SECAO_DUVIDAS,
     SECAO_FALAR,
+    SECAO_FAZENDO,
+    SECAO_FIZ,
     SECAO_PONTOS,
     NotaViva,
 )
@@ -542,19 +544,33 @@ def escrever_nota_viva(vault: Path, nota: NotaViva) -> Path:
 
 
 def anotar_ponto(vault: Path, texto: str, secao: str = SECAO_PONTOS) -> Path:
-    """Acrescenta uma linha no fim de `## Pontos`, `## Dúvidas` ou `## Fazer` da nota viva.
+    """Acrescenta uma linha no fim de uma seção da nota viva que tem comando.
 
-    O único gesto do agente numa seção do usuário, e só a pedido explícito
-    (`daily --anotar`, `note`/`doubt`/`do` na palheta, `anotar` na DM). Em
-    *Fazer* a linha nasce `- [ ] texto`, e quem marca é ele. É
-    **append-only**: todo byte fora da linha nova continua onde estava, porque
-    o que há ali foi digitado à mão.
+    Só a pedido explícito (`daily --anotar`, `did`/`doing`/`note`/`doubt`/`do`
+    na palheta, `anotar` na DM). Em *Fazer* a linha nasce `- [ ] texto`, e
+    quem marca é ele. É **append-only**: todo byte fora da linha nova continua
+    onde estava, porque o que há ali foi digitado à mão.
     """
     nota = ler_nota_viva(vault)
     nota.anotar(texto, secao)
     escrito = escrever_nota_viva(vault, nota)
     _log.info("Ponto anotado em '%s' de %s", secao, CAMINHO_DA_NOTA_VIVA)
     return escrito
+
+
+def concluir_item(vault: Path, posicao: int, linha: str) -> tuple[str, ...] | None:
+    """Leva um item de *O que estou fazendo* para *O que eu fiz* (`done`) e grava literal.
+
+    `None` quando a nota mudou e o item não é mais achado: nada é gravado.
+    """
+    nota = ler_nota_viva(vault)
+    movidas = nota.concluir(posicao, linha)
+    if movidas is None:
+        _log.info("O item a concluir não está mais em '%s' de %s", SECAO_FAZENDO, CAMINHO_DA_NOTA_VIVA)
+        return None
+    escrever_nota_viva(vault, nota)
+    _log.info("Item levado de '%s' para '%s' em %s", SECAO_FAZENDO, SECAO_FIZ, CAMINHO_DA_NOTA_VIVA)
+    return movidas
 
 
 def _data_do_nome(nome: str) -> date | None:

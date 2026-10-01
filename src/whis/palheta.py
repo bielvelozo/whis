@@ -8,8 +8,8 @@ daily levam um minuto.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
-`news`, `meetings`, `note`, `doubt`, `do`, `ask`, `open`, `settings`, `stash`,
-`prompts`), `interpretar` lê o
+`did`, `doing`, `done`, `news`, `meetings`, `note`, `doubt`, `do`, `ask`,
+`open`, `settings`, `stash`, `prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
 portas de verdade — a publicação do deck, a busca — entram por
 `comandos_padrao`, e é por aí que `--fakes` da bandeja chega aqui. `settings`
@@ -20,9 +20,10 @@ Dois cuidados que vêm do custo: um comando custa dinheiro e minutos, então um
 despacho enquanto outro roda é **recusado** com um toast curto, e a falha de
 um comando vira toast com a mensagem — nunca exceção solta num thread.
 
-`prompts` é a exceção ao dispara e some: ele não despacha, abre uma lista na
-própria janela (`Comando.lista`), a `ListaDePrompts`, cujos gestos colam,
-copiam, favoritam, editam e guardam prompts de `prompts/` no vault.
+`prompts` e `done` são as exceções ao dispara e some: não despacham, abrem
+uma lista na própria janela (`Comando.lista`). A `ListaDePrompts` cola,
+copia, favorita, edita e guarda prompts de `prompts/` no vault; a
+`ListaDoFazendo` leva um item de *O que estou fazendo* para *O que eu fiz*.
 """
 
 from __future__ import annotations
@@ -52,7 +53,7 @@ from .jornal import (
     gerar_jornal,
 )
 from .janela_da_palheta import Efeito, Gesto, Linha, Lista
-from .nota_viva import SECAO_DUVIDAS, SECAO_FAZER, SECAO_PONTOS
+from .nota_viva import SECAO_DUVIDAS, SECAO_FAZENDO, SECAO_FAZER, SECAO_FIZ, SECAO_PONTOS, Item, contem
 from .obsidian import lancar as _lancar_no_windows
 from .obsidian import uri_da_nota
 from .pergunta import responder
@@ -97,7 +98,8 @@ NOME_DE_CONFIGURAR = "settings"
 #: A ordem em que as ações aparecem na janela: as que o usuário pediu
 #: primeiro, e existem mesmo com o campo vazio.
 ORDEM_DAS_ACOES = (
-    "open", "daily", NOME_DO_JORNAL, NOME_DAS_REUNIOES, "prompts", "stash", "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR,
+    "open", "daily", "did", "doing", "done", NOME_DO_JORNAL, NOME_DAS_REUNIOES, "prompts", "stash", "ask",
+    "note", "doubt", "do", NOME_DE_CONFIGURAR,
 )
 
 #: Quanto da resposta cabe no toast: o resto está na nota que o botão abre.
@@ -577,6 +579,49 @@ class ListaDePrompts:
         return next((indice for indice, prompt in enumerate(achados) if prompt.caminho == caminho), None)
 
 
+class ListaDoFazendo:
+    """A lista de `done` na janela: os itens de *O que estou fazendo* e o Enter que leva o escolhido para *O que eu fiz*.
+
+    Relê a nota a cada texto digitado, como a dos prompts; depois do Enter a
+    janela fica aberta, para ele marcar outro.
+    """
+
+    nome = "Done"
+    placeholder = f"Search {SECAO_FAZENDO}…"
+
+    def __init__(self, configuracao: Configuracao) -> None:
+        self._configuracao = configuracao
+        self._todos: tuple[Item, ...] = ()
+        self._achados: list[Item] = []
+        self.gestos = (Gesto("<Return>", "↵", "Mark done", self._concluir),)
+
+    @property
+    def vazia(self) -> str:
+        if not self._todos:
+            return f"Nothing in {SECAO_FAZENDO} — type: doing <text>"
+        return "No item matches"
+
+    def linhas(self, texto: str) -> list[Linha]:
+        self._todos = _vault.ler_nota_viva(self._configuracao.vault).itens(SECAO_FAZENDO)
+        self._achados = [item for item in self._todos if contem(item.texto, texto)]
+        textos = {item.inicio: item.texto for item in self._todos}
+        return [
+            Linha("◔", item.texto, "em: " + " › ".join(textos[i] for i in item.ancestrais) if item.ancestrais else "")
+            for item in self._achados
+        ]
+
+    def detalhe(self, indice: int) -> str:
+        return "\n".join(self._achados[indice].linhas) if 0 <= indice < len(self._achados) else ""
+
+    def _concluir(self, indice: int | None, _texto: str) -> Efeito | None:
+        if indice is None or not 0 <= indice < len(self._achados):
+            return None
+        item = self._achados[indice]
+        if _vault.concluir_item(self._configuracao.vault, item.inicio, item.linha) is None:
+            return Efeito(mensagem="The note changed — try again")
+        return Efeito(mensagem=f"Moved: {item.texto}")
+
+
 def comandos_padrao(
     *,
     publicacao_do_deck: Callable[[Configuracao], PortaPublicacaoDoDeck],
@@ -689,6 +734,9 @@ def comandos_padrao(
     def prompts_fora_da_janela(_argumento: str, _configuracao: Configuracao) -> Resultado:
         return Resultado("Prompts", "A lista de prompts abre na palheta: ctrl+space e prompts.")
 
+    def concluir_fora_da_janela(_argumento: str, _configuracao: Configuracao) -> Resultado:
+        return Resultado("Done", "A lista do done abre na palheta: ctrl+space e done.")
+
     return (
         Comando(
             "open",
@@ -705,6 +753,34 @@ def comandos_padrao(
             rotulo="Generate daily",
             descricao="Publish the daily slides from daily/atual.md (~1 min)",
             icone="☀",
+        ),
+        Comando(
+            "did",
+            f"acrescenta uma linha em {SECAO_FIZ} da nota viva",
+            anotar_em(SECAO_FIZ, "did"),
+            parametro="text",
+            rotulo="Did",
+            descricao=f"Add a line to {SECAO_FIZ} in daily/atual.md",
+            icone="✓",
+        ),
+        Comando(
+            "doing",
+            f"acrescenta uma linha em {SECAO_FAZENDO} da nota viva",
+            anotar_em(SECAO_FAZENDO, "doing"),
+            parametro="text",
+            rotulo="Doing",
+            descricao=f"Add a line to {SECAO_FAZENDO} in daily/atual.md",
+            icone="◔",
+        ),
+        Comando(
+            "done",
+            f"leva um item de {SECAO_FAZENDO} para {SECAO_FIZ}",
+            concluir_fora_da_janela,
+            parametro="search",
+            rotulo="Mark done",
+            descricao=f"Move an item from {SECAO_FAZENDO} to {SECAO_FIZ}",
+            icone="☑",
+            lista=ListaDoFazendo,
         ),
         Comando(
             NOME_DO_JORNAL,
