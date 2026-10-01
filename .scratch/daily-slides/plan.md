@@ -2568,8 +2568,7 @@ from pathlib import Path
 
 from . import vault as _vault
 from .configuracao import Configuracao
-from .deck import Deck, montar_deck
-from .nota_viva import SECAO_TERMINEI
+from .deck import SECOES_DO_DECK, Deck, montar_deck
 from .portas import ErroDePublicacao, Medida, PortaPublicacaoDoDeck
 from .slides_do_deck import slides_do_deck
 
@@ -2615,9 +2614,10 @@ def gerar_daily(
 
     raiz = _vault.preparar(configuracao.vault)
     existia = (raiz / _vault.CAMINHO_DA_NOTA_VIVA).is_file()
-    if nota.garantir_secao(SECAO_TERMINEI) or not existia:
+    abertas = [titulo for titulo, _id in SECOES_DO_DECK if nota.garantir_secao(titulo)]
+    if abertas or not existia:
         _vault.escrever_nota_viva(raiz, nota)
-        _log.info("Nota viva gravada com '## %s'.", SECAO_TERMINEI)
+        _log.info("Nota viva gravada; títulos abertos: %s.", ", ".join(abertas) or "nenhum")
 
     if deck.vazio():
         _log.info("A nota da daily está vazia — nada publicado.")

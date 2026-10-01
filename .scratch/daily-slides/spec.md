@@ -109,10 +109,12 @@ painel as descarta ao salvar, porque só escreve o que está em `CHAVES`. Um tes
 ordem: *O que eu fiz*, *O que estou fazendo*, **O que terminei**, *Fazer*, *Dúvidas*, *Pontos*,
 *Falar*. `MODELO_DA_NOTA_VIVA` ganha a seção nova.
 
-A nota dele já existe sem `## O que terminei`. Em toda geração **real** (não em `--simular`),
-inclusive quando a nota está vazia — é justamente quando ele precisa do título para começar a
-escrever —, se o título faltar, o Whis o insere vazio depois de *O que estou fazendo*
-(`NotaViva._abrir_secao` já faz a inserção na ordem) e grava a nota **literal**
+A nota dele já existe sem `## O que terminei`. A de verdade, lida em 2026-09-30, também não
+tem *O que eu fiz*, *O que estou fazendo* nem *Falar*: ele as apagou quando a daily do agente
+deixou de servir. Em toda geração **real** (não em `--simular`), inclusive quando a nota está
+vazia — é justamente quando ele precisa dos títulos para começar a escrever —, o Whis abre,
+vazio, o título de **cada seção que vai para o deck** e estiver faltando, no lugar dela na
+ordem (`NotaViva._abrir_secao` já faz a inserção), e grava a nota **literal**
 (`escrever_nota_viva`). É a única escrita do Whis ali além de `note`/`doubt`/`do`, e na prática
 acontece uma vez. Texto dele nunca é tocado.
 
