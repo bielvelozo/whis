@@ -7,12 +7,15 @@ não existe `&&`: um comando por linha.
 
 Abra a palheta (`ctrl+space`), rode `open` e escreva em `daily/atual.md`, no Obsidian:
 
-- em *O que eu fiz*, *O que estou fazendo* e *O que terminei*, uma linha por coisa, com
-  sub-itens por tab quando quiser;
+- em *O que eu fiz* e *O que estou fazendo*, uma linha por coisa, com sub-itens por tab
+  quando quiser;
 - em *Dúvidas* e *Falar*, o que for levar à reunião.
 
+Sem abrir o Obsidian, a palheta faz o mesmo: `doing <texto>` e `did <texto>` acrescentam uma
+linha, e `done` leva um item de *O que estou fazendo* para *O que eu fiz*.
+
 Se a nota ainda não tem um desses títulos, o Whis o abre vazio na primeira geração. O texto
-que você escreveu ele nunca mexe.
+que você escreveu ele nunca mexe, a não ser quando você pede, pela palheta.
 
 ## Passo 2 — Conferir sem publicar
 

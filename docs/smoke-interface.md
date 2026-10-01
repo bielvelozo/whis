@@ -119,8 +119,8 @@ Com a bandeja no ar, aperte **Ctrl+Space** (se o seu `config.toml` ainda diz
 preto, de cantos arredondados e borda fina, aparece no alto da tela, no
 desenho do Raycast, com o que está atrás dele aparecendo desfocado por
 trás: um campo grande com "Type a command…", embaixo a lista de
-ações — **Open note** e **Generate daily** primeiro, depois Generate news,
-Search prompts, Stash prompt, Ask, Note, Doubt, To-do, Settings — cada uma com o nome do comando em roxo à direita,
+ações — **Open note** e **Generate daily** primeiro, depois Did, Doing, Mark done, Generate news,
+Pull meetings, Search prompts, Stash prompt, Ask, Note, Doubt, To-do, Settings — cada uma com o nome do comando em roxo à direita,
 e um rodapé com **Run ↵** e **Complete Tab**. ↑/↓ escolhem uma linha, Enter
 executa a escolhida (com o campo vazio), clicar também executa; digitar filtra
 a lista pelo comando **e** pelo rótulo
@@ -136,6 +136,9 @@ Teste, um por vez:
 
 | digite | o que deve acontecer |
 |---|---|
+| `doing testando o fazendo` | toast "Anotado em O que estou fazendo"; a linha entra no fim de *O que estou fazendo* |
+| `did testando o fiz` | toast "Anotado em O que eu fiz"; a linha entra no fim de *O que eu fiz* |
+| `done` (ou **Mark done**) | a janela fica e mostra os itens de *O que estou fazendo*, um sub-item com `em: <pai>`; digitar filtra (sem acento nem maiúscula). Enter leva o selecionado, com o que está embaixo dele, para o fim de *O que eu fiz* (confira no Obsidian); o rodapé diz *Moved: …* e a lista segue aberta sem ele. Mova um sub-item e veja o pai copiado em *O que eu fiz*; depois mova o pai e veja que ele não se repete. **Um clique numa linha também move, sem desfazer.** Esc volta aos comandos |
 | `note testando a palheta` | toast "Anotado em Pontos"; `daily/atual.md` ganha `- testando a palheta` no fim de *Pontos* (a seção nasce antes de *Falar* se a nota ainda não a tinha) |
 | `doubt o pix expira sozinho?` | toast "Anotado em Dúvidas"; a linha entra em *Dúvidas* |
 | `do responder o ribeiro` | toast "Anotado em Fazer"; `daily/atual.md` ganha `- [ ] responder o ribeiro` no fim de *Fazer* (a seção nasce entre *O que estou fazendo* e *Dúvidas*). Marque o `[x]` no Obsidian: ninguém mexe nessa linha depois |

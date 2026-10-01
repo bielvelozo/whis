@@ -1,16 +1,16 @@
 """A nota viva `daily/atual.md`: o texto que ele escreve e de onde sai a daily.
 
 Este módulo só conhece texto. Ele lê a nota como uma sequência de linhas, acha
-as sete seções e as linhas dentro delas, e faz as duas únicas escritas do
-agente ali: **anotar** uma linha em *Pontos*, *Dúvidas* ou *Fazer* a pedido
-dele (`note`, `doubt`, `do`) e **abrir** o título de uma seção que falte. O
-resto da nota é dele; quem a lê para o deck é `deck.py`, e quem lê e grava o
-arquivo é `vault.py`.
+as seis seções e as linhas dentro delas, e faz as escritas do agente ali, todas
+a pedido dele: **anotar** uma linha (`did`, `doing`, `note`, `doubt`, `do`),
+**concluir** um item de *O que estou fazendo*, que vai para *O que eu fiz*
+(`done`), e **abrir** o título de uma seção que falte. O resto da nota é dele;
+quem a lê para o deck é `deck.py`, e quem lê e grava o arquivo é `vault.py`.
 
 A regra que governa tudo aqui: cada linha que já está na nota sai **byte a
 byte** igual — inclusive os espaços à direita, as linhas em branco dentro de
 uma seção e a indentação por tab. Por isso a nota é guardada como linhas cruas
-e toda edição é a inserção de linhas inteiras, nunca a reescrita de uma.
+e toda edição insere ou remove linhas inteiras, nunca reescreve uma.
 """
 
 from __future__ import annotations
