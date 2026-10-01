@@ -30,7 +30,8 @@ HOME = "https://x.com/home"
 BUSCA = "https://x.com/search"
 LOGIN = "https://x.com/login"
 
-SEM_JANELA = True
+#: O X responde erro HTTP ao Chrome sem janela (visto em 2026-09-30, Chrome 154).
+SEM_JANELA = False
 ROLAGENS = 4
 PAUSA_S = (1.5, 3.0)
 ESPERA_DA_PAGINA_MS = 20_000
@@ -275,7 +276,8 @@ def abrir_login(perfil: Path | None = None, *, esperar_s: float = ESPERA_DO_LOGI
             pagina.goto(LOGIN, wait_until="domcontentloaded")
             pagina.wait_for_url(re.compile(r"^https://x\.com/home"), timeout=esperar_s * 1000)
             return True
-        except ErroDoPlaywright:
+        except ErroDoPlaywright as erro:
+            _log.warning("O login do X não terminou: %s", _primeira_linha(str(erro)))
             return False
         finally:
             _fechar(contexto)
@@ -358,8 +360,6 @@ class _LeitorDoArtigo(HTMLParser):
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         atributos = {nome: valor or "" for nome, valor in attrs}
         testid = atributos.get("data-testid", "")
-        if testid == "placementTracking":
-            self.anuncio = True
         if tag == "img" and self._texto_em is not None and atributos.get("alt"):
             self.texto.append(atributos["alt"])
         if tag in _VAZIOS:

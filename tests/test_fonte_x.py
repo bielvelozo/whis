@@ -51,6 +51,17 @@ def test_anuncio_fica_fora():
     assert ler_post(fixture("anuncio.html")) is None
 
 
+def test_anuncio_sai_pelo_rotulo_mesmo_sem_rastreio():
+    assert ler_post(fixture("anuncio_sem_rastreio.html")) is None
+
+
+def test_post_organico_dentro_do_rastreio_do_x_continua_post():
+    post = ler_post(fixture("rastreado.html"))
+
+    assert post is not None
+    assert post.link == "https://x.com/bcherny/status/1840000000000000001"
+
+
 def test_post_longo_vem_com_o_texto_visivel_sem_o_show_more():
     post = ler_post(fixture("longo.html"))
 

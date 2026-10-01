@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import time
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -29,6 +30,7 @@ def main() -> int:
     argumentos.add_argument("--login", action="store_true", help="abre o Chrome com janela para entrar na conta")
     argumentos.add_argument("--com-janela", action="store_true", help="lê com o Chrome visível em vez de sem janela")
     opcoes = argumentos.parse_args()
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
     if opcoes.login:
         print("Sessão salva." if abrir_login() else "Login não concluído.")
