@@ -3,15 +3,15 @@
 O contrato é **dispara e some**: `despachar(texto)` devolve na hora, o comando
 roda num thread de trabalho, o resultado vira nota no vault quando há nota, e
 um toast avisa ao terminar — com o botão "Abrir no Obsidian" quando há o que
-abrir. Nenhum comando cabe numa janela que se fica olhando: a pergunta leva um
-minuto e a daily quarenta segundos.
+abrir. Nenhum comando cabe numa janela que se fica olhando: a pergunta e a
+daily levam um minuto.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
 `news`, `note`, `doubt`, `do`, `ask`, `open`, `settings`, `stash`,
 `prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
-portas de verdade — as fontes, o roteiro, a busca — entram por
+portas de verdade — a publicação do deck, a busca — entram por
 `comandos_padrao`, e é por aí que `--fakes` da bandeja chega aqui. `settings`
 é da própria `Palheta`, porque abrir o painel é de quem a hospeda: a bandeja
 injeta `abrir_painel`.
@@ -626,10 +626,10 @@ def comandos_padrao(
         ),
         Comando(
             "daily",
-            "gera a daily agora e mantém daily/atual.md",
+            "publica os slides de daily/atual.md agora",
             daily,
             rotulo="Generate daily",
-            descricao="Update daily/atual.md from git, Linear and Slack (~40 s)",
+            descricao="Publish the daily slides from daily/atual.md (~1 min)",
             icone="☀",
         ),
         Comando(

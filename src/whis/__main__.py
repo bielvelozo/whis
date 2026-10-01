@@ -1,15 +1,15 @@
 r"""Entrada de linha de comando do Whis.
 
 Oito subcomandos sobre a mesma configuração local e sobre as costuras do
-projeto — `diario.gerar_diario` para o dia civil, `daily.gerar_daily` para a
-nota viva da daily, `pergunta.responder` para a busca no vault e
+projeto — `diario.gerar_diario` para o dia civil, `daily.gerar_daily` para os
+slides da daily, `pergunta.responder` para a busca no vault e
 `jornal.gerar_jornal` para o jornal de notícias::
 
     python -m whis init
     python -m whis bandeja
     python -m whis windows [--daily] [--news] [--remover] [--remover-legado]
     python -m whis diario [YYYY-MM-DD] [--simular]
-    python -m whis daily [--anotar TEXTO] [--simular] [--agendada]
+    python -m whis daily [--anotar TEXTO] [--simular] [--fakes] [--agendada]
     python -m whis news [--agendada] [--fakes] [--simular]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
@@ -35,10 +35,11 @@ artifact, no mesmo endereço de sempre; `--simular` e `--fakes` montam nota e
 página numa pasta temporária, sem publicar nem escrever no vault (`--fakes`
 também sem chamar o Claude).
 
-`diario`, `daily` e `news` saem com um código que diz **se a nota nasceu, e inteira**:
+`diario` e `news` saem com um código que diz **se a nota nasceu, e inteira**:
 `0` completa, `3` parcial (uma fonte ou o Claude falhou — a nota existe,
 marcada), `1` não nasceu (todas as fontes falharam, nenhuma configurada, ou
-não havia nada no período). `2` é do argparse: erro de uso.
+não havia nada no período). `daily` tem os seus: `0` com os slides no ar ou
+com a nota vazia, `3` quando só a cópia nasceu. `2` é do argparse: erro de uso.
 """
 
 from __future__ import annotations
@@ -94,6 +95,14 @@ códigos de saída:
   {SAIDA_PARCIAL}  a nota nasceu parcial: uma fonte ou o Claude falhou, e a nota diz qual
   {SAIDA_NAO_NASCEU}  a nota não nasceu: todas as fontes falharam, nenhuma está
      configurada, ou não havia nada no período
+  2  erro de uso (argumento inválido)
+o rastro de toda execução fica em bandeja.log, ao lado do config.toml"""
+
+CODIGOS_DA_DAILY = f"""\
+códigos de saída:
+  {SAIDA_COMPLETA}  os slides saíram no link de sempre, ou a nota estava vazia e nada foi publicado
+  {SAIDA_PARCIAL}  os slides não saíram: a cópia em daily/ nasceu com o aviso e o toast abre a nota
+  {SAIDA_NAO_NASCEU}  não rodou: configuração inválida
   2  erro de uso (argumento inválido)
 o rastro de toda execução fica em bandeja.log, ao lado do config.toml"""
 
@@ -459,7 +468,7 @@ def _relatar_jornal(resultado: ResultadoDoJornal) -> None:
 
 
 def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
-    """Acrescenta uma linha em *Pontos* de `daily/atual.md` e sai, sem coletar nada."""
+    """Acrescenta uma linha em *Pontos* de `daily/atual.md` e sai, sem publicar nada."""
     if not texto.strip():
         _log.error("Nada a anotar: --anotar precisa de um texto.")
         return 1
@@ -851,8 +860,8 @@ def construir_parser() -> argparse.ArgumentParser:
 
     daily_cmd = subcomandos.add_parser(
         "daily",
-        help="mantém a nota viva da daily (daily/atual.md) desde a última fala e escreve a nota do dia",
-        epilog=CODIGOS_DE_SAIDA,
+        help="publica os slides de daily/atual.md no link de sempre e grava a cópia em daily/",
+        epilog=CODIGOS_DA_DAILY,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     _acrescentar_config(daily_cmd)
@@ -860,17 +869,17 @@ def construir_parser() -> argparse.ArgumentParser:
         "--anotar",
         metavar="TEXTO",
         default=None,
-        help="acrescenta uma linha em '## Pontos' de daily/atual.md e sai, sem coletar nada",
+        help="acrescenta uma linha em '## Pontos' de daily/atual.md e sai, sem publicar nada",
     )
     daily_cmd.add_argument(
         "--fakes",
         action="store_true",
-        help="usa fontes e roteiro fake em vez de git, Linear, Slack e Claude",
+        help="o mesmo que --simular: mostra os slides sem publicar nem escrever",
     )
     daily_cmd.add_argument(
         "--simular",
         action="store_true",
-        help="mostra o que entraria na daily, sem enviar ao Claude e sem escrever",
+        help="mostra os slides que sairiam, sem publicar e sem escrever",
     )
     daily_cmd.add_argument(
         "--agendada",

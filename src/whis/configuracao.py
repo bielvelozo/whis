@@ -59,8 +59,8 @@ inicio_do_dia = "04:00"      # o diário de um dia vai desta hora à mesma hora 
 hora_da_tarefa = "19:00"     # quando a tarefa agendada gera o diário
 
 [daily]
-ativa = true                  # false = sem daily: a tarefa agendada não gera e a palheta esconde "Generate daily"
-horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:55", sexta = "10:25" }}  # hora em que a daily nasce em cada dia (segunda..domingo, sem acento); dia ausente = sem daily
+ativa = true                  # false = sem daily: a tarefa agendada não publica os slides e a palheta esconde "Generate daily"
+horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13:55", sexta = "10:25" }}  # hora em que os slides da daily saem em cada dia (segunda..domingo, sem acento); dia ausente = sem daily
 
 [noticias]
 ativa = true                 # false = sem jornal: a tarefa agendada não gera e a palheta esconde "Generate news"
@@ -181,7 +181,7 @@ class Configuracao:
     daily; tabela vazia é nada agendado — a tarefa do Windows nasce daqui.
 
     `daily_ativa` falso desliga a daily: a tarefa `Whis-Daily` continua no
-    Agendador, mas sai sem gerar nada, e a palheta esconde `daily`. Desligar
+    Agendador, mas sai sem publicar nada, e a palheta esconde `daily`. Desligar
     pelo painel vale na hora, sem mexer no Windows. `whis daily` no terminal
     não olha isto — é o jeito de gerar uma com ela desligada.
 

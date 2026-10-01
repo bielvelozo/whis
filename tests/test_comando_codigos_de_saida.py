@@ -72,10 +72,9 @@ def configuracao_so_com_git_inexistente(
 # -- o --help documenta os códigos --------------------------------------------
 
 
-@pytest.mark.parametrize("comando", ["daily", "diario"])
-def test_o_help_documenta_os_codigos_de_saida(comando: str, capsys: pytest.CaptureFixture):
+def test_o_help_do_diario_documenta_os_codigos_de_saida(capsys: pytest.CaptureFixture):
     with pytest.raises(SystemExit) as saida:
-        main([comando, "--help"])
+        main(["diario", "--help"])
 
     ajuda = capsys.readouterr().out
     assert saida.value.code == 0
@@ -84,6 +83,17 @@ def test_o_help_documenta_os_codigos_de_saida(comando: str, capsys: pytest.Captu
     assert f"{SAIDA_PARCIAL}  a nota nasceu parcial" in ajuda
     assert f"{SAIDA_NAO_NASCEU}  a nota não nasceu" in ajuda
     assert "bandeja.log" in ajuda
+
+
+def test_o_help_da_daily_documenta_os_codigos_dela(capsys: pytest.CaptureFixture):
+    with pytest.raises(SystemExit):
+        main(["daily", "--help"])
+
+    ajuda = " ".join(capsys.readouterr().out.split())
+    assert f"{SAIDA_COMPLETA} os slides saíram no link de sempre, ou a nota estava vazia" in ajuda
+    assert f"{SAIDA_PARCIAL} os slides não saíram" in ajuda
+    assert "a nota nasceu inteira" not in ajuda
+    assert "roteiro" not in ajuda and "Linear" not in ajuda
 
 
 def test_os_tres_codigos_sao_distintos_e_nenhum_e_o_do_argparse():
