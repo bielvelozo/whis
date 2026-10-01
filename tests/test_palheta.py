@@ -51,7 +51,7 @@ FUSO = timezone(timedelta(hours=-3))
 MOMENTO = datetime(2026, 9, 12, 14, 3, tzinfo=FUSO)
 PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 NOTA_DA_RESPOSTA = "respostas/2026-09-12-1403-o-que-ficou-decidido-sobre-a-retencao-de-180-dias.md"
-COMANDOS = ("daily", "news", "note", "doubt", "do", "ask", "open", "settings", "prompts", "stash")
+COMANDOS = ("daily", "news", "meetings", "note", "doubt", "do", "ask", "open", "settings", "prompts", "stash")
 
 
 class AvisoEspiao:
@@ -427,7 +427,7 @@ def test_texto_vazio_nao_faz_nada_e_comando_desconhecido_diz_o_que_existe(montar
     assert "'vagas'" in texto and "ask <question>" in texto
 
 
-def test_sao_os_dez_comandos_e_nenhum_futuro_nem_ajuda(montar):
+def test_sao_os_onze_comandos_e_nenhum_futuro_nem_ajuda(montar):
     palheta = montar()
 
     assert {comando.nome for comando in palheta.comandos} == set(COMANDOS)
@@ -511,6 +511,7 @@ ACOES = (
     Acao("open", "▤", "Open note", "daily/atual.md in Obsidian"),
     Acao("daily", "☀", "Generate daily"),
     Acao("news", "📰", "Generate news"),
+    Acao("meetings", "◷", "Pull meetings"),
     Acao("prompts", "❝", "Search prompts", aceita_argumento=True),
     Acao("stash", "⧉", "Stash prompt", aceita_argumento=True),
     Acao("ask", "?", "Ask", aceita_argumento=True),
@@ -574,10 +575,10 @@ def test_o_texto_igual_ao_rotulo_vira_o_comando():
 
 def test_tab_completa_o_comando_e_deixa_o_espaco_quando_ha_argumento():
     assert completar(ACOES[1]) == "daily"
-    assert completar(ACOES[5]) == "ask "
-    assert completar(ACOES[6]) == "note "
-    assert completar(ACOES[8]) == "do "
-    assert completar(ACOES[9]) == "settings"
+    assert completar(ACOES[6]) == "ask "
+    assert completar(ACOES[7]) == "note "
+    assert completar(ACOES[9]) == "do "
+    assert completar(ACOES[10]) == "settings"
 
 
 def test_o_rotulo_de_uma_acao_pode_ser_funcao():

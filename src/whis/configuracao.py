@@ -66,6 +66,9 @@ horarios = {{ segunda = "13:55", terca = "13:55", quarta = "10:25", quinta = "13
 ativa = true                 # false = sem jornal: a tarefa agendada não gera e a palheta esconde "Generate news"
 horario = "08:20"            # quando a tarefa agendada gera o jornal do dia
 
+[granola]
+horario = "19:00"            # quando a tarefa agendada puxa as reuniões da Granola para reunioes/
+
 [palheta]
 atalho = "ctrl+space"        # o atalho global que abre a palheta: ctrl, alt, shift, win e uma tecla (letra, dígito, space, f1..f12)
 
@@ -140,6 +143,7 @@ CHAVES: tuple[Chave, ...] = (
     Chave("daily", "horarios", "daily_horarios", Tipo.HORARIOS),
     Chave("noticias", "ativa", "noticias_ativa", Tipo.BOOLEANO),
     Chave("noticias", "horario", "noticias_horario", Tipo.HORA),
+    Chave("granola", "horario", "granola_horario", Tipo.HORA),
     Chave("palheta", "atalho", "palheta_atalho", Tipo.TEXTO),
     Chave("privacidade", "excluir", "privacidade_excluir", Tipo.LISTA),
     Chave("privacidade", "pastas_privadas", "privacidade_pastas_privadas", Tipo.LISTA),
@@ -190,6 +194,10 @@ class Configuracao:
     quando `noticias_ativa` é falso. Fontes, nomes e time não moram aqui, e sim
     em `noticias/fontes.md` no vault.
 
+    `granola_horario` é quando a tarefa `Whis-Reunioes` puxa as reuniões da
+    Granola; o login dela não mora aqui, e sim em `granola.json`, ao lado deste
+    arquivo, cifrado para o usuário do Windows.
+
     `obsidian_vault` é como o Obsidian chama o vault na URI `obsidian://` — o
     ID (o que *Copy vault ID* copia) ou o nome da pasta. Vazio usa o nome da
     pasta de `vault`, que é o que o Obsidian usa quando o vault foi aberto
@@ -208,6 +216,7 @@ class Configuracao:
     daily_horarios: tuple[tuple[str, str], ...] = ()
     noticias_ativa: bool = True
     noticias_horario: str = "08:20"
+    granola_horario: str = "19:00"
     privacidade_excluir: tuple[str, ...] = ()
     privacidade_pastas_privadas: tuple[str, ...] = ()
     busca_maximo_de_notas: int = 40
@@ -282,6 +291,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
     diario = dados.get("diario") or {}
     daily = dados.get("daily") or {}
     noticias = dados.get("noticias") or {}
+    granola = dados.get("granola") or {}
     privacidade = dados.get("privacidade") or {}
     busca = dados.get("busca") or {}
     git = dados.get("git") or {}
@@ -308,6 +318,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         noticias_horario=_hora(
             noticias.get("horario", "08:20"), "[noticias].horario", arquivo
         ),
+        granola_horario=_hora(granola.get("horario", "19:00"), "[granola].horario", arquivo),
         privacidade_excluir=_textos(privacidade.get("excluir")),
         privacidade_pastas_privadas=_pastas_privadas(
             privacidade.get("pastas_privadas"), arquivo

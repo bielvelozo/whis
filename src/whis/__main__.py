@@ -1,16 +1,18 @@
 r"""Entrada de linha de comando do Whis.
 
-Oito subcomandos sobre a mesma configuração local e sobre as costuras do
+Nove subcomandos sobre a mesma configuração local e sobre as costuras do
 projeto — `diario.gerar_diario` para o dia civil, `daily.gerar_daily` para os
-slides da daily, `pergunta.responder` para a busca no vault e
-`jornal.gerar_jornal` para o jornal de notícias::
+slides da daily, `pergunta.responder` para a busca no vault,
+`jornal.gerar_jornal` para o jornal de notícias e `reunioes.puxar_reunioes`
+para as reuniões da Granola::
 
     python -m whis init
     python -m whis bandeja
-    python -m whis windows [--daily] [--news] [--remover] [--remover-legado]
+    python -m whis windows [--daily] [--news] [--meetings] [--remover] [--remover-legado]
     python -m whis diario [YYYY-MM-DD] [--simular]
     python -m whis daily [--anotar TEXTO] [--simular] [--fakes] [--agendada]
     python -m whis news [--agendada] [--fakes] [--simular]
+    python -m whis meetings [--agendada] [--fakes]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -23,7 +25,14 @@ continua o fio do terminal entre uma chamada e outra.
 `--daily` agenda a daily nos horários de `[daily].horarios` (e o vigia, que
 avisa por toast quando uma peça do Whis não subiu); `--news` agenda o jornal
 todo dia em `[noticias].horario` (e reagenda o vigia, se existe, para olhar
-por ele). As tarefas rodam mesmo que o PC estivesse desligado na hora.
+por ele); `--meetings` agenda a puxada das reuniões da Granola em
+`[granola].horario`, do mesmo jeito. As tarefas rodam mesmo que o PC
+estivesse desligado na hora.
+
+`meetings` puxa da Granola as reuniões dos últimos 30 dias que ainda não estão
+em `reunioes/`. No terminal ele pode abrir o navegador para o login;
+`--agendada` (a tarefa) nunca abre, e só avisa quando chegou nota ou falhou.
+`--fakes` usa uma Granola de mentira e escreve num vault temporário.
 
 Por padrão o comando usa os **adaptadores reais** — Claude (conta do usuário,
 OAuth) para os resumos, git/Linear/Slack para as fontes.
@@ -74,11 +83,13 @@ from .fakes import (
     FormacaoFake,
     PublicacaoFake,
     ResumoDoDiaFake,
+    ReunioesFake,
     fontes_de_exemplo,
 )
 from .fontes import PortaFonte, data_do_diario
 from .pergunta import PerguntaVazia, responder
-from .portas import PortaPublicacaoDoDeck, PortaResumoDoDia
+from .portas import ErroDaGranola, PortaPublicacaoDoDeck, PortaResumoDoDia, PortaReunioes
+from .reunioes import ResultadoDasReunioes, puxar_reunioes
 
 _log = logging.getLogger("whis")
 
@@ -252,6 +263,26 @@ def montar_portas_do_jornal(configuracao: Configuracao, *, fakes: bool = False) 
         formacao=FormacaoClaude(modelo=modelo, cli=cli),
         publicacao=PublicacaoClaude(cli=cli),
     )
+
+
+def montar_reunioes(
+    configuracao: Configuracao, *, fakes: bool = False, pode_logar: bool = True
+) -> PortaReunioes:
+    """A Granola da conta do usuário, pelo MCP oficial, ou o fake.
+
+    O login mora ao lado da configuração (`granola.json`, cifrado para o
+    usuário do Windows). `pode_logar=False` é a tarefa agendada: sem login, ela
+    não abre navegador nenhum.
+    """
+    if fakes:
+        _log.warning("Usando a Granola FAKE — nada é pedido à Granola.")
+        return ReunioesFake()
+
+    from .granola import GranolaMCP
+    from .granola_login import GuardaDoLogin, pasta_do_login
+
+    pasta = pasta_do_login(configuracao)
+    return GranolaMCP(GuardaDoLogin(pasta), pasta=pasta, pode_logar=pode_logar)
 
 
 def montar_dm(configuracao: Configuracao) -> PortaDM:
@@ -546,6 +577,56 @@ def _relatar_resposta(resposta: Resposta) -> None:
         print("(não achou: nenhuma nota do vault sustenta uma resposta)")
 
 
+# -- meetings ---------------------------------------------------------------
+
+
+def _comando_meetings(args: argparse.Namespace) -> int:
+    """Puxa da Granola as reuniões que ainda não estão em `reunioes/`.
+
+    Quem chama na hora agendada é a tarefa `Whis-Reunioes`: ela não abre
+    navegador, e o toast só sai quando chegou nota ou falhou — reunião ainda
+    sem resumo fica para a puxada seguinte, sem avisar. Com `--fakes`, a
+    Granola é de mentira e o vault é temporário: uma reunião inventada no vault
+    de verdade ficaria lá para sempre e o `ask` a leria como real.
+    """
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    if args.fakes:
+        import tempfile
+        from dataclasses import replace
+
+        configuracao = replace(configuracao, vault=Path(tempfile.mkdtemp(prefix="whis-meetings-")))
+        print(f"Vault temporário: {configuracao.vault}")
+    porta = montar_reunioes(configuracao, fakes=args.fakes, pode_logar=not args.agendada)
+    try:
+        resultado = puxar_reunioes(configuracao, porta)
+    except ErroDaGranola as erro:
+        _log.error("As reuniões da Granola não vieram: %s", erro)
+        print(f"As reuniões da Granola não vieram: {erro}")
+        if not args.fakes:
+            _palheta.avisar_resultado(configuracao, _palheta.resultado_das_reunioes_que_falharam(erro))
+        return SAIDA_NAO_NASCEU
+
+    _relatar_reunioes(resultado)
+    avisar = not args.agendada or resultado.novas or resultado.falhas
+    if avisar and not args.fakes:
+        _palheta.avisar_resultado(configuracao, _palheta.resultado_das_reunioes(resultado))
+    if resultado.nada_veio:
+        return SAIDA_NAO_NASCEU
+    return SAIDA_PARCIAL if resultado.parcial else SAIDA_COMPLETA
+
+
+def _relatar_reunioes(resultado: ResultadoDasReunioes) -> None:
+    if not resultado.novas:
+        print(f"Nada novo na Granola ({resultado.ja_no_vault} reunião(ões) dos últimos 30 dias já no vault).")
+    for caminho in resultado.novas:
+        print(f"  nova: {caminho}")
+    for titulo in resultado.sem_resumo:
+        print(f"  ainda sem resumo: {titulo}")
+    for falha in resultado.falhas:
+        print(f"  não veio: {falha}")
+
+
 # -- atender ----------------------------------------------------------------
 
 
@@ -576,7 +657,8 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
 
     Aqui só se decide de onde vêm as portas dos comandos da palheta — reais por
     padrão, fakes com `--fakes`: `daily`, `news` e `ask` rodam com as mesmas
-    fábricas dos subcomandos.
+    fábricas dos subcomandos. `meetings` fica indisponível com `--fakes`: ele
+    escreve no vault de verdade, e reunião inventada ficaria lá para sempre.
     """
     from . import bandeja as _bandeja
 
@@ -587,6 +669,7 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
         simular_daily=fakes,
         busca=lambda atual: montar_busca(atual, fakes=fakes),
         portas_do_jornal=lambda atual: montar_portas_do_jornal(atual, fakes=fakes),
+        reunioes=None if fakes else (lambda atual: montar_reunioes(atual, pode_logar=True)),
     )
     palheta = _palheta.Palheta(comandos, configuracao)
 
@@ -665,12 +748,14 @@ def _comando_windows(args: argparse.Namespace) -> int:
     from . import automacao
 
     precisa_da_configuracao = bool(args.config) or (
-        (args.daily or args.news) and not args.remover
+        (args.daily or args.news or args.meetings) and not args.remover
     )
     configuracao = _configuracao(args) if precisa_da_configuracao else None
     origem = (configuracao.origem if configuracao else None) or caminho_padrao()
     feitos: list[str] = []
-    so_remover_legado = args.remover_legado and not (args.atendente or args.daily or args.news)
+    so_remover_legado = args.remover_legado and not (
+        args.atendente or args.daily or args.news or args.meetings
+    )
 
     if args.daily and not args.remover and not configuracao.daily_horarios:
         _log.error(
@@ -735,6 +820,19 @@ def _comando_windows(args: argparse.Namespace) -> int:
                         f"Vigia reagendado como '{automacao.NOME_DA_TAREFA_DO_VIGIA}': "
                         f"agora vigia {', '.join(vigiadas)}."
                     )
+            if args.meetings:
+                removida = automacao.desagendar_reunioes()
+                feitos.append(
+                    f"Tarefa '{automacao.NOME_DA_TAREFA_DAS_REUNIOES}' removida do Agendador."
+                    if removida
+                    else "Não havia tarefa das reuniões agendada."
+                )
+                if removida and not args.daily and automacao.vigia_agendado():
+                    vigiadas = automacao.agendar_vigia(configuracao or _configuracao(args))
+                    feitos.append(
+                        f"Vigia reagendado como '{automacao.NOME_DA_TAREFA_DO_VIGIA}': "
+                        f"agora vigia {', '.join(vigiadas)}."
+                    )
         elif not so_remover_legado:
             atalho = automacao.instalar_inicializacao()
             feitos.append(f"Atalho de inicialização criado em {atalho}")
@@ -770,6 +868,26 @@ def _comando_windows(args: argparse.Namespace) -> int:
                         f"'{automacao.NOME_DA_TAREFA_DO_VIGIA}' não está agendado: rode "
                         f"'whis windows --daily' para ele olhar também pelo jornal."
                     )
+            if args.meetings:
+                automacao.agendar_reunioes(configuracao)
+                feitos.append(
+                    f"Reuniões agendadas como '{automacao.NOME_DA_TAREFA_DAS_REUNIOES}': todo dia "
+                    f"às {configuracao.granola_horario}, puxando da Granola o que ainda não está "
+                    f"em reunioes/. Ela nunca abre o navegador: o primeiro login é pela palheta "
+                    f"(meetings)."
+                )
+                if not args.daily and automacao.vigia_agendado():
+                    vigiadas = automacao.agendar_vigia(configuracao)
+                    feitos.append(
+                        f"Vigia reagendado como '{automacao.NOME_DA_TAREFA_DO_VIGIA}': "
+                        f"avisa por toast se {' ou '.join(vigiadas)} falhou ou a bandeja "
+                        f"não está no ar."
+                    )
+                elif not args.daily:
+                    feitos.append(
+                        f"'{automacao.NOME_DA_TAREFA_DO_VIGIA}' não está agendado: rode "
+                        f"'whis windows --daily' para ele olhar também pelas reuniões."
+                    )
             if args.daily:
                 automacao.agendar_daily(configuracao)
                 feitos.append(
@@ -783,7 +901,7 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"daily e todo dia às {automacao.HORA_DA_RONDA_DO_VIGIA} — avisa por "
                     f"toast se {' ou '.join(vigiadas)} falhou ou a bandeja não está no ar."
                 )
-            if args.daily or args.news:
+            if args.daily or args.news or args.meetings:
                 feitos.append(
                     "As tarefas rodam mesmo que o PC estivesse desligado na hora: assim "
                     "que ele ligar, e acordando a máquina se estiver em suspensão."
@@ -954,6 +1072,30 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     atender_cmd.set_defaults(funcao=_comando_atender)
 
+    meetings_cmd = subcomandos.add_parser(
+        "meetings",
+        help="puxa da Granola as reuniões que ainda não estão em reunioes/",
+        description=(
+            "Lista as reuniões dos últimos 30 dias na Granola (MCP oficial) e escreve em "
+            "reunioes/ as que ainda não estão lá, com o resumo da Granola. Uma nota que já "
+            "existe nunca é reescrita. Sem login guardado, abre a Granola no navegador."
+        ),
+        epilog=CODIGOS_DE_SAIDA,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _acrescentar_config(meetings_cmd)
+    meetings_cmd.add_argument(
+        "--agendada",
+        action="store_true",
+        help="é como a tarefa Whis-Reunioes chama: nunca abre o navegador e só avisa se chegou nota ou falhou",
+    )
+    meetings_cmd.add_argument(
+        "--fakes",
+        action="store_true",
+        help="usa uma Granola de mentira e escreve num vault temporário (sem rede, sem login)",
+    )
+    meetings_cmd.set_defaults(funcao=_comando_meetings)
+
     bandeja_cmd = subcomandos.add_parser(
         "bandeja",
         help="ícone na bandeja do Windows com a palheta no atalho global",
@@ -977,13 +1119,14 @@ def construir_parser() -> argparse.ArgumentParser:
 
     windows_cmd = subcomandos.add_parser(
         "windows",
-        help="faz a bandeja subir com o logon (e, opcionalmente, agenda a daily e o jornal)",
+        help="faz a bandeja subir com o logon (e, opcionalmente, agenda a daily, o jornal e as reuniões)",
         description=(
             "Amarra o Whis ao Windows. Sozinho, cria o atalho de logon da bandeja. "
             "--daily agenda a daily nos dias e horas de [daily].horarios e o vigia que "
             "avisa por toast quando uma peça do Whis não subiu; --news agenda o jornal "
-            "todo dia em [noticias].horario. As tarefas rodam mesmo que o PC estivesse "
-            "desligado na hora. --remover com os mesmos flags desfaz."
+            "todo dia em [noticias].horario; --meetings agenda a puxada das reuniões da "
+            "Granola todo dia em [granola].horario. As tarefas rodam mesmo que o PC "
+            "estivesse desligado na hora. --remover com os mesmos flags desfaz."
         ),
     )
     _acrescentar_config(windows_cmd)
@@ -1006,6 +1149,14 @@ def construir_parser() -> argparse.ArgumentParser:
         help=(
             "também agenda o jornal todo dia em [noticias].horario (tarefa Whis-Noticias) "
             "e reagenda o vigia, se existe, para olhar por ele"
+        ),
+    )
+    windows_cmd.add_argument(
+        "--meetings",
+        action="store_true",
+        help=(
+            "também agenda a puxada das reuniões da Granola todo dia em [granola].horario "
+            "(tarefa Whis-Reunioes) e reagenda o vigia, se existe, para olhar por ela"
         ),
     )
     windows_cmd.add_argument(

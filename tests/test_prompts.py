@@ -247,7 +247,7 @@ def test_prompts_tem_lista_e_stash_nao(palheta_com):
 
     assert por_nome["prompts"].lista is not None
     assert por_nome["stash"].lista is None
-    assert [comando.nome for comando in palheta.acoes()][3:5] == ["prompts", "stash"]
+    assert [comando.nome for comando in palheta.acoes()][4:6] == ["prompts", "stash"]
 
 
 # -- a lista ---------------------------------------------------------------------

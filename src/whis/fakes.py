@@ -35,6 +35,8 @@ from .portas import (
     Medida,
     Publicacao,
     ResumoDoDia,
+    Reuniao,
+    ReuniaoListada,
 )
 
 #: O dia a que os eventos de exemplo pertencem; `FonteDeExemplo` os transporta.
@@ -460,3 +462,58 @@ class PublicacaoDoDeckFake:
         if self._erro is not None:
             raise self._erro
         return Publicacao(url=url_atual or self._url, medida=MEDIDA_DA_PUBLICACAO_FAKE)
+
+
+#: As reuniões de exemplo da Granola: uma com resumo e uma que ainda não foi resumida.
+REUNIOES_DE_EXEMPLO = (
+    Reuniao(
+        id="00000000-fake-4000-8000-000000000001",
+        titulo="Daily do time (exemplo)",
+        inicio=_momento(14, 0),
+        participantes=("Ana Lima", "Bruno Costa"),
+        resumo="# Decisões\n\n- O rollback fica para depois do review.",
+        url="https://notes.granola.ai/d/00000000-fake-4000-8000-000000000001",
+    ),
+    Reuniao(
+        id="00000000-fake-4000-8000-000000000002",
+        titulo="1:1 (exemplo, ainda sem resumo)",
+        inicio=_momento(16, 30),
+        url="https://notes.granola.ai/d/00000000-fake-4000-8000-000000000002",
+    ),
+)
+
+
+class ReunioesFake:
+    """A Granola sem rede: lista e detalha `reunioes`, e guarda os lotes pedidos.
+
+    `erro_ao_listar` derruba a lista; `erro_no_lote` derruba o lote daquela
+    posição (0 é o primeiro `detalhar`); `omitir` são ids que `detalhar` não
+    devolve, como se a Granola os tivesse perdido.
+    """
+
+    def __init__(
+        self,
+        reunioes: Iterable[Reuniao] = REUNIOES_DE_EXEMPLO,
+        *,
+        erro_ao_listar: Exception | None = None,
+        erro_no_lote: dict[int, Exception] | None = None,
+        omitir: Iterable[str] = (),
+    ) -> None:
+        self._reunioes = tuple(reunioes)
+        self._erro_ao_listar = erro_ao_listar
+        self._erro_no_lote = dict(erro_no_lote or {})
+        self._omitir = frozenset(omitir)
+        self.lotes: list[tuple[str, ...]] = []
+
+    def listar(self) -> tuple[ReuniaoListada, ...]:
+        if self._erro_ao_listar is not None:
+            raise self._erro_ao_listar
+        return tuple(ReuniaoListada(r.id, r.titulo, r.inicio) for r in self._reunioes)
+
+    def detalhar(self, ids) -> tuple[Reuniao, ...]:
+        posicao = len(self.lotes)
+        self.lotes.append(tuple(ids))
+        if posicao in self._erro_no_lote:
+            raise self._erro_no_lote[posicao]
+        pedidos = set(ids) - self._omitir
+        return tuple(r for r in self._reunioes if r.id in pedidos)

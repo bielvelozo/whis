@@ -224,8 +224,8 @@ def test_desagendar_e_consultar_o_jornal():
 
 
 def test_o_vigia_so_olha_o_jornal_se_ele_existe_no_agendador():
-    sem_jornal = ExecutorEspiao(**{"'Whis-Noticias'": 1})
-    com_jornal = ExecutorEspiao()
+    sem_jornal = ExecutorEspiao(**{"'Whis-Noticias'": 1, "'Whis-Reunioes'": 1})
+    com_jornal = ExecutorEspiao(**{"'Whis-Reunioes'": 1})
 
     assert automacao.tarefas_vigiadas(executar=sem_jornal) == ["Whis-Daily"]
     assert automacao.tarefas_vigiadas(executar=com_jornal) == ["Whis-Daily", "Whis-Noticias"]
@@ -319,7 +319,7 @@ def test_windows_remover_news_desagenda_e_tira_o_jornal_do_vigia(
 def test_windows_news_monta_o_comando_de_verdade_com_executor_falso(
     tmp_path: Path, monkeypatch, capsys
 ):
-    espiao = ExecutorEspiao()
+    espiao = ExecutorEspiao(**{"'Whis-Reunioes'": 1})
     monkeypatch.setattr(automacao, "instalar_inicializacao", lambda: Path("Whis.lnk"))
     for nome in ("agendar_noticias", "agendar_vigia"):
         monkeypatch.setattr(automacao, nome, partial(getattr(automacao, nome), executar=espiao))

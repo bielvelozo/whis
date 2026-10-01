@@ -15,6 +15,9 @@ Este módulo faz poucas coisas, todas **explícitas e reversíveis**:
 - `agendar_noticias()` registra a tarefa diária `Whis-Noticias` no horário de
   `[noticias].horario`, rodando `whis news --agendada` (que sai sem gerar nada
   quando `[noticias].ativa` é falso);
+- `agendar_reunioes()` registra a tarefa diária `Whis-Reunioes` no horário de
+  `[granola].horario`, rodando `whis meetings --agendada` (que nunca abre o
+  navegador para o login da Granola);
 - `agendar_vigia()` registra `Whis-Vigia`, um script PowerShell autossuficiente
   que consulta o Agendador e dispara toast quando uma peça do Whis não subiu;
 - `remover_legado()` tira da máquina o atalho e as tarefas que chamam um
@@ -56,6 +59,7 @@ NOME_DO_ATALHO_DO_MENU = "Whis.lnk"
 NOME_DA_TAREFA_DA_DAILY = "Whis-Daily"
 NOME_DA_TAREFA_DO_VIGIA = "Whis-Vigia"
 NOME_DA_TAREFA_DO_JORNAL = "Whis-Noticias"
+NOME_DA_TAREFA_DAS_REUNIOES = "Whis-Reunioes"
 
 #: O script que registra uma tarefa pelo módulo `ScheduledTasks`, com os
 #: gatilhos como `Dia=HH:MM` (dia em inglês, ou `Daily`) separados por vírgula.
@@ -467,6 +471,36 @@ def noticias_agendada(*, executar: Executor = _rodar) -> bool:
     return _tarefa_agendada(NOME_DA_TAREFA_DO_JORNAL, executar=executar)
 
 
+# -- as reuniões da Granola -------------------------------------------------
+
+
+def agendar_reunioes(configuracao: Configuracao, *, executar: Executor = _rodar) -> str:
+    """Registra `Whis-Reunioes`: um gatilho diário em `[granola].horario`.
+
+    Com `-StartWhenAvailable`, o dia em que o PC estava desligado na hora puxa
+    assim que ele ligar — o que importa porque a Granola grátis só mostra 30
+    dias de reuniões.
+    """
+    _registrar_tarefa(
+        NOME_DA_TAREFA_DAS_REUNIOES,
+        executavel=str(interpretador_sem_console()),
+        argumentos=_argumentos_do_whis(
+            "meetings --agendada", configuracao.origem or caminho_padrao()
+        ),
+        gatilhos=[f"Daily={configuracao.granola_horario}"],
+        executar=executar,
+    )
+    return NOME_DA_TAREFA_DAS_REUNIOES
+
+
+def desagendar_reunioes(*, executar: Executor = _rodar) -> bool:
+    return _desregistrar_tarefa(NOME_DA_TAREFA_DAS_REUNIOES, executar=executar)
+
+
+def reunioes_agendada(*, executar: Executor = _rodar) -> bool:
+    return _tarefa_agendada(NOME_DA_TAREFA_DAS_REUNIOES, executar=executar)
+
+
 # -- o vigia ----------------------------------------------------------------
 
 
@@ -492,7 +526,7 @@ def gatilhos_do_vigia(configuracao: Configuracao) -> list[str]:
 
 
 def tarefas_vigiadas(*, executar: Executor = _rodar) -> list[str]:
-    """`Whis-Daily` sempre; `Whis-Noticias` só se existe no Agendador.
+    """`Whis-Daily` sempre; `Whis-Noticias` e `Whis-Reunioes` só se existem no Agendador.
 
     Passar um nome que não existe faria o vigia reclamar de uma tarefa que o
     usuário nunca pediu.
@@ -500,6 +534,8 @@ def tarefas_vigiadas(*, executar: Executor = _rodar) -> list[str]:
     nomes = [NOME_DA_TAREFA_DA_DAILY]
     if noticias_agendada(executar=executar):
         nomes.append(NOME_DA_TAREFA_DO_JORNAL)
+    if reunioes_agendada(executar=executar):
+        nomes.append(NOME_DA_TAREFA_DAS_REUNIOES)
     return nomes
 
 

@@ -8,6 +8,7 @@ dependencies = [
     "Pillow>=10.0",             # imagem do ícone da bandeja
     "httpx>=0.27",              # chamadas HTTP (Linear, Slack, feeds do jornal)
     "claude-agent-sdk>=0.1.0",  # o Claude da conta do usuário (OAuth)
+    "mcp>=2.0",                 # o MCP oficial da Granola (reuniões), com OAuth
     "slack_sdk>=3.27",          # a DM do agente por Socket Mode (sem porta aberta)
     "pywin32>=306",             # RegisterHotKey e o loop de mensagens do atalho da palheta
 ]
