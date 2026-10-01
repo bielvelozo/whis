@@ -1,4 +1,4 @@
-"""Portas dos serviços externos: o resumo do dia, a daily, as três do jornal e a Granola.
+"""Portas dos serviços externos: o resumo do dia, a publicação do deck da daily, as três do jornal e a Granola.
 
 Nem o diário, nem a daily, nem o jornal, nem o coletor de reuniões falam com um provedor concreto —
 falam com estas portas. Os adaptadores reais (Claude) implementam os
@@ -12,13 +12,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from .fontes import Evento
-
-if TYPE_CHECKING:
-    from .nota_viva import NotaViva
-
 
 @dataclass(frozen=True)
 class ResumoDoDia:
@@ -45,59 +41,6 @@ class PortaResumoDoDia(Protocol):
         """Devolve narrativa, destaques, pendências e temas do dia.
 
         Levanta `ErroDeResumoDoDia` quando o serviço falha.
-        """
-        ...
-
-
-@dataclass(frozen=True)
-class ItemNovo:
-    """Um item que ainda não está na nota viva e o modelo quer acrescentar.
-
-    `sob` é onde ele entra: o id de um item existente, para virar sub-item
-    dele; o texto exato de outro item novo da mesma resposta, para o modelo
-    montar um grupo com sub-itens de uma vez; ou `None`, para o fim da lista.
-    """
-
-    texto: str
-    sob: str | None = None
-
-
-@dataclass(frozen=True)
-class Daily:
-    """O que o modelo quer mudar na nota viva depois de ler a janela.
-
-    Irmã de `ResumoDoDia`, com outro recorte e outro destino: o diário é uma
-    narrativa nova a cada dia; a daily é uma lista que o usuário mantém, e o
-    modelo só **acrescenta** e **aponta**. `fiz` e `fazendo` são itens novos
-    para *O que eu fiz* e *O que estou fazendo*; `mover` são ids de itens de
-    *O que estou fazendo* que terminaram. O texto de um item que já existe
-    nunca volta aqui: quem move é a costura, copiando a linha literal.
-
-    Tudo vazio é uma resposta válida — a nota já diz tudo.
-    """
-
-    fiz: tuple[ItemNovo, ...] = ()
-    fazendo: tuple[ItemNovo, ...] = ()
-    mover: tuple[str, ...] = ()
-
-
-class ErroDeDaily(RuntimeError):
-    """Falha ao montar a resposta. A nota viva fica como estava; a datada nasce marcada."""
-
-
-@runtime_checkable
-class PortaDaily(Protocol):
-    """Lê os eventos de uma janela contra a nota viva e diz o que muda nela."""
-
-    def resumir_daily(
-        self, eventos: tuple[Evento, ...], reunioes: tuple[str, ...], nota: NotaViva
-    ) -> Daily:
-        """Devolve os itens novos de cada lista e os ids a mover.
-
-        `nota` é a nota viva como está: as duas listas do agente com um id por
-        item, e as seções do usuário como contexto para não repetir.
-
-        Levanta `ErroDeDaily` quando o serviço falha.
         """
         ...
 
@@ -234,7 +177,15 @@ class Publicacao:
 
 
 class ErroDePublicacao(RuntimeError):
-    """A página não saiu; a nota da edição já existe no vault."""
+    """A página não saiu; a nota já existe no vault.
+
+    `url` é o endereço que já existe quando a falha veio depois de criá-lo: o
+    deck da daily nasce numa sessão do CLI e é preenchido na seguinte.
+    """
+
+    def __init__(self, *args: object, url: str | None = None) -> None:
+        super().__init__(*args)
+        self.url = url
 
 
 @runtime_checkable
@@ -245,6 +196,19 @@ class PortaPublicacao(Protocol):
         self, html: Path, capas: dict[str, Path], url_atual: str | None
     ) -> Publicacao:
         """`capas` é `{"img/N.jpg": caminho local}`. Levanta `ErroDePublicacao`."""
+        ...
+
+
+@runtime_checkable
+class PortaPublicacaoDoDeck(Protocol):
+    """Publica os arquivos do deck da daily no Claude Slides, sempre no mesmo endereço."""
+
+    def publicar(self, raiz: Path, arquivos: tuple[str, ...], url_atual: str | None) -> Publicacao:
+        """`arquivos` são os caminhos publicados (`project/...`) sob `raiz`, o índice incluído.
+
+        Sem `url_atual`, cria o deck pelo tipo Slides e o preenche. Levanta
+        `ErroDePublicacao`, com `url` quando o deck chegou a ser criado.
+        """
         ...
 
 

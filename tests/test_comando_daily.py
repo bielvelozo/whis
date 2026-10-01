@@ -1,127 +1,113 @@
-"""O subcomando `whis daily` — a mesma costura, pela linha de comando.
+"""O subcomando `whis daily`: a nota dele vira slides no link de sempre.
 
-O que o comando imprime é o que o usuário lê em voz alta um minuto depois, e
-por isso é comportamento: os testes leem a saída do terminal, não o objeto de
-resultado. `--fakes` é a forma explícita de exercitar tudo sem rede.
+O que o comando imprime e o toast são comportamento: os testes leem a saída
+do terminal e o aviso. A publicação é o fake autouse do `conftest`.
 """
 
 from __future__ import annotations
 
+import hashlib
+from datetime import date
 from pathlib import Path
 
 import pytest
 
-import hashlib
-
+from fixtures.daily import NOTA_DA_DAILY, escrever_nota_da_daily
 from fixtures.leitura import arquivos_do_vault, ler_frontmatter
+from whis import __main__ as cli
 from whis import vault as modulo_vault
-from whis.__main__ import main
-from whis.fakes import DAILY_PADRAO, ITEM_ABERTO_DE_EXEMPLO
-
-
-def nota_de_hoje(vault: Path) -> Path:
-    """A daily datada que o comando acabou de escrever — uma só, sempre a de hoje."""
-    escritas = sorted(arquivo for arquivo in (vault / "daily").glob("*.md") if arquivo.name != "atual.md")
-    assert len(escritas) == 1, f"esperava uma daily, achei {escritas}"
-    return escritas[0]
+from whis.__main__ import SAIDA_COMPLETA, SAIDA_PARCIAL, main
+from whis.fakes import URL_DO_DECK_FAKE, PublicacaoDoDeckFake
+from whis.portas import ErroDePublicacao
 
 
 def nota_viva(vault: Path) -> Path:
     return vault / "daily" / "atual.md"
 
 
-def test_comando_daily_escreve_as_notas_e_imprime_a_nota_viva(
-    configuracao_do_diario, caminho_do_vault: Path, capsys: pytest.CaptureFixture
+def copia_de_hoje(vault: Path) -> Path:
+    return vault / "daily" / f"{date.today().isoformat()}.md"
+
+
+def test_daily_publica_imprime_os_slides_e_o_link_e_sai_com_zero(
+    configuracao_do_diario, caminho_do_vault: Path, publicacao_do_deck, toasts, capsys: pytest.CaptureFixture
 ):
     configuracao_do_diario()
+    escrever_nota_da_daily(caminho_do_vault)
 
-    codigo = main(["daily", "--fakes"])
+    codigo = main(["daily"])
 
     saida = capsys.readouterr().out
-    assert codigo == 0
-    assert ler_frontmatter(nota_de_hoje(caminho_do_vault))["tipo"] == "daily"
-    assert ler_frontmatter(nota_viva(caminho_do_vault))["tipo"] == "daily-atual"
-    assert "Cobre de" in saida and "até agora" in saida
-    for secao in ("O que eu fiz:", "O que estou fazendo:", "Fazer:", "Dúvidas:", "Pontos:", "Falar:"):
-        assert secao in saida
-    assert f"- {DAILY_PADRAO.fiz[0].texto}" in saida
-    assert f"Nota viva: {nota_viva(caminho_do_vault)}" in saida
-    assert f"Nota: {nota_de_hoje(caminho_do_vault)}" in saida
+    assert codigo == SAIDA_COMPLETA
+    assert publicacao_do_deck.chamadas == 1
+    assert "O que eu fiz:\n  FN-123 frete do checkout corrigido\n    subiu em produção\n" in saida
+    assert f"Slides: {URL_DO_DECK_FAKE}" in saida
+    assert toasts[-1] == ("A daily está pronta", "4 slides no link de sempre.", ("Abrir slides", URL_DO_DECK_FAKE))
+    assert ler_frontmatter(copia_de_hoje(caminho_do_vault))["deck"] == URL_DO_DECK_FAKE
 
 
-def test_comando_daily_duas_vezes_faz_a_nota_viva_nascer_mover_e_nao_duplicar(
-    configuracao_do_diario, caminho_do_vault: Path, capsys: pytest.CaptureFixture
-):
-    """O `--fakes` de ponta a ponta: nasce, o item aberto sobe na segunda, nada repete."""
-    configuracao_do_diario()
-    main(["daily", "--fakes"])
-    primeira = nota_viva(caminho_do_vault).read_text(encoding="utf-8")
-    capsys.readouterr()
-
-    codigo = main(["daily", "--fakes"])
-
-    segunda = nota_viva(caminho_do_vault).read_text(encoding="utf-8")
-    saida = capsys.readouterr().out
-    assert codigo == 0
-    assert primeira.index(ITEM_ABERTO_DE_EXEMPLO) > primeira.index("## O que estou fazendo")
-    assert segunda.index(ITEM_ABERTO_DE_EXEMPLO) < segunda.index("## O que estou fazendo")
-    for item in (*DAILY_PADRAO.fiz, *DAILY_PADRAO.fazendo):
-        assert segunda.count(item.texto) == 1
-    assert "Movido de _O que estou fazendo_ para _O que eu fiz_" in nota_de_hoje(
-        caminho_do_vault
-    ).read_text(encoding="utf-8")
-    assert saida.count(ITEM_ABERTO_DE_EXEMPLO) == 1
-
-
-def test_comando_daily_simular_mostra_sem_escrever(
-    configuracao_do_diario, caminho_do_vault: Path, capsys: pytest.CaptureFixture
+@pytest.mark.parametrize("bandeira", ["--fakes", "--simular"])
+def test_fakes_e_simular_mostram_os_slides_sem_publicar_escrever_ou_avisar(
+    bandeira: str, configuracao_do_diario, caminho_do_vault: Path, publicacao_do_deck, toasts, capsys
 ):
     configuracao_do_diario()
+    arquivo = escrever_nota_da_daily(caminho_do_vault)
 
-    codigo = main(["daily", "--fakes", "--simular"])
-
-    saida = capsys.readouterr().out
-    assert codigo == 0
-    assert list((caminho_do_vault / "daily").glob("*.md")) == []
-    assert "Simulação" in saida
-    assert "[git]" in saida and "[linear]" in saida
-
-
-def test_comando_daily_simular_conta_o_que_o_filtro_removeu(
-    configuracao_do_diario, capsys: pytest.CaptureFixture
-):
-    configuracao_do_diario(excluir=("frete",))
-
-    codigo = main(["daily", "--fakes", "--simular"])
+    codigo = main(["daily", bandeira])
 
     saida = capsys.readouterr().out
-    assert codigo == 0
-    assert "filtro de exclusão removeu 2 evento(s)" in saida
-    assert "frete" not in saida.casefold()
+    assert codigo == SAIDA_COMPLETA
+    assert publicacao_do_deck.chamadas == 0
+    assert arquivo.read_bytes().decode("utf-8") == NOTA_DA_DAILY
+    assert arquivos_do_vault(caminho_do_vault) == {"daily/atual.md"}
+    assert toasts == []
+    assert "Simulação" in saida and "Dúvidas:" in saida
 
 
-def test_comando_daily_sem_fonte_configurada_falha_com_mensagem(
-    configuracao_do_diario, caminho_do_vault: Path, caplog: pytest.LogCaptureFixture
+def test_nota_vazia_sai_com_zero_e_o_toast_pede_para_escrever(
+    configuracao_do_diario, caminho_do_vault: Path, publicacao_do_deck, toasts
 ):
     configuracao_do_diario()
 
     codigo = main(["daily"])
 
-    assert codigo == 1
-    assert "Nenhuma fonte passiva está ligada" in caplog.text
-    assert not (caminho_do_vault / "daily").exists() or list(
-        (caminho_do_vault / "daily").glob("*.md")
-    ) == []
+    assert codigo == SAIDA_COMPLETA
+    assert publicacao_do_deck.chamadas == 0
+    titulo, _texto, botao = toasts[-1]
+    assert titulo == "A nota da daily está vazia"
+    assert botao[0] == "Abrir no Obsidian"
+    assert nota_viva(caminho_do_vault).is_file()
+    assert not copia_de_hoje(caminho_do_vault).exists()
 
 
-def test_comando_daily_deixa_rastro_no_arquivo_de_log(configuracao_do_diario):
+def test_publicacao_que_falha_sai_parcial_grava_a_copia_e_o_toast_abre_a_nota(
+    configuracao_do_diario, caminho_do_vault: Path, monkeypatch, toasts
+):
+    configuracao_do_diario()
+    escrever_nota_da_daily(caminho_do_vault)
+    monkeypatch.setattr(
+        cli,
+        "montar_publicacao_do_deck",
+        lambda _c: PublicacaoDoDeckFake(erro=ErroDePublicacao("o Claude caiu")),
+    )
+
+    codigo = main(["daily"])
+
+    assert codigo == SAIDA_PARCIAL
+    titulo, texto, botao = toasts[-1]
+    assert titulo == "A daily não publicou" and "o Claude caiu" in texto
+    assert botao[0] == "Abrir no Obsidian"
+    assert copia_de_hoje(caminho_do_vault).is_file()
+
+
+def test_comando_daily_deixa_rastro_no_arquivo_de_log(configuracao_do_diario, caminho_do_vault: Path):
     configuracao = configuracao_do_diario()
+    escrever_nota_da_daily(caminho_do_vault)
 
-    main(["daily", "--fakes"])
+    main(["daily"])
 
     log = configuracao.origem.parent / "bandeja.log"
-    assert log.is_file()
-    assert "Daily" in log.read_text(encoding="utf-8")
+    assert "Daily de" in log.read_text(encoding="utf-8")
 
 
 # -- --anotar: o único gesto do agente numa seção do usuário -----------------
@@ -141,10 +127,7 @@ def test_anotar_faz_a_nota_viva_nascer_do_modelo_com_a_linha_em_pontos(
     assert "Anotado em" in capsys.readouterr().out
 
 
-def test_anotar_so_acrescenta_em_pontos_e_nao_muda_nenhum_outro_byte(
-    configuracao_do_diario, caminho_do_vault: Path
-):
-    """Tudo naquele arquivo foi digitado à mão: ele é append-only."""
+def test_anotar_so_acrescenta_em_pontos_e_nao_muda_nenhum_outro_byte(configuracao_do_diario, caminho_do_vault: Path):
     configuracao_do_diario()
     modulo_vault.preparar(caminho_do_vault)
     original = (
@@ -166,40 +149,30 @@ def test_anotar_so_acrescenta_em_pontos_e_nao_muda_nenhum_outro_byte(
     assert "## Pontos\n\n- ponto antigo\n- ponto novo\n\n## Falar\n\n- avisar da folga\n\n" in texto
 
 
-def test_anotar_nao_coleta_nem_escreve_daily(
-    configuracao_do_diario, caminho_do_vault: Path
-):
+def test_anotar_nao_publica_nem_escreve_copia(configuracao_do_diario, caminho_do_vault: Path, publicacao_do_deck):
     configuracao_do_diario()
     modulo_vault.preparar(caminho_do_vault)
     antes = arquivos_do_vault(caminho_do_vault)
 
     main(["daily", "--anotar", "um ponto"])
 
-    novos = arquivos_do_vault(caminho_do_vault) - antes
-    assert novos == {"daily/atual.md"}
+    assert arquivos_do_vault(caminho_do_vault) - antes == {"daily/atual.md"}
+    assert publicacao_do_deck.chamadas == 0
 
 
-def test_o_ponto_anotado_continua_em_falar_depois_da_daily(
-    configuracao_do_diario, caminho_do_vault: Path, capsys: pytest.CaptureFixture
-):
-    """O ciclo inteiro da user story: anoto agora, leio na próxima daily."""
+def test_o_ponto_anotado_fica_na_nota_e_fora_do_deck(configuracao_do_diario, caminho_do_vault: Path, publicacao_do_deck):
     configuracao_do_diario()
+    escrever_nota_da_daily(caminho_do_vault)
     main(["daily", "--anotar", "combinar a retenção de 180 dias"])
-    capsys.readouterr()
 
-    main(["daily", "--fakes"])
+    main(["daily"])
 
-    saida = capsys.readouterr().out
-    assert "Pontos:\n  - combinar a retenção de 180 dias" in saida
-    assert nota_viva(caminho_do_vault).read_text(encoding="utf-8").endswith(
-        "## Pontos\n- combinar a retenção de 180 dias\n\n## Falar\n"
-    )
-    assert "combinar a retenção" not in nota_de_hoje(caminho_do_vault).read_text(encoding="utf-8")
+    assert "- também não vai\n- combinar a retenção de 180 dias\n" in nota_viva(caminho_do_vault).read_text(encoding="utf-8")
+    assert publicacao_do_deck.chamadas == 1
+    assert all("combinar a retenção" not in conteudo for conteudo in publicacao_do_deck.conteudos.values())
 
 
-def test_anotar_vazio_e_recusado(
-    configuracao_do_diario, caminho_do_vault: Path, caplog: pytest.LogCaptureFixture
-):
+def test_anotar_vazio_e_recusado(configuracao_do_diario, caminho_do_vault: Path, caplog: pytest.LogCaptureFixture):
     configuracao_do_diario()
 
     codigo = main(["daily", "--anotar", "   "])

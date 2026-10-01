@@ -1,16 +1,16 @@
-"""O acabamento de `diario` e `daily`: o código de saída e o rastro em log.
+"""O acabamento do `diario`: o código de saída e o rastro em log.
 
 Uma execução que ninguém viu precisa deixar duas coisas: um código que diga se
 a nota nasceu — e inteira — e um arquivo de log com o motivo do que faltou.
 Os testes passam pela costura da CLI (`main([...])`) e verificam o que sobra
-depois que o terminal fechou: o código, o arquivo em `daily/` ou `diario/`, e
-o `bandeja.log` ao lado da configuração.
+depois que o terminal fechou: o código, o arquivo em `diario/`, e o
+`bandeja.log` ao lado da configuração.
 
-As fábricas de `__main__` (`montar_fontes_da_daily`, `montar_roteiro_da_daily`
-e as irmãs do diário) são o ponto em que a CLI injeta as portas; trocá-las por
-uma fonte ou um roteiro que falham é injetar outra porta, não espiar por
-dentro. O caso "todas as fontes falharam" nem precisa disso: uma `[git].raiz`
-que não existe faz a fonte de verdade falhar sem rede.
+As fábricas de `__main__` do diário são o ponto em que a CLI injeta as portas;
+trocá-las por uma fonte ou um resumo que falham é injetar outra porta, não
+espiar por dentro. O caso "todas as fontes falharam" nem precisa disso: uma
+`[git].raiz` que não existe faz a fonte de verdade falhar sem rede. Os códigos
+da daily estão em `test_comando_daily.py`.
 """
 
 from __future__ import annotations
@@ -24,15 +24,12 @@ from whis import __main__ as cli
 from whis.__main__ import SAIDA_COMPLETA, SAIDA_NAO_NASCEU, SAIDA_PARCIAL, main
 from whis.configuracao import VARIAVEL_DE_AMBIENTE
 from whis.fakes import (
-    EVENTOS_DE_GIT,
-    DailyFake,
-    FonteDaJanela,
     FonteFake,
     ResumoDoDiaFake,
     fontes_de_exemplo,
 )
 from whis.fontes import ErroDeFonte
-from whis.portas import ErroDeDaily, ErroDeResumoDoDia
+from whis.portas import ErroDeResumoDoDia
 
 DIA = "2026-09-03"
 MOTIVO_DO_SLACK = "token do Slack ausente em [slack].user_token"
@@ -42,19 +39,8 @@ def _log_de(configuracao) -> str:
     return (configuracao.origem.parent / "bandeja.log").read_text(encoding="utf-8")
 
 
-def _unica_nota(vault: Path, pasta: str) -> Path:
-    """A única nota datada da pasta — a nota viva `daily/atual.md` mora ao lado e não conta."""
-    escritas = sorted(nota for nota in (vault / pasta).glob("*.md") if nota.name != "atual.md")
-    assert len(escritas) == 1, f"esperava uma nota em {pasta}/, achei {escritas}"
-    return escritas[0]
-
-
 def _sem_nota(vault: Path, pasta: str) -> bool:
     return not (vault / pasta).exists() or list((vault / pasta).glob("*.md")) == []
-
-
-def _fontes_com_o_slack_falhando(configuracao, *, fakes: bool = False):
-    return [FonteDaJanela("git", EVENTOS_DE_GIT), FonteFake("slack", erro=ErroDeFonte(MOTIVO_DO_SLACK))]
 
 
 def _fontes_do_diario_com_o_slack_falhando(configuracao, *, fakes: bool = False):
@@ -86,10 +72,9 @@ def configuracao_so_com_git_inexistente(
 # -- o --help documenta os códigos --------------------------------------------
 
 
-@pytest.mark.parametrize("comando", ["daily", "diario"])
-def test_o_help_documenta_os_codigos_de_saida(comando: str, capsys: pytest.CaptureFixture):
+def test_o_help_do_diario_documenta_os_codigos_de_saida(capsys: pytest.CaptureFixture):
     with pytest.raises(SystemExit) as saida:
-        main([comando, "--help"])
+        main(["diario", "--help"])
 
     ajuda = capsys.readouterr().out
     assert saida.value.code == 0
@@ -100,94 +85,23 @@ def test_o_help_documenta_os_codigos_de_saida(comando: str, capsys: pytest.Captu
     assert "bandeja.log" in ajuda
 
 
+def test_o_help_da_daily_documenta_os_codigos_dela(capsys: pytest.CaptureFixture):
+    with pytest.raises(SystemExit):
+        main(["daily", "--help"])
+
+    ajuda = " ".join(capsys.readouterr().out.split())
+    assert f"{SAIDA_COMPLETA} os slides saíram no link de sempre, ou a nota estava vazia" in ajuda
+    assert f"{SAIDA_PARCIAL} os slides não saíram" in ajuda
+    assert "a nota nasceu inteira" not in ajuda
+    assert "roteiro" not in ajuda and "Linear" not in ajuda
+
+
 def test_os_tres_codigos_sao_distintos_e_nenhum_e_o_do_argparse():
     assert len({SAIDA_COMPLETA, SAIDA_PARCIAL, SAIDA_NAO_NASCEU}) == 3
     assert 2 not in {SAIDA_COMPLETA, SAIDA_PARCIAL, SAIDA_NAO_NASCEU}
 
 
-# -- daily: nasceu inteira, parcial, ou não nasceu ---------------------------
-
-
-def test_daily_inteira_sai_com_zero(configuracao_do_diario, caminho_do_vault: Path):
-    configuracao_do_diario()
-
-    assert main(["daily", "--fakes"]) == SAIDA_COMPLETA
-    assert ler_frontmatter(_unica_nota(caminho_do_vault, "daily"))["fontes_com_falha"] == []
-
-
-def test_daily_sem_uma_fonte_nasce_marcada_e_sai_parcial(
-    configuracao_do_diario, caminho_do_vault: Path, monkeypatch: pytest.MonkeyPatch
-):
-    configuracao_do_diario()
-    monkeypatch.setattr(cli, "montar_fontes_da_daily", _fontes_com_o_slack_falhando)
-
-    codigo = main(["daily", "--fakes"])
-
-    nota = _unica_nota(caminho_do_vault, "daily")
-    assert codigo == SAIDA_PARCIAL
-    assert ler_frontmatter(nota)["fontes_com_falha"] == ["slack"]
-    assert f"> [!warning] Slack não entrou nesta daily: {MOTIVO_DO_SLACK}" in corpo(nota)
-
-
-def test_daily_sem_roteiro_nasce_com_as_listas_cruas_e_sai_parcial(
-    configuracao_do_diario, caminho_do_vault: Path, monkeypatch: pytest.MonkeyPatch
-):
-    configuracao_do_diario()
-    monkeypatch.setattr(
-        cli,
-        "montar_roteiro_da_daily",
-        lambda configuracao, *, fakes=False: DailyFake(
-            erro=ErroDeDaily("o Claude não respondeu a tempo")
-        ),
-    )
-
-    codigo = main(["daily", "--fakes"])
-
-    nota = _unica_nota(caminho_do_vault, "daily")
-    assert codigo == SAIDA_PARCIAL
-    assert "A nota viva ficou como estava: o Claude não respondeu a tempo" in corpo(nota)
-    assert "## Git" in corpo(nota) and "## Linear" in corpo(nota)
-
-
-def test_daily_sem_nada_no_periodo_nao_nasce_e_sai_um(
-    configuracao_do_diario, caminho_do_vault: Path, capsys: pytest.CaptureFixture
-):
-    """Tudo que os fakes trazem envolve Gabriel ou Ana; excluir os dois esvazia o período."""
-    configuracao_do_diario(excluir=("Gabriel", "Ana"))
-
-    codigo = main(["daily", "--fakes"])
-
-    assert codigo == SAIDA_NAO_NASCEU
-    assert _sem_nota(caminho_do_vault, "daily")
-    assert "nenhuma nota foi escrita" in capsys.readouterr().out
-
-
-def test_daily_com_todas_as_fontes_falhando_nao_nasce_e_sai_um(
-    configuracao_so_com_git_inexistente, caminho_do_vault: Path, caplog: pytest.LogCaptureFixture
-):
-    """A fonte de git de verdade, sem `--fakes`: uma raiz inexistente a faz falhar."""
-    codigo = main(["daily"])
-
-    assert codigo == SAIDA_NAO_NASCEU
-    assert _sem_nota(caminho_do_vault, "daily")
-    assert "Nenhuma fonte respondeu" in caplog.text
-    assert "Raiz de desenvolvimento não encontrada" in caplog.text
-
-
-def test_daily_simulada_com_fonte_falhando_tambem_sai_parcial(
-    configuracao_do_diario, caminho_do_vault: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """O que a simulação mostrou é incompleto, e o código tem que dizer isso."""
-    configuracao_do_diario()
-    monkeypatch.setattr(cli, "montar_fontes_da_daily", _fontes_com_o_slack_falhando)
-
-    codigo = main(["daily", "--fakes", "--simular"])
-
-    assert codigo == SAIDA_PARCIAL
-    assert _sem_nota(caminho_do_vault, "daily")
-
-
-# -- diario: os mesmos três casos --------------------------------------------
+# -- diario: nasceu inteiro, parcial, ou não nasceu ---------------------------
 
 
 def test_diario_inteiro_sai_com_zero(configuracao_do_diario, caminho_do_vault: Path):
@@ -253,32 +167,6 @@ def test_diario_com_todas_as_fontes_falhando_nao_nasce_e_sai_um(
 # -- o rastro em log -----------------------------------------------------------
 
 
-def test_o_motivo_da_fonte_que_falhou_e_o_mesmo_no_log_e_na_nota(
-    configuracao_do_diario, caminho_do_vault: Path, monkeypatch: pytest.MonkeyPatch
-):
-    """Quem lê o log e quem lê a nota têm que reconhecer o mesmo problema."""
-    configuracao = configuracao_do_diario()
-    monkeypatch.setattr(cli, "montar_fontes_da_daily", _fontes_com_o_slack_falhando)
-
-    main(["daily", "--fakes"])
-
-    log = _log_de(configuracao)
-    nota = corpo(_unica_nota(caminho_do_vault, "daily"))
-    assert f"Fonte 'slack' não pôde ser lida: {MOTIVO_DO_SLACK}" in log
-    assert MOTIVO_DO_SLACK in nota
-
-
-def test_o_log_diz_como_a_daily_terminou(
-    configuracao_do_diario, monkeypatch: pytest.MonkeyPatch
-):
-    configuracao = configuracao_do_diario()
-    monkeypatch.setattr(cli, "montar_fontes_da_daily", _fontes_com_o_slack_falhando)
-
-    main(["daily", "--fakes"])
-
-    assert f"a nota nasceu parcial (saída {SAIDA_PARCIAL})" in _log_de(configuracao)
-
-
 def test_o_log_diz_que_o_diario_nasceu_inteiro(configuracao_do_diario):
     configuracao = configuracao_do_diario()
 
@@ -291,7 +179,7 @@ def test_o_log_diz_que_o_diario_nasceu_inteiro(configuracao_do_diario):
 
 def test_o_log_guarda_o_motivo_quando_nada_nasceu(configuracao_so_com_git_inexistente):
     """O caso que mais precisa de rastro: não há nota nenhuma para explicar."""
-    main(["daily"])
+    main(["diario", DIA])
 
     log = (configuracao_so_com_git_inexistente.parent / "bandeja.log").read_text(
         encoding="utf-8"
@@ -303,6 +191,6 @@ def test_o_log_guarda_o_motivo_quando_nada_nasceu(configuracao_so_com_git_inexis
 def test_o_log_registra_o_periodo_vazio(configuracao_do_diario):
     configuracao = configuracao_do_diario(excluir=("Gabriel", "Ana"))
 
-    main(["daily", "--fakes"])
+    main(["diario", DIA, "--fakes"])
 
     assert "a nota não nasceu, nada no período" in _log_de(configuracao)

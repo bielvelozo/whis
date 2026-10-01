@@ -8,7 +8,8 @@ from pathlib import Path
 import pytest
 
 from whis import login_do_claude
-from whis.daily import JanelaDaDaily, ResultadoDaDaily
+from whis.daily import ResultadoDaDaily
+from whis.deck import Deck, ItemDoSlide, Slide
 from whis.jornal import Edicao, ResultadoDoJornal
 from whis.palheta import resultado_da_daily, resultado_do_jornal
 
@@ -45,21 +46,13 @@ def test_outras_falhas_nao_sao_login_vencido(texto: str | None):
     assert not login_do_claude.vencido(texto)
 
 
-def daily_com(falha: str | None) -> ResultadoDaDaily:
-    agora = datetime(2026, 9, 29, 13, 55, tzinfo=BRT)
+def daily_com(falha: str) -> ResultadoDaDaily:
+    deck = Deck(slides=(Slide("fiz", "O que eu fiz", "O que eu fiz", (ItemDoSlide("a"),)),))
     return ResultadoDaDaily(
-        janela=JanelaDaDaily(data=date(2026, 9, 29), desde=agora, ate=agora),
-        nota=Path("daily/2026-09-29.md"),
-        eventos=(),
-        excluidos=0,
-        fontes_lidas=("git",),
-        fontes_com_falha=(),
-        reunioes=(),
-        roteiro=None,
-        nota_viva=Path("daily/atual.md"),
-        secoes=(),
-        mudancas=None,
-        falha_do_roteiro=falha,
+        data=date(2026, 9, 29),
+        deck=deck,
+        copia=Path("daily/2026-09-29.md"),
+        falha_da_publicacao=falha,
     )
 
 
@@ -70,20 +63,20 @@ def jornal_sem_pagina(falha: str) -> ResultadoDoJornal:
     )
 
 
-def test_a_daily_sem_roteiro_por_login_vencido_pede_o_login():
+def test_a_daily_sem_slides_por_login_vencido_pede_o_login():
     resultado = resultado_da_daily(daily_com(VENCIDO_NA_DAILY))
 
     assert resultado.titulo == "O login do Claude venceu"
     assert resultado.texto.startswith("Rode 'claude auth login' num terminal.")
-    assert "nota viva ficou como estava" in resultado.texto
-    assert resultado.nota == "daily/atual.md"
+    assert resultado.nota == "daily/atual.md" and resultado.link is None
 
 
-def test_a_daily_sem_roteiro_por_outro_motivo_continua_como_era():
+def test_a_daily_sem_slides_por_outro_motivo_diz_o_motivo_e_abre_a_nota():
     resultado = resultado_da_daily(daily_com("o Claude caiu"))
 
-    assert resultado.titulo == "A daily está pronta"
-    assert resultado.texto == "A nota nasceu parcial: o Claude caiu. A nota viva ficou como estava."
+    assert resultado.titulo == "A daily não publicou"
+    assert resultado.texto == "Os slides não saíram: o Claude caiu"
+    assert resultado.nota == "daily/atual.md"
 
 
 def test_o_jornal_sem_pagina_por_login_vencido_pede_o_login_e_abre_a_nota():

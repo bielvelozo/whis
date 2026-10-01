@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from whis import prompts
-from whis.fakes import BuscaFake, DailyFake, fontes_de_exemplo_da_daily
+from whis.fakes import BuscaFake, PublicacaoDoDeckFake
 from whis.janela_da_palheta import Acao, Efeito, Gesto, Linha, acao_que_abre, texto_do_detalhe
 from whis.palheta import ListaDePrompts, Palheta, comandos_padrao
 from whis.vault import ForaDaZonaDePropriedade
@@ -191,8 +191,7 @@ def palheta_com(configuracao_do_diario):
     def montar(area: AreaFake, lancados: list[str] | None = None) -> Palheta:
         configuracao = configuracao_do_diario()
         comandos = comandos_padrao(
-            fontes_da_daily=lambda _c: fontes_de_exemplo_da_daily(),
-            roteiro_da_daily=lambda _c: DailyFake(),
+            publicacao_do_deck=lambda _c: PublicacaoDoDeckFake(),
             busca=lambda _c: BuscaFake(),
             lancar=(lancados if lancados is not None else []).append,
             relogio=lambda: datetime(2026, 9, 24, 10, tzinfo=timezone.utc),

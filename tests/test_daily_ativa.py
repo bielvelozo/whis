@@ -1,6 +1,6 @@
 """Desligar a daily: `[daily].ativa = false`.
 
-A tarefa `Whis-Daily` continua no Agendador e sai com 0 sem escrever nada —
+A tarefa `Whis-Daily` continua no Agendador e sai com 0 sem publicar nem escrever —
 o vigia não reclama e religar é só marcar a caixa de novo — e a palheta
 esconde `daily`. `whis daily` no terminal não olha a chave.
 """
@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from fixtures.daily import escrever_nota_da_daily
 from whis.__main__ import main
 from whis.configuracao import (
     VARIAVEL_DE_AMBIENTE,
@@ -44,6 +45,15 @@ def test_false_desliga(tmp_path: Path):
 def test_o_que_nao_e_booleano_e_recusado(tmp_path: Path, valor: str):
     with pytest.raises(ConfiguracaoInvalida, match=r"\[daily].ativa.*true ou false"):
         carregar(escrever(tmp_path, f"[daily]\nativa = {valor}\n"))
+
+
+def test_config_antigo_com_as_chaves_da_daily_velha_ainda_carrega(tmp_path: Path):
+    corpo = '[daily]\nativa = true\nreferencias_pessoais = ["whis"]\ncontexto_do_time = "processo"\n'
+
+    configuracao = carregar(escrever(tmp_path, corpo))
+
+    assert configuracao.daily_ativa is True
+    assert not hasattr(configuracao, "daily_contexto_do_time")
 
 
 # -- o painel ---------------------------------------------------------------------
@@ -87,42 +97,47 @@ def config_da_daily(tmp_path: Path, caminho_do_vault: Path, monkeypatch):
 
 
 def test_a_tarefa_agendada_com_a_daily_desligada_sai_sem_escrever(
-    config_da_daily, caminho_do_vault: Path
+    config_da_daily, caminho_do_vault: Path, publicacao_do_deck
 ):
     config_da_daily(ativa=False)
+    escrever_nota_da_daily(caminho_do_vault)
 
-    codigo = main(["daily", "--fakes", "--agendada"])
+    codigo = main(["daily", "--agendada"])
 
     assert codigo == 0
-    assert not (caminho_do_vault / "daily").exists()
+    assert publicacao_do_deck.chamadas == 0
+    assert sorted(p.name for p in (caminho_do_vault / "daily").iterdir()) == ["atual.md"]
 
 
-def test_a_tarefa_agendada_com_a_daily_ligada_gera(config_da_daily, caminho_do_vault: Path):
+def test_a_tarefa_agendada_com_a_daily_ligada_publica(config_da_daily, caminho_do_vault: Path, publicacao_do_deck):
     config_da_daily(ativa=True)
+    escrever_nota_da_daily(caminho_do_vault)
 
-    main(["daily", "--fakes", "--agendada"])
+    main(["daily", "--agendada"])
 
-    assert (caminho_do_vault / "daily" / "atual.md").is_file()
+    assert publicacao_do_deck.chamadas == 1
 
 
-def test_whis_daily_no_terminal_gera_mesmo_com_a_daily_desligada(config_da_daily, caminho_do_vault: Path):
+def test_whis_daily_no_terminal_publica_mesmo_com_a_daily_desligada(
+    config_da_daily, caminho_do_vault: Path, publicacao_do_deck
+):
     config_da_daily(ativa=False)
+    escrever_nota_da_daily(caminho_do_vault)
 
-    main(["daily", "--fakes"])
+    main(["daily"])
 
-    assert (caminho_do_vault / "daily" / "atual.md").is_file()
+    assert publicacao_do_deck.chamadas == 1
 
 
 # -- a palheta --------------------------------------------------------------------
 
 
 def _palheta(configuracao, avisos: list):
-    from whis.fakes import BuscaFake, DailyFake, fontes_de_exemplo_da_daily
+    from whis.fakes import BuscaFake, PublicacaoDoDeckFake
     from whis.palheta import Palheta, comandos_padrao
 
     comandos = comandos_padrao(
-        fontes_da_daily=lambda _c: fontes_de_exemplo_da_daily(),
-        roteiro_da_daily=lambda _c: DailyFake(),
+        publicacao_do_deck=lambda _c: PublicacaoDoDeckFake(),
         busca=lambda _c: BuscaFake(),
         lancar=lambda _uri: None,
     )

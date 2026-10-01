@@ -83,10 +83,10 @@ def test_campos_cobrem_toda_chave_do_modelo_e_nenhuma_a_mais():
         for nome in (valor.keys() if isinstance(valor, dict) else [None])
     }
     do_modelo.discard("daily")
-    do_modelo |= {"[daily].ativa", "[daily].referencias_pessoais", "[daily].contexto_do_time", "[daily].horarios"}
+    do_modelo |= {"[daily].ativa", "[daily].horarios"}
 
     assert {campo.caminho for campo in CAMPOS} == do_modelo
-    assert len(CAMPOS) == 27
+    assert len(CAMPOS) == 25
 
 
 def test_os_quatro_segredos_os_dois_caminhos_e_as_listas_tem_o_tipo_certo():
@@ -95,7 +95,7 @@ def test_os_quatro_segredos_os_dois_caminhos_e_as_listas_tem_o_tipo_certo():
     assert por_tipo[Tipo.SEGREDO] == set(SEGREDOS)
     assert por_tipo[Tipo.CAMINHO] == {"vault", "[git].raiz"}
     assert por_tipo[Tipo.LISTA] == {
-        "[daily].referencias_pessoais", "[privacidade].excluir", "[privacidade].pastas_privadas",
+        "[privacidade].excluir", "[privacidade].pastas_privadas",
         "[git].excluir", "[git].autores", "[slack].conversas_excluidas", "[slack].so_com_mencao",
     }
     assert por_tipo[Tipo.HORARIOS] == {"[daily].horarios"}
@@ -170,7 +170,7 @@ def test_abrir_mostra_todos_os_campos_com_os_valores_atuais(cenario):
 def test_preencher_e_salvar_reescreve_o_arquivo_e_recarrega(cenario):
     painel, formulario, salvas, arquivo = cenario
     formulario.digitar("[linear].api_key", "  lin-secreta-123  ")
-    formulario.digitar("[daily].contexto_do_time", CONTEXTO)
+    formulario.digitar("[claude].modelo", CONTEXTO)
     formulario.digitar("[privacidade].excluir", "senha\n\n  cpf  \n")
     formulario.digitar("[daily].horarios", {"segunda": "13:55", "terca": "", "quarta": "10:25", "quinta": "", "sexta": "", "sabado": "", "domingo": ""})
     formulario.digitar("[git].raiz", r"C:\Users\x\dev")
@@ -181,7 +181,7 @@ def test_preencher_e_salvar_reescreve_o_arquivo_e_recarrega(cenario):
     relida = carregar(arquivo)
     assert nova is not None and salvas == [nova]
     assert relida.linear_api_key == "lin-secreta-123"
-    assert relida.daily_contexto_do_time == CONTEXTO
+    assert relida.claude_modelo == CONTEXTO
     assert relida.privacidade_excluir == ("senha", "cpf")
     assert relida.daily_horarios == (("segunda", "13:55"), ("quarta", "10:25"))
     assert relida.git_raiz == Path("C:/Users/x/dev")

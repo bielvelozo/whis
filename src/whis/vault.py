@@ -2,15 +2,16 @@
 
 A zona de propriedade é uma invariante deste módulo, não só dos testes — e ela
 é **por coletor**: `escrever` recebe as zonas que aquela chamada permite. O
-do diário escreve só em `diario/`; o da daily, só em `daily/`. Nenhum alcança
-a zona do outro. O coletor da Granola escreve só em `reunioes/`;
-`transcricoes/` só é lida, desde que a gravação saiu do Whis.
+do diário escreve só em `diario/`; o da daily, só em `daily/` (a cópia datada
+e, a pedido, a nota viva). Nenhum alcança a zona do outro. O coletor da
+Granola escreve só em `reunioes/`; `transcricoes/` só é lida, desde que a
+gravação saiu do Whis.
 
 `notas/` é a zona do usuário e é recusada para todos eles. A nota viva
-`daily/atual.md` é a terceira zona: mora em `daily/`, mas o que o agente pode
-fazer nela é decidido seção a seção em `nota_viva.py` — aqui só se lê e se
-grava o arquivo, **sem traduzir quebra de linha**, porque cada byte que o
-usuário escreveu ali precisa voltar igual.
+`daily/atual.md` mora em `daily/` e é dele; o que o agente pode escrever nela
+é decidido em `nota_viva.py` — aqui só se lê e se grava o arquivo, **sem
+traduzir quebra de linha**, porque cada byte que ele escreveu ali precisa
+voltar igual.
 """
 
 from __future__ import annotations
@@ -29,19 +30,14 @@ from .fontes import ORDEM_DAS_FONTES, Evento, Janela, nome_legivel
 from .nota_viva import (
     SECAO_DUVIDAS,
     SECAO_FALAR,
-    SECAO_FAZENDO,
-    SECAO_FIZ,
     SECAO_PONTOS,
-    Mudancas,
     NotaViva,
-    sem_brancos_nas_pontas,
 )
 from .portas import ResumoDoDia, Reuniao
 
 if TYPE_CHECKING:  # ambos importam este módulo em tempo de execução
     from .busca import Resposta
     from .coleta import FalhaDeFonte
-    from .daily import JanelaDaDaily
     from .jornal import Edicao
 
 _log = logging.getLogger("whis.vault")
@@ -83,9 +79,6 @@ ZONAS_DAS_REUNIOES = (PASTA_REUNIOES,)
 #: A nota viva: a única nota que agente e usuário mantêm juntos.
 CAMINHO_DA_NOTA_VIVA = f"{PASTA_DAILY}/atual.md"
 
-#: As duas seções da nota datada que falam da nota viva.
-SECAO_MUDANCAS = "Mudanças na nota viva"
-SECAO_ARQUIVO = "O que eu fiz na daily anterior"
 
 #: O que abre as listas cruas numa nota, abaixo do que foi escrito sobre elas.
 _SEPARADOR = "---"
@@ -130,6 +123,8 @@ _DIAS_DA_SEMANA = (
 
 #: O `YYYY-MM-DD-HHMM` com que a nota de reunião começa, pelo contrato da pasta.
 _PREFIXO_DA_REUNIAO = re.compile(r"^(?P<data>\d{4}-\d{2}-\d{2})-(?P<hora>\d{4})(?:-.*)?$")
+
+_DECK_NO_FRONTMATTER = re.compile(r'^deck:\s*"?(https://[^\s"]+)"?\s*$', re.M)
 
 class ForaDaZonaDePropriedade(RuntimeError):
     """Tentativa de escrever fora das zonas permitidas àquela chamada."""
@@ -435,6 +430,57 @@ def caminho_da_daily(data: date) -> str:
     return f"{PASTA_DAILY}/{data.isoformat()}.md"
 
 
+def montar_copia_da_daily(
+    *,
+    gerada: datetime,
+    deck: str | None,
+    secoes: Sequence[tuple[str, Sequence[str]]],
+    aviso: str | None = None,
+) -> str:
+    """A cópia do que foi para o deck, com o link no frontmatter.
+
+    Sem campo `data`: a Daily notes do Obsidian o transformaria em link para
+    uma nota que não existe (passo 8 de `docs/smoke-interface.md`).
+    """
+    campos: dict[str, object] = {"tipo": TIPO_DAILY}
+    if deck:
+        campos["deck"] = deck
+    campos["gerada"] = gerada.isoformat(timespec="seconds")
+
+    linhas = [f"# Daily — {_data_por_extenso(gerada.date())}", ""]
+    if deck:
+        linhas.extend([f"> [!info] [Abrir os slides]({deck})", ""])
+    if aviso:
+        linhas.extend([f"> [!warning] {aviso}", ""])
+    for titulo, conteudo in secoes:
+        linhas.extend([f"## {titulo}", "", *conteudo, ""])
+    return _frontmatter(campos) + "\n".join(linhas)
+
+
+def ultimo_deck(vault: Path) -> str | None:
+    """O `deck:` da nota datada mais recente de `daily/` que tem um."""
+    pasta = Path(vault) / PASTA_DAILY
+    if not pasta.is_dir():
+        return None
+    datadas = sorted(
+        ((dia, arquivo) for arquivo in pasta.glob("*.md") if (dia := _data_do_nome(arquivo.stem)) is not None),
+        reverse=True,
+    )
+    for _dia, arquivo in datadas:
+        casou = _DECK_NO_FRONTMATTER.search(_frontmatter_cru(arquivo))
+        if casou:
+            return casou.group(1)
+    return None
+
+
+def _frontmatter_cru(arquivo: Path) -> str:
+    texto = arquivo.read_text(encoding="utf-8", errors="replace")
+    if not texto.startswith("---"):
+        return ""
+    fim = texto.find("\n---", 3)
+    return texto[: fim if fim != -1 else 0]
+
+
 def caminho_da_resposta(momento: datetime, pergunta: str) -> str:
     """`respostas/YYYY-MM-DD-HHMM-<slug>.md`, o slug tirado da pergunta."""
     return f"{PASTA_RESPOSTAS}/{momento:%Y-%m-%d-%H%M}-{_slug(pergunta)}.md"
@@ -478,49 +524,6 @@ def montar_resposta(*, pergunta: str, resposta: "Resposta") -> str:
     return frontmatter + "\n".join(corpo)
 
 
-def ate_da_daily_anterior(vault: Path, antes_de: date) -> datetime | None:
-    """O campo `ate` da daily mais recente **de um dia anterior** a `antes_de`.
-
-    É a âncora da janela da próxima daily, e ela mora no frontmatter da nota
-    porque o vault é a fonte da verdade: o usuário audita a janela lendo o
-    próprio arquivo, sem estado escondido em lugar nenhum.
-
-    A daily de hoje fica de fora de propósito: ancorar nela faria a segunda
-    execução do dia começar onde a primeira terminou, e cobrir uma janela
-    vazia. Quem preserva a janela numa reexecução é `desde_da_daily_de`.
-
-    Nota com nome ou frontmatter fora do padrão é pulada em silêncio, e a
-    próxima nota mais antiga vale como âncora: a daily não pode deixar de
-    nascer por causa de um arquivo editado à mão.
-    """
-    pasta = Path(vault) / PASTA_DAILY
-    if not pasta.is_dir():
-        return None
-
-    anteriores: list[tuple[date, Path]] = []
-    for arquivo in pasta.glob("*.md"):
-        dia = _data_do_nome(arquivo.stem)
-        if dia is not None and dia < antes_de:
-            anteriores.append((dia, arquivo))
-
-    for _, arquivo in sorted(anteriores, key=lambda par: par[0], reverse=True):
-        momento = _momento_do_frontmatter(arquivo, "ate")
-        if momento is not None:
-            return momento
-    return None
-
-
-def desde_da_daily_de(vault: Path, dia: date) -> datetime | None:
-    """O campo `desde` da daily daquele dia, se ela já existe.
-
-    Rodar o comando de novo no mesmo dia tem que manter a mesma janela e só
-    estender o `ate`. Recalcular o `desde` faria a janela escorregar para
-    frente pelo tempo entre as duas execuções — e o que ficasse nesse sobejo
-    não apareceria em daily nenhuma.
-    """
-    return _momento_do_frontmatter(Path(vault) / caminho_da_daily(dia), "desde")
-
-
 def ler_nota_viva(vault: Path) -> NotaViva:
     """A nota viva como está no vault — ou a do modelo, se ainda não existe.
 
@@ -554,173 +557,12 @@ def anotar_ponto(vault: Path, texto: str, secao: str = SECAO_PONTOS) -> Path:
     return escrito
 
 
-def arquivo_da_nota_viva(vault: Path, dia: date) -> tuple[str, ...] | None:
-    """O bloco de *O que eu fiz* que a daily de hoje já arquivou.
-
-    `None` diz que a nota viva ainda não foi arquivada nesta janela: não há
-    daily de hoje, ou ela nasceu sem a seção — o roteiro falhou antes de a
-    nota viva ser tocada. É esse sinal que faz a segunda execução do dia não
-    arquivar de novo, e a reexecução depois de uma falha arquivar enfim.
-
-    A seção vai até o separador das listas cruas, que não é um título: é a
-    mesma régua que `montar_daily` usa para escrever.
-    """
-    arquivo = Path(vault) / caminho_da_daily(dia)
-    if not arquivo.is_file():
-        return None
-    nota = NotaViva.de_texto(arquivo.read_bytes().decode("utf-8"))
-    if not nota.tem_secao(SECAO_ARQUIVO):
-        return None
-    secao = nota.conteudo(SECAO_ARQUIVO)
-    fim = next((i for i, linha in enumerate(secao) if linha.strip() == _SEPARADOR), len(secao))
-    bloco = sem_brancos_nas_pontas(secao[:fim])
-    return () if bloco == (_NADA_REGISTRADO,) else bloco
-
-
-def montar_daily(
-    *,
-    janela: "JanelaDaDaily",
-    eventos: Sequence[Evento],
-    reunioes: Sequence[str],
-    fontes_lidas: Sequence[str],
-    fontes_com_falha: Sequence["FalhaDeFonte"],
-    mudancas: Mudancas | None,
-    arquivado: Sequence[str] | None,
-    falha_do_roteiro: str | None = None,
-) -> str:
-    """Monta o markdown da nota datada: o que mudou na nota viva, e as listas cruas.
-
-    O roteiro não mora mais aqui — ele é a nota viva. O que esta nota guarda é
-    a janela, o que esta execução acrescentou e moveu, o bloco de *O que eu
-    fiz* arquivado ao abrir a janela, e tudo que as fontes trouxeram.
-    """
-    frontmatter = _frontmatter(
-        {
-            "tipo": TIPO_DAILY,
-            "data": janela.data.isoformat(),
-            "desde": janela.desde.isoformat(),
-            "ate": janela.ate.isoformat(),
-            "fontes": list(fontes_lidas),
-            "fontes_com_falha": [falha.fonte for falha in fontes_com_falha],
-            "temas": list(_temas_dos_eventos(eventos)),
-            "reunioes": [wikilink(reuniao) for reuniao in reunioes],
-        }
-    )
-
-    corpo = [
-        f"# Daily — {_data_por_extenso(janela.data)}",
-        "",
-        f"> [!info] {cobertura_da_janela(janela)}",
-        "",
-    ]
-    for aviso in _avisos_da_daily(fontes_com_falha, mudancas, falha_do_roteiro):
-        corpo.extend([f"> [!warning] {aviso}", ""])
-
-    if mudancas is not None:
-        corpo.extend([f"## {SECAO_MUDANCAS}", "", *_secao_das_mudancas(mudancas), ""])
-    if arquivado is not None:
-        corpo.extend([f"## {SECAO_ARQUIVO}", "", *(arquivado or [_NADA_REGISTRADO]), ""])
-
-    corpo.extend(_listas_cruas(eventos, reunioes, fontes_lidas, fontes_com_falha))
-
-    return frontmatter + "\n".join(corpo)
-
-
-def _secao_das_mudancas(mudancas: Mudancas) -> list[str]:
-    """Os blocos que entraram na nota viva, literais, alinhados à esquerda."""
-    if mudancas.vazia():
-        return ["_(nada)_"]
-    linhas: list[str] = []
-    if mudancas.acrescentadas:
-        linhas.extend(["**Acrescentado:**", ""])
-        for bloco in mudancas.acrescentadas:
-            linhas.extend(_alinhado(bloco))
-        linhas.append("")
-    if mudancas.movidas:
-        linhas.extend([f"**Movido de _{SECAO_FAZENDO}_ para _{SECAO_FIZ}_:**", ""])
-        for bloco in mudancas.movidas:
-            linhas.extend(_alinhado(bloco))
-        linhas.append("")
-    return linhas[:-1]
-
-
-def _alinhado(bloco: Sequence[str]) -> list[str]:
-    """Um bloco de linhas literais sem a indentação da primeira, para não virar código."""
-    if not bloco:
-        return []
-    recuo = len(bloco[0]) - len(bloco[0].lstrip(" \t"))
-    return [linha[recuo:] if linha[:recuo].strip() == "" else linha for linha in bloco]
-
-
-def cobertura_da_janela(janela: "JanelaDaDaily") -> str:
-    """A linha "Cobre de ... até agora" — obrigatória na nota e no terminal.
-
-    Sem ela o usuário lê a daily de sexta numa segunda achando que é de ontem.
-
-    A frase da primeira daily não afirma que o período tem 24 horas: rodar de
-    novo no mesmo dia mantém o início e estende o fim, e a janela passa disso.
-    O que ela explica é de onde veio a âncora.
-    """
-    quando = f"{_dia_curto(janela.desde)}, {janela.desde:%d/%m %H:%M}"
-    if janela.primeira:
-        return (
-            f"Cobre de {quando}, até agora — esta é a primeira daily, e sem nota "
-            f"anterior para ancorar a janela ela começa 24 horas antes da primeira "
-            f"execução."
-        )
-    return f"Cobre de {quando}, até agora."
-
-
-def _avisos_da_daily(
-    fontes_com_falha: Sequence["FalhaDeFonte"],
-    mudancas: Mudancas | None,
-    falha_do_roteiro: str | None,
-) -> list[str]:
-    avisos = [
-        f"{nome_legivel(falha.fonte)} não entrou nesta daily: {falha.motivo}"
-        for falha in fontes_com_falha
-    ]
-    if mudancas is None:
-        motivo = falha_do_roteiro or "o roteiro da daily não está configurado."
-        avisos.append(
-            f"A nota viva ficou como estava: {motivo} "
-            "As listas cruas abaixo continuam completas."
-        )
-    elif falha_do_roteiro:
-        avisos.append(f"Nada novo entrou na nota viva: {falha_do_roteiro}")
-    return avisos
-
-
-def _temas_dos_eventos(eventos: Sequence[Evento]) -> tuple[str, ...]:
-    """As referências distintas da janela — repositórios, projetos, canais.
-
-    O roteiro da daily não tem campo de temas, e inventar um custaria outra
-    pergunta ao Claude. As referências já são exatamente o que o frontmatter
-    quer: os nomes por onde o usuário vai procurar este período meses depois.
-    """
-    return tuple(
-        dict.fromkeys(evento.referencia for evento in eventos if evento.referencia)
-    )
-
-
 def _data_do_nome(nome: str) -> date | None:
     """`2026-09-04` do nome de uma daily; `None` se o arquivo foi renomeado."""
     try:
         return datetime.strptime(nome, "%Y-%m-%d").date()
     except ValueError:
         return None
-
-
-def _momento_do_frontmatter(arquivo: Path, chave: str) -> datetime | None:
-    """Lê um campo de data-hora do frontmatter, sempre devolvendo algo aware."""
-    valor = _texto_do_frontmatter(arquivo, chave)
-    if valor is None:
-        return None
-    try:
-        momento = datetime.fromisoformat(valor)
-    except ValueError:
-        return None
-    return momento if momento.tzinfo else momento.astimezone()
 
 
 def _texto_do_frontmatter(arquivo: Path, chave: str) -> str | None:
@@ -739,11 +581,6 @@ def _texto_do_frontmatter(arquivo: Path, chave: str) -> str | None:
         if separador and nome.strip() == chave:
             return valor.strip().strip('"').strip("'")
     return None
-
-
-def _dia_curto(momento: datetime) -> str:
-    """`quinta`, `sábado` — o dia da semana como se diz em voz alta."""
-    return _DIAS_DA_SEMANA[momento.weekday()].removesuffix("-feira")
 
 
 def _momento_da_reuniao(nome: str) -> datetime | None:

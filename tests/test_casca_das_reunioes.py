@@ -219,8 +219,7 @@ def comandos(reunioes):
     return {
         comando.nome: comando
         for comando in _palheta.comandos_padrao(
-            fontes_da_daily=lambda _c: (),
-            roteiro_da_daily=lambda _c: None,
+            publicacao_do_deck=lambda _c: None,
             busca=lambda _c: None,
             reunioes=reunioes,
         )

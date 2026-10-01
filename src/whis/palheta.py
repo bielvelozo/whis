@@ -3,15 +3,15 @@
 O contrato é **dispara e some**: `despachar(texto)` devolve na hora, o comando
 roda num thread de trabalho, o resultado vira nota no vault quando há nota, e
 um toast avisa ao terminar — com o botão "Abrir no Obsidian" quando há o que
-abrir. Nenhum comando cabe numa janela que se fica olhando: a pergunta leva um
-minuto e a daily quarenta segundos.
+abrir. Nenhum comando cabe numa janela que se fica olhando: a pergunta e a
+daily levam um minuto.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
 `news`, `meetings`, `note`, `doubt`, `do`, `ask`, `open`, `settings`, `stash`,
 `prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
-portas de verdade — as fontes, o roteiro, a busca — entram por
+portas de verdade — a publicação do deck, a busca — entram por
 `comandos_padrao`, e é por aí que `--fakes` da bandeja chega aqui. `settings`
 é da própria `Palheta`, porque abrir o painel é de quem a hospeda: a bandeja
 injeta `abrir_painel`.
@@ -43,7 +43,6 @@ from .busca import PortaBusca, Resposta
 from .configuracao import Configuracao
 from .conversa import Conversas
 from .daily import ResultadoDaDaily, gerar_daily
-from .fontes import PortaFonte
 from .jornal import (
     AVISO_DO_LOGIN_DO_X,
     JornalNaoNasceu,
@@ -57,7 +56,7 @@ from .nota_viva import SECAO_DUVIDAS, SECAO_FAZER, SECAO_PONTOS
 from .obsidian import lancar as _lancar_no_windows
 from .obsidian import uri_da_nota
 from .pergunta import responder
-from .portas import ErroDaGranola, LoginNecessario, PortaDaily, PortaReunioes
+from .portas import ErroDaGranola, LoginNecessario, PortaPublicacaoDoDeck, PortaReunioes
 from .reunioes import ResultadoDasReunioes, puxar_reunioes
 
 _log = logging.getLogger("whis.palheta")
@@ -68,7 +67,10 @@ FIO_DA_PALHETA = "palheta"
 ROTULO_DO_BOTAO = "Abrir no Obsidian"
 ROTULO_DO_BOTAO_DO_JORNAL = "Abrir jornal"
 TITULO_DO_TOAST_DA_DAILY = "A daily está pronta"
-TITULO_DA_DAILY_QUE_NAO_NASCEU = "A daily não nasceu"
+TITULO_DA_DAILY_VAZIA = "A nota da daily está vazia"
+TITULO_DA_DAILY_SEM_SLIDES = "A daily não publicou"
+TITULO_DA_DAILY_SIMULADA = "Simulação da daily"
+ROTULO_DO_BOTAO_DOS_SLIDES = "Abrir slides"
 TITULO_DA_RESPOSTA = "Whis"
 TITULO_DE_NAO_ACHOU = "Não achei"
 TITULO_DE_OCUPADA = "Ainda estou no comando anterior"
@@ -107,14 +109,16 @@ class Resultado:
     """O que um comando devolve, e que a palheta transforma no toast.
 
     `nota` é o caminho relativo ao vault da nota que o botão abre; `link`,
-    quando há, é um endereço `https://` que o botão abre no lugar dela (a
-    página do jornal). Sem os dois, o toast não tem botão.
+    quando há, é um endereço `https://` que o botão abre no lugar dela, com o
+    texto de `rotulo` (sem ele, *Abrir jornal*). Sem `nota` e sem `link`, o
+    toast não tem botão.
     """
 
     titulo: str
     texto: str
     nota: str | None = None
     link: str | None = None
+    rotulo: str | None = None
 
 
 #: `rodar(argumento, configuracao)`: a configuração vem da palheta a cada
@@ -309,7 +313,7 @@ def avisar_resultado(
     """
     mostrar = avisar or _avisos.avisar
     if resultado.link:
-        botao = (ROTULO_DO_BOTAO_DO_JORNAL, resultado.link)
+        botao = (resultado.rotulo or ROTULO_DO_BOTAO_DO_JORNAL, resultado.link)
     elif resultado.nota:
         botao = (ROTULO_DO_BOTAO, uri_da_nota(configuracao, resultado.nota))
     else:
@@ -320,40 +324,35 @@ def avisar_resultado(
 # -- os comandos desta entrega ----------------------------------------------
 
 
-def texto_do_toast_da_daily(resultado: ResultadoDaDaily) -> str:
-    """Uma linha: o que mudou na nota viva, ou por que nada mudou."""
-    if resultado.vazio:
-        return "Nada aconteceu desde a última daily — nenhuma nota foi escrita."
-    if resultado.falha_do_roteiro:
-        return (
-            f"A nota nasceu parcial: {resultado.falha_do_roteiro}. "
-            f"A nota viva ficou como estava."
-        )
-    mudancas = resultado.mudancas
-    if mudancas is None or mudancas.vazia():
-        return "Nada mudou na nota viva."
-    partes: list[str] = []
-    if novos := len(mudancas.acrescentadas):
-        partes.append(f"{novos} {'item novo' if novos == 1 else 'itens novos'}")
-    if movidos := len(mudancas.movidas):
-        partes.append(f"{movidos} {'movido' if movidos == 1 else 'movidos'} para 'O que eu fiz'")
-    return " e ".join(partes) + "."
-
-
 def resultado_da_daily(resultado: ResultadoDaDaily) -> Resultado:
     """O toast da daily — o mesmo para `whis daily` e para a palheta."""
-    if _login.vencido(resultado.falha_do_roteiro):
+    quantos = len(resultado.deck.slides)
+    slides = f"{quantos} slide{'s' if quantos != 1 else ''}"
+    if resultado.simulado:
+        return Resultado(TITULO_DA_DAILY_SIMULADA, f"Simulação: {slides}, nada publicado.")
+    if resultado.vazio:
         return Resultado(
-            _login.TITULO,
-            f"{_login.PEDIDO} A daily nasceu sem roteiro e a nota viva ficou como estava.",
-            nota=_vault.CAMINHO_DA_NOTA_VIVA if resultado.nota_viva is not None else None,
+            TITULO_DA_DAILY_VAZIA,
+            "Escreva o que fez, está fazendo e terminou, e gere de novo.",
+            nota=_vault.CAMINHO_DA_NOTA_VIVA,
         )
-    if resultado.nota_viva is None:
-        return Resultado(TITULO_DA_DAILY_QUE_NAO_NASCEU, texto_do_toast_da_daily(resultado))
+    if not resultado.publicado:
+        if _login.vencido(resultado.falha_da_publicacao):
+            return Resultado(
+                _login.TITULO,
+                f"{_login.PEDIDO} Os slides não saíram; leia de {_vault.CAMINHO_DA_NOTA_VIVA}.",
+                nota=_vault.CAMINHO_DA_NOTA_VIVA,
+            )
+        return Resultado(
+            TITULO_DA_DAILY_SEM_SLIDES,
+            _encurtar(f"Os slides não saíram: {resultado.falha_da_publicacao}"),
+            nota=_vault.CAMINHO_DA_NOTA_VIVA,
+        )
     return Resultado(
         TITULO_DO_TOAST_DA_DAILY,
-        texto_do_toast_da_daily(resultado),
-        nota=_vault.CAMINHO_DA_NOTA_VIVA,
+        f"{slides} no link de sempre.",
+        link=resultado.url,
+        rotulo=ROTULO_DO_BOTAO_DOS_SLIDES,
     )
 
 
@@ -580,9 +579,9 @@ class ListaDePrompts:
 
 def comandos_padrao(
     *,
-    fontes_da_daily: Callable[[Configuracao], Sequence[PortaFonte]],
-    roteiro_da_daily: Callable[[Configuracao], PortaDaily],
+    publicacao_do_deck: Callable[[Configuracao], PortaPublicacaoDoDeck],
     busca: Callable[[Configuracao], PortaBusca],
+    simular_daily: bool = False,
     lancar: Callable[[str], None] | None = None,
     relogio: Callable[[], datetime] | None = None,
     area: PortaAreaDeTransferencia | None = None,
@@ -593,7 +592,8 @@ def comandos_padrao(
 
     As fábricas recebem a configuração a cada chamada — é o que faz uma
     configuração recarregada valer no comando seguinte. `settings` é da
-    própria `Palheta`.
+    própria `Palheta`. `simular_daily` é a bandeja em `--fakes`: a daily só
+    monta o deck, porque uma publicação fake gravaria um `deck:` falso no vault.
     """
     agora = relogio or (lambda: datetime.now().astimezone())
     lancar_alvo = lancar or _lancar_no_windows
@@ -603,8 +603,8 @@ def comandos_padrao(
         resultado = gerar_daily(
             agora(),
             configuracao=configuracao,
-            fontes=fontes_da_daily(configuracao),
-            roteiro=roteiro_da_daily(configuracao),
+            publicacao=None if simular_daily else publicacao_do_deck(configuracao),
+            simular=simular_daily,
         )
         return resultado_da_daily(resultado)
 
@@ -700,10 +700,10 @@ def comandos_padrao(
         ),
         Comando(
             "daily",
-            "gera a daily agora e mantém daily/atual.md",
+            "publica os slides de daily/atual.md agora",
             daily,
             rotulo="Generate daily",
-            descricao="Update daily/atual.md from git, Linear and Slack (~40 s)",
+            descricao="Publish the daily slides from daily/atual.md (~1 min)",
             icone="☀",
         ),
         Comando(

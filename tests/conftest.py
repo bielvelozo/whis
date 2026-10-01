@@ -137,3 +137,14 @@ def navegador_trancado(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("teste chegou no navegador de verdade — injete um LeitorDoXFake")
 
     monkeypatch.setattr(fonte_x, "_playwright", recusar)
+
+
+@pytest.fixture(autouse=True)
+def publicacao_do_deck(monkeypatch: pytest.MonkeyPatch):
+    """Nenhum teste publica o deck da daily de verdade: `whis daily` e a bandeja caem neste fake."""
+    from whis import __main__ as cli
+    from whis.fakes import PublicacaoDoDeckFake
+
+    fake = PublicacaoDoDeckFake()
+    monkeypatch.setattr(cli, "montar_publicacao_do_deck", lambda _configuracao: fake)
+    return fake
