@@ -63,8 +63,34 @@ dele, já logado na conta dele, pela extensão Claude in Chrome, só lendo e rol
   posts novos (4 no DOM do começo ao fim, com seis rolagens de 3 s). No Chrome do Whis, que abre na
   própria janela, isso precisa ser provado com a conta logada.
 
-## Pendente
+## Resposta com sessão (2026-10-01 00:00, conta principal dele)
 
-- A conta do Whis e o `--login`; depois a rodada `medir-com-janela` com sessão, que grava as
-  amostras reais para trocar as fixtures provisórias (pela extensão as strings do HTML voltam
-  censuradas, então as fixtures não saem por ela).
+Ele trocou a conta do Whis pela principal. O primeiro login, num Chrome do Playwright, travou no
+Google: *"Couldn't sign you in — This browser or app may not be secure"*. O `x-login` passou a abrir
+um Chrome comum no mesmo perfil, e o login pelo Google funcionou. Rodada `medir-com-janela` logo
+depois (`medidas.json`):
+
+| Página | Posts | Últimas 24 h | Segundos |
+|---|---|---|---|
+| Seguindo | 17 | 17 | 22 |
+| Para você | 20 | 18 | 20 |
+| Claude Code | 16 | 16 | 18 |
+| Outros harness | 17 | 17 | 19 |
+| Skills e hooks | 13 | 13 | 19 |
+| Contexto | 13 | 13 | 16 |
+| Tokens e custo | 20 | 20 | 19 |
+| Fluxo de trabalho | 20 | 20 | 17 |
+
+- **As abas da home funcionam** no Chrome do Whis (na própria janela o X desenha os posts ao rolar).
+- **O leitor no HTML real**: de 181 `article` gravados, 170 viraram post e 11 saíram (8 anúncios
+  "Ad" e 3 **"Boosted"**, rótulo novo de anúncio, que entrou na regra); curtidas lidas em todos; 7
+  posts sem texto (só mídia) saem no corte. Post longo sem o "Show more", citação só com o texto
+  de fora, repost pelo autor original e post dentro do `placementTracking`, todos certos.
+- **Fixtures reais** em `tests/fixtures/jornal/x/real_*.html`, só de páginas de busca (públicas). As
+  amostras brutas, que têm o feed dele, foram apagadas e não vão para o git.
+- **Volume**: ~136 posts por edição antes do dedupe; o teto de 30 por seção pelos mais curtidos
+  segura o editor. Cada página leva ~19 s com o Chrome aberto por página; numa edição, com o
+  Chrome aberto uma vez só, devem ser uns 2 min.
+- **Seguindo é o feed inteiro dele**: tem gaming, futebol, Brasil. O editor tira o que não é dev com
+  IA; o teto pelos mais curtidos pode deixar o que é de nicho de fora, e vale olhar nas primeiras
+  edições.

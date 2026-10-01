@@ -1,0 +1,166 @@
+{
+  "quando": "2026-10-01T02:59:38.613661+00:00",
+  "sem_janela": false,
+  "paginas": [
+    {
+      "pagina": "X · Seguindo",
+      "consulta": "",
+      "segundos": 22.0,
+      "posts": 17,
+      "ultimas_24h": 17,
+      "curtidas": [
+        12424,
+        5652,
+        4377,
+        996,
+        975,
+        922,
+        844,
+        839,
+        603,
+        520
+      ],
+      "falha": null
+    },
+    {
+      "pagina": "X · Para você",
+      "consulta": "",
+      "segundos": 19.5,
+      "posts": 20,
+      "ultimas_24h": 18,
+      "curtidas": [
+        67806,
+        13945,
+        8953,
+        5831,
+        4256,
+        3848,
+        2404,
+        2364,
+        1586,
+        1555
+      ],
+      "falha": null
+    },
+    {
+      "pagina": "X · Claude Code",
+      "consulta": "\"claude code\" min_faves:100",
+      "segundos": 18.3,
+      "posts": 16,
+      "ultimas_24h": 16,
+      "curtidas": [
+        12541,
+        6780,
+        1265,
+        931,
+        700,
+        584,
+        495,
+        306,
+        306,
+        213
+      ],
+      "falha": null
+    },
+    {
+      "pagina": "X · Outros harness",
+      "consulta": "(codex OR cursor OR \"gemini cli\" OR opencode) (agent OR cli) min_faves:50",
+      "segundos": 19.0,
+      "posts": 17,
+      "ultimas_24h": 17,
+      "curtidas": [
+        907,
+        659,
+        585,
+        565,
+        207,
+        126,
+        121,
+        112,
+        103,
+        91
+      ],
+      "falha": null
+    },
+    {
+      "pagina": "X · Skills e hooks",
+      "consulta": "(claude OR codex) (skills OR hooks OR subagents OR \"slash commands\" OR MCP) min_faves:50",
+      "segundos": 18.9,
+      "posts": 13,
+      "ultimas_24h": 13,
+      "curtidas": [
+        12541,
+        1201,
+        336,
+        306,
+        207,
+        138,
+        132,
+        125,
+        103,
+        69
+      ],
+      "falha": null
+    },
+    {
+      "pagina": "X · Contexto",
+      "consulta": "(\"context engineering\" OR CLAUDE.md OR AGENTS.md OR \"plan mode\") min_faves:30",
+      "segundos": 16.2,
+      "posts": 13,
+      "ultimas_24h": 13,
+      "curtidas": [
+        1267,
+        701,
+        453,
+        451,
+        306,
+        207,
+        181,
+        129,
+        68,
+        68
+      ],
+      "falha": null
+    },
+    {
+      "pagina": "X · Tokens e custo",
+      "consulta": "(\"prompt caching\" OR \"token usage\" OR \"context window\" OR compact) (claude OR codex OR cursor) min_faves:10",
+      "segundos": 18.8,
+      "posts": 20,
+      "ultimas_24h": 20,
+      "curtidas": [
+        3557,
+        290,
+        134,
+        127,
+        75,
+        64,
+        52,
+        40,
+        39,
+        32
+      ],
+      "falha": null
+    },
+    {
+      "pagina": "X · Fluxo de trabalho",
+      "consulta": "(\"agentic coding\" OR \"spec-driven\" OR \"parallel agents\" OR worktrees) min_faves:30",
+      "segundos": 16.9,
+      "posts": 20,
+      "ultimas_24h": 20,
+      "curtidas": [
+        163,
+        150,
+        137,
+        113,
+        113,
+        112,
+        101,
+        90,
+        69,
+        67
+      ],
+      "falha": null
+    }
+  ]
+}

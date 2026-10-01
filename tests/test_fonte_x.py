@@ -90,6 +90,37 @@ def test_post_que_cita_outro_fica_com_o_de_fora():
     assert post.data == datetime(2026, 9, 30, 8, 0, tzinfo=UTC)
 
 
+def test_post_longo_real_vem_sem_o_show_more():
+    post = ler_post(fixture("real_longo.html"))
+
+    assert (post.autor, post.curtidas) == ("0x_rody", 125)
+    assert post.data == datetime(2026, 9, 30, 13, 59, 37, tzinfo=UTC)
+    assert post.texto.startswith("Opus 5.5 makes this AI stack look")
+    assert "Show more" not in post.texto
+
+
+def test_citacao_real_fica_so_com_o_texto_de_fora():
+    post = ler_post(fixture("real_citacao.html"))
+
+    assert (post.autor, post.curtidas) == ("angeldot_", 1265)
+    assert post.texto.startswith("ANTHROPIC HAS REVEALED THE TRICK")
+    assert "GIVING AWAY" not in post.texto
+
+
+def test_post_real_dentro_do_rastreio_e_o_mesmo_post():
+    assert ler_post(fixture("real_rastreado.html")).link == ler_post(fixture("real_longo.html")).link
+
+
+def test_impulsionado_real_fica_fora():
+    assert ler_post(fixture("real_impulsionado.html")) is None
+
+
+def test_rotulo_boosted_marca_anuncio_mesmo_com_hora():
+    impulsionado = fixture("post.html").replace("<span>@bcherny</span>", "<span>@bcherny</span><span>Boosted</span>")
+
+    assert ler_post(impulsionado) is None
+
+
 def test_html_sem_permalink_nao_e_post():
     assert ler_post("<article data-testid=\"tweet\"><div data-testid=\"tweetText\">oi</div></article>") is None
 
