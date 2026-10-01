@@ -460,11 +460,14 @@ def _avisar_que_a_daily_nasceu(configuracao: Configuracao, resultado: ResultadoD
 def _comando_x_login(_args: argparse.Namespace) -> int:
     from . import fonte_x
 
-    print("Abrindo o Chrome do Whis no login do X. Entre com a conta do Whis e espere a home carregar.")
+    print(
+        "Abrindo o Chrome do Whis no login do X. Entre na sua conta (pode ser pelo Google) e, "
+        "quando a home aparecer, feche a janela."
+    )
     if fonte_x.abrir_login():
         print("Sessão do X salva: a próxima edição do jornal lê o X.")
         return 0
-    print("Login não concluído: a janela fechou ou o tempo acabou antes da home carregar.")
+    print("Login não concluído: a home do X não abriu logada nesse perfil. Rode de novo e entre antes de fechar.")
     return 1
 
 
@@ -1109,9 +1112,9 @@ def construir_parser() -> argparse.ArgumentParser:
         "x-login",
         help="abre o Chrome do Whis no login do x.com para você entrar na conta do jornal",
         description=(
-            "Abre o Chrome com o perfil só do Whis (%LOCALAPPDATA%\\whis\\navegador-x) na tela de "
-            "login do x.com. Entre com a conta do Whis; quando a home carregar, a sessão fica "
-            "salva e o jornal passa a ler a seção Dev com IA. O Whis nunca vê a senha."
+            "Abre um Chrome comum com o perfil só do Whis (%LOCALAPPDATA%\\whis\\navegador-x) na tela "
+            "de login do x.com. Entre na sua conta e feche a janela quando a home aparecer; o Whis "
+            "confere a sessão e o jornal passa a ler a seção Dev com IA. O Whis nunca vê a senha."
         ),
     )
     x_login_cmd.set_defaults(funcao=_comando_x_login)

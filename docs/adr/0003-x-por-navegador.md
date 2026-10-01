@@ -1,12 +1,13 @@
-# O X entra no jornal por um navegador logado numa conta só do Whis
+# O X entra no jornal por um navegador logado na conta dele
 
 > Registro de 2026-09-30.
 
-A seção *Dev com IA* do jornal lê o X: a aba Seguindo, a aba Para você e seis buscas por termo, de
-uma conta criada só para o Whis. O Playwright abre o Chrome instalado num perfil próprio
-(`%LOCALAPPDATA%\whis\navegador-x`), lê o que a página mostra (link, @autor, hora, texto, curtidas)
-e fecha. O usuário faz o login uma vez com `python -m whis x-login`; o Whis nunca vê a senha.
-Spec em `.scratch/jornal-dev-com-ia/spec.md`.
+A seção *Dev com IA* do jornal lê o X: a aba Seguindo, a aba Para você e seis buscas por termo, na
+conta principal do usuário. O Playwright abre o Chrome instalado num perfil próprio do Whis
+(`%LOCALAPPDATA%\whis\navegador-x`), com janela, lê o que a página mostra (link, @autor, hora,
+texto, curtidas) e fecha. O login é feito uma vez com `python -m whis x-login`, que abre um
+**Chrome comum** (sem automação) nesse mesmo perfil; o Whis nunca vê a senha. Spec em
+`.scratch/jornal-dev-com-ia/spec.md`, medidas em `.scratch/jornal-dev-com-ia/research/`.
 
 ## Por quê
 
@@ -25,11 +26,19 @@ morreram ([pricing](https://docs.x.com/x-api/getting-started/pricing)).
   aparece no X.
 - **Agente do Claude navegando sozinho**: gasta a assinatura em cada tela, é lento e muda todo
   dia.
+- **Uma conta do X só do Whis**: a primeira escolha, para o risco não cair na conta dele. Trocada no
+  mesmo dia, depois de a camada 0 rodar no Chrome dele: o feed dele já o conhece e não há conta nova
+  para criar e manter.
 
 ## Consequências
 
-- **Risco aceito por ele**: os termos do X proíbem leitura automatizada sem autorização. A conta do
-  Whis pode ser limitada, travada para verificação ou suspensa; é por isso que não é a conta dele.
+- **Risco aceito por ele, na conta dele**: os termos do X proíbem leitura automatizada sem
+  autorização. A conta pode ser limitada, travada para verificação ou suspensa.
+- **Com janela**: o X responde erro HTTP ao Chrome sem janela (camada 0, Chrome 154). Às 08:20 o
+  Chrome aparece na tela por um ou dois minutos.
+- **Login num Chrome comum**: o Google recusa entrar num Chrome controlado pelo Playwright ("This
+  browser or app may not be secure"). O `x-login` abre o Chrome sem automação e depois confere a
+  sessão com o leitor.
 - **Só leitura, uma vez por edição**: oito páginas, algumas rolagens com pausa. O Whis nunca curte,
   segue, posta nem abre post.
 - **Frágil por natureza**: quando o X muda a página, a seção diz "X indisponível hoje" e o resto do

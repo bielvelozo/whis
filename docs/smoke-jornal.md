@@ -105,14 +105,15 @@ e o tamanho dos candidatos no `bandeja.log`.
 
 ## Dev com IA — o X
 
-A seção lê o X por um Chrome com um perfil só do Whis (ADR 0003). Ela só
-aparece depois destes passos; antes deles o jornal sai como sempre.
+A seção lê o X na sua conta, por um Chrome com um perfil só do Whis
+(ADR 0003). Ela só aparece depois destes passos; antes deles o jornal sai
+como sempre. O Chrome abre **com janela** (sem janela o X recusa).
 
-### Passo X1 — A conta e quem ela segue
+### Passo X1 — A conta
 
-Crie uma conta do X só para o Whis, **com o idioma em inglês** (Settings →
-Accessibility, display and languages → Languages). Siga a lista inicial de
-`.scratch/jornal-dev-com-ia/spec.md`, conferindo cada @.
+A sua conta do X, **com o idioma em inglês** (Settings → Accessibility,
+display and languages → Languages). Para a aba Seguindo trazer mais dev com
+IA, há sugestões de quem seguir em `.scratch/jornal-dev-com-ia/spec.md`.
 
 ### Passo X2 — O login
 
@@ -120,11 +121,14 @@ Accessibility, display and languages → Languages). Siga a lista inicial de
 python -m whis x-login
 ```
 
-Abre o Chrome na tela de login do X. Entre com a conta do Whis e espere a
-home carregar.
+Abre um Chrome comum, sem automação, na tela de login do X. Entre na sua
+conta (pelo Google funciona: o Google só recusa Chrome com automação) e,
+quando a home aparecer, **feche a janela**. O Whis abre o leitor por alguns
+segundos para conferir.
 
 **Sucesso:** "Sessão do X salva".
-**Falha:** "Login não concluído" — a janela fechou ou passaram 10 minutos.
+**Falha:** "Login não concluído" — a home não abriu logada nesse perfil, ou
+passaram 10 minutos com a janela aberta.
 
 ### Passo X3 — O bloco em `fontes.md`
 

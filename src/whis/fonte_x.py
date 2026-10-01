@@ -12,6 +12,7 @@ import logging
 import os
 import random
 import re
+import subprocess
 import time
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
@@ -265,22 +266,54 @@ class LeitorDoX:
             (pasta / f"{tipo}-{numero:03d}.html").write_text(html, encoding="utf-8")
 
 
-def abrir_login(perfil: Path | None = None, *, esperar_s: float = ESPERA_DO_LOGIN_S) -> bool:
-    """Abre o Chrome com janela no login do X; `True` quando a home carrega com a sessão salva."""
-    from playwright.sync_api import Error as ErroDoPlaywright
+def abrir_login(
+    perfil: Path | None = None,
+    *,
+    esperar_s: float = ESPERA_DO_LOGIN_S,
+    abrir: Callable[[list[str]], subprocess.Popen] = subprocess.Popen,
+    conferir: Callable[[Path], bool] | None = None,
+) -> bool:
+    """Abre um Chrome comum no login do X e, quando ele fecha, confere se a sessão ficou no perfil.
 
+    Comum, sem Playwright: o Google recusa entrar num Chrome controlado por
+    automação ("This browser or app may not be secure"). O perfil é o mesmo
+    que o leitor abre depois, então a sessão vale para ele.
+    """
+    perfil = Path(perfil) if perfil else pasta_do_perfil()
+    chrome = caminho_do_chrome()
+    if chrome is None:
+        _log.warning("O login do X não abriu: o Chrome não foi encontrado")
+        return False
+    perfil.mkdir(parents=True, exist_ok=True)
+    processo = abrir([str(chrome), f"--user-data-dir={perfil}", "--no-first-run", "--no-default-browser-check", LOGIN])
+    try:
+        processo.wait(timeout=esperar_s)
+    except subprocess.TimeoutExpired:
+        _log.warning("O login do X não terminou em %.0f s: a janela continua aberta", esperar_s)
+        return False
+    return (conferir or sessao_valida)(perfil)
+
+
+def sessao_valida(perfil: Path | None = None) -> bool:
+    """A home do X abre logada neste perfil? Abre o Chrome do leitor por alguns segundos."""
     with _playwright() as playwright:
-        contexto = _abrir_contexto(playwright, Path(perfil) if perfil else pasta_do_perfil(), sem_janela=False)
+        contexto = _abrir_contexto(playwright, Path(perfil) if perfil else pasta_do_perfil(), sem_janela=SEM_JANELA)
         try:
             pagina = contexto.pages[0] if contexto.pages else contexto.new_page()
-            pagina.goto(LOGIN, wait_until="domcontentloaded")
-            pagina.wait_for_url(re.compile(r"^https://x\.com/home"), timeout=esperar_s * 1000)
-            return True
-        except ErroDoPlaywright as erro:
-            _log.warning("O login do X não terminou: %s", _primeira_linha(str(erro)))
+            pagina.goto(HOME, wait_until="domcontentloaded")
+            pagina.wait_for_selector(SELETOR_DO_POST, timeout=ESPERA_DA_PAGINA_MS)
+            return "/login" not in pagina.url and "/i/flow/" not in pagina.url
+        except Exception as erro:  # noqa: BLE001 — qualquer falha aqui é "não está logado"
+            _log.warning("A sessão do X não se confirmou: %s", _primeira_linha(str(erro)))
             return False
         finally:
             _fechar(contexto)
+
+
+def caminho_do_chrome() -> Path | None:
+    bases = (os.environ.get("ProgramFiles"), os.environ.get("ProgramFiles(x86)"), os.environ.get("LOCALAPPDATA"))
+    candidatos = [Path(base) / "Google" / "Chrome" / "Application" / "chrome.exe" for base in bases if base]
+    return next((caminho for caminho in candidatos if caminho.is_file()), None)
 
 
 def pasta_do_perfil() -> Path:

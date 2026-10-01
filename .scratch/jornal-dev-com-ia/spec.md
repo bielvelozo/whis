@@ -17,13 +17,13 @@ isso.
 
 O X não se lê de graça: a API oficial é paga por post lido desde fevereiro de 2026
 (US$ 0,005 por post, crédito no console), o plano gratuito acabou, não existe RSS e os espelhos
-(Nitter) morreram. Ele escolheu **navegar no X com uma conta só do Whis** e aceitou o risco dos
-termos do X.
+(Nitter) morreram. Ele escolheu **navegar no X logado na conta principal dele** e aceitou o risco
+dos termos do X recair sobre ela.
 
 ## Solution
 
 Uma seção nova, **Dev com IA**, logo depois de *Aprender hoje*, alimentada por um leitor do X que
-abre o Chrome instalado com um perfil só do Whis, já logado, **lê o que a página mostra** (link,
+abre o Chrome instalado com um perfil só do Whis, logado na conta dele, **lê o que a página mostra** (link,
 @autor, hora, texto visível, curtidas) da aba **Seguindo**, da aba **Para você** e de **seis
 buscas**, e entrega esses posts como candidatos da coleta. O editor que já existe escolhe de 4 a 6
 e escolhe também a **Dica do dia**: o post mais aplicável, com duas ou três frases de como usar.
@@ -39,7 +39,7 @@ O jornal traz os links; o post ele abre no X. Sem print, sem imagem, sem API pag
 - O que já saiu numa das últimas 7 edições não volta.
 - Para mudar o que o Whis lê, edito `noticias/fontes.md` no Obsidian: tiro ou ponho uma busca, ou
   uma linha de RSS na mesma seção.
-- Para trocar quem a aba Seguindo traz, sigo ou deixo de seguir gente na conta do Whis.
+- A aba Seguindo é a minha: traz quem eu já sigo, e o editor tira o que não é dev com IA.
 - Faço o login uma vez com `python -m whis x-login`. Quando ele vencer, o jornal sai mesmo assim e
   o toast e a seção dizem "O login do X venceu" e o comando que conserta.
 - Se o X mudar a página ou o navegador falhar, a seção diz numa linha que o X ficou indisponível e
@@ -49,8 +49,10 @@ O jornal traz os links; o post ele abre no X. Sem print, sem imagem, sem API pag
 
 ### Decisões dele (não derivam do código)
 
-- Fonte: **o X por navegador**, numa **conta só do Whis** (se o X travar, a dele fica intacta). Não
-  a API paga, não o Grok, não fontes abertas no lugar do X.
+- Fonte: **o X por navegador**, logado na **conta principal dele**. Não a API paga, não o Grok, não
+  fontes abertas no lugar do X. A primeira escolha foi uma conta só do Whis; depois de a camada 0
+  rodar no Chrome dele, em 2026-09-30, ele trocou pela própria conta: o feed já o conhece e não há
+  conta nova para manter. O risco de trava ou suspensão passou a ser da conta dele.
 - O que ler: **Seguindo + Para você + buscas por termo**. Buscas **só em inglês** (a em português
   foi descartada).
 - Formato: **seção própria com a Dica do dia**, depois *Aprender hoje*; Tecnologia continua com as
@@ -94,11 +96,11 @@ do arquivo**, já que a ordem das seções é a ordem do arquivo:
 - Os `min_faves` são palpite; a camada 0 mede o volume de cada busca e ajusta antes de entrar no
   modelo.
 
-### Lista inicial para a conta do Whis seguir
+### Quem vale seguir (sugestão, a conta é dele)
 
-Ele cria a conta **com o idioma em inglês** (o leitor lê os rótulos "Following", "For you" e
-"Likes" e números como "1.2K") e segue; o Whis nunca segue ninguém. Conferir cada @ no X ao seguir (podem ter
-mudado): `@bcherny` (Boris Cherny, Claude Code), `@_catwu` (Cat Wu, Claude Code), `@alexalbert__`,
+A conta dele já está **em inglês** (o leitor lê os rótulos "Following", "For you" e "Likes"; visto
+na camada 0). O Whis nunca segue ninguém. Para a aba Seguindo trazer mais dev com IA, nomes que
+valem seguir — conferir cada @ (podem ter mudado): `@bcherny` (Boris Cherny, Claude Code), `@_catwu` (Cat Wu, Claude Code), `@alexalbert__`,
 `@claudeai`, `@simonw` (Simon Willison), `@steipete` (Peter Steinberger), `@dexhorthy` (Dex Horthy,
 context engineering), `@GeoffreyHuntley`, `@mitsuhiko` (Armin Ronacher), `@karpathy`, `@swyx`,
 `@HamelHusain`, `@addyosmani`, `@kieranklaassen`, `@thsottiaux` (Codex), `@IndyDevDan`,
@@ -107,11 +109,11 @@ context engineering), `@GeoffreyHuntley`, `@mitsuhiko` (Armin Ronacher), `@karpa
 ### Camada 0 — protótipo (portão das demais)
 
 Descartável, em `.scratch/jornal-dev-com-ia/research/01-x-pelo-navegador/`, como o protótipo do
-jornal. Antes, ele cria a conta do Whis e segue a lista. O protótipo:
+jornal (respostas em `research/01-x-pelo-navegador.md`). O protótipo:
 
 1. abre o Chrome instalado (`channel="chrome"`) num perfil persistente próprio e, na primeira vez,
    com janela, para ele fazer o login;
-2. roda as oito páginas sem janela e conta, por página, posts lidos, posts das últimas 24 h e
+2. roda as oito páginas (sem janela; o X recusou, e ficou com janela) e conta, por página, posts lidos, posts das últimas 24 h e
    segundos;
 3. guarda o `outerHTML` de alguns `article` (post comum, repost, anúncio, post longo cortado,
    post sem curtida, post que cita outro) e o HTML de uma **busca sem resultado**, para virar
@@ -256,7 +258,7 @@ e busca vazia, e onde estão a hora e as curtidas? A resposta vai no arquivo de 
 ## Further Notes
 
 - **Riscos aceitos por ele**: os termos do X proíbem leitura automatizada sem autorização; a conta
-  do Whis pode ser limitada, travada para verificação ou suspensa. O X muda a página com
+  **dele** pode ser limitada, travada para verificação ou suspensa. O X muda a página com
   frequência; quando mudar, a seção degrada até o leitor ser ajustado.
 - **Para parecer gente**: uma rodada por dia, oito páginas, pausas, nada além de ler. Mais buscas
   aumentam o risco; sete foi o teto conversado (ficaram seis).

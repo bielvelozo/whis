@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -155,6 +156,56 @@ def test_e_do_x():
     assert e_do_x("https://x.com/a/status/1")
     assert e_do_x("https://twitter.com/a/status/1")
     assert not e_do_x("https://simonwillison.net/2026/x/")
+
+
+class ProcessoDublê:
+    def __init__(self, *, estoura: bool = False) -> None:
+        self.estoura = estoura
+
+    def wait(self, timeout=None):
+        if self.estoura:
+            raise subprocess.TimeoutExpired("chrome", timeout)
+        return 0
+
+
+def test_o_login_abre_um_chrome_comum_no_perfil_do_whis_e_confere_a_sessao(tmp_path, monkeypatch):
+    monkeypatch.setattr(fonte_x, "caminho_do_chrome", lambda: Path("C:/Chrome/chrome.exe"))
+    abertos: list[list[str]] = []
+    conferidos: list[Path] = []
+
+    ok = fonte_x.abrir_login(
+        tmp_path / "perfil",
+        abrir=lambda argv: abertos.append(argv) or ProcessoDublê(),
+        conferir=lambda perfil: conferidos.append(perfil) or True,
+    )
+
+    assert ok is True
+    [argv] = abertos
+    assert Path(argv[0]).name == "chrome.exe"
+    assert f"--user-data-dir={tmp_path / 'perfil'}" in argv
+    assert argv[-1] == "https://x.com/login"
+    assert not any("automation" in a or "remote-debugging" in a for a in argv)
+    assert conferidos == [tmp_path / "perfil"]
+
+
+def test_login_que_nao_fecha_a_tempo_nao_confere_a_sessao(tmp_path, monkeypatch):
+    monkeypatch.setattr(fonte_x, "caminho_do_chrome", lambda: Path("C:/Chrome/chrome.exe"))
+    conferidos: list[Path] = []
+
+    ok = fonte_x.abrir_login(
+        tmp_path / "perfil",
+        abrir=lambda argv: ProcessoDublê(estoura=True),
+        conferir=lambda perfil: conferidos.append(perfil) or True,
+    )
+
+    assert ok is False
+    assert conferidos == []
+
+
+def test_sem_chrome_o_login_nao_abre(tmp_path, monkeypatch):
+    monkeypatch.setattr(fonte_x, "caminho_do_chrome", lambda: None)
+
+    assert fonte_x.abrir_login(tmp_path / "perfil", abrir=lambda argv: pytest.fail("abriu sem Chrome")) is False
 
 
 def test_sem_fonte_o_leitor_nao_abre_navegador():
