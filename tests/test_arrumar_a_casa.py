@@ -90,7 +90,7 @@ def test_remover_inicializacao_leva_o_atalho_do_menu_junto(tmp_path: Path, monke
 # -- o nome antigo ----------------------------------------------------------
 
 
-def test_remover_legado_apaga_o_atalho_e_a_tarefa_do_nome_antigo(tmp_path: Path, monkeypatch):
+def test_remover_legado_apaga_o_atalho_antigo_e_as_tarefas_que_chamam_o_que_nao_existe(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("APPDATA", str(tmp_path))
     antigo = automacao.caminho_do_atalho_legado()
     antigo.parent.mkdir(parents=True)
@@ -101,8 +101,11 @@ def test_remover_legado_apaga_o_atalho_e_a_tarefa_do_nome_antigo(tmp_path: Path,
 
     assert legado.atalho == antigo
     assert not antigo.exists()
-    assert legado.tarefa is True
-    assert espiao.comandos == [["schtasks", "/Delete", "/TN", "SecondBrain-Limpeza", "/F"]]
+    assert legado.tarefas == ("SecondBrain-Limpeza", "Whis-Limpeza")
+    assert espiao.comandos == [
+        ["schtasks", "/Delete", "/TN", "SecondBrain-Limpeza", "/F"],
+        ["schtasks", "/Delete", "/TN", "Whis-Limpeza", "/F"],
+    ]
 
 
 def test_remover_legado_sem_nada_para_remover_nao_quebra(tmp_path: Path, monkeypatch):
@@ -111,7 +114,7 @@ def test_remover_legado_sem_nada_para_remover_nao_quebra(tmp_path: Path, monkeyp
     legado = automacao.remover_legado(executar=ExecutorEspiao(codigo=1))
 
     assert legado.atalho is None
-    assert legado.tarefa is False
+    assert legado.tarefas == ()
 
 
 def test_remover_legado_nunca_toca_nos_atalhos_novos(tmp_path: Path, monkeypatch):
@@ -134,7 +137,7 @@ def test_windows_remover_legado_sozinho_nao_instala_nada(monkeypatch, capsys):
     monkeypatch.setattr(
         automacao,
         "remover_legado",
-        lambda: automacao.Legado(atalho=Path("Second Brain.lnk"), tarefa=True),
+        lambda: automacao.Legado(atalho=Path("Second Brain.lnk"), tarefas=("Whis-Limpeza",)),
     )
 
     codigo = main(["windows", "--remover-legado"])
@@ -143,12 +146,13 @@ def test_windows_remover_legado_sozinho_nao_instala_nada(monkeypatch, capsys):
     assert codigo == 0
     assert instalados == []
     assert "Atalho antigo removido de" in saida
-    assert "SecondBrain-Limpeza" in saida
+    assert "Tarefa antiga 'Whis-Limpeza' removida do Agendador." in saida
+    assert "Não havia tarefa 'SecondBrain-Limpeza' no Agendador." in saida
 
 
 def test_windows_remover_legado_diz_quando_nao_havia_nada(monkeypatch, capsys):
     monkeypatch.setattr(
-        automacao, "remover_legado", lambda: automacao.Legado(atalho=None, tarefa=False)
+        automacao, "remover_legado", lambda: automacao.Legado(atalho=None, tarefas=())
     )
 
     main(["windows", "--remover-legado"])
@@ -156,6 +160,7 @@ def test_windows_remover_legado_diz_quando_nao_havia_nada(monkeypatch, capsys):
     saida = capsys.readouterr().out
     assert "Não havia atalho 'Second Brain.lnk'" in saida
     assert "Não havia tarefa 'SecondBrain-Limpeza'" in saida
+    assert "Não havia tarefa 'Whis-Limpeza'" in saida
 
 
 def test_windows_instala_e_conta_o_atalho_do_menu(monkeypatch, capsys):

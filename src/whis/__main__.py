@@ -1,16 +1,13 @@
 r"""Entrada de linha de comando do Whis.
 
-Nove subcomandos sobre a mesma configuração local e sobre as quatro costuras
-do projeto — `pipeline.processar` para a reunião, `diario.gerar_diario` para o
-dia civil, `daily.gerar_daily` para a nota viva da daily, `pergunta.responder`
-para a busca no vault — e `jornal.gerar_jornal` para o jornal de notícias::
+Oito subcomandos sobre a mesma configuração local e sobre as costuras do
+projeto — `diario.gerar_diario` para o dia civil, `daily.gerar_daily` para a
+nota viva da daily, `pergunta.responder` para a busca no vault e
+`jornal.gerar_jornal` para o jornal de notícias::
 
     python -m whis init
     python -m whis bandeja
-    python -m whis windows [--daily] [--news] [--limpeza] [--remover]
-    python -m whis processar <pasta-da-gravacao>
-    python -m whis reprocessar [<pasta> ...]
-    python -m whis limpar [--simular]
+    python -m whis windows [--daily] [--news] [--remover] [--remover-legado]
     python -m whis diario [YYYY-MM-DD] [--simular]
     python -m whis daily [--anotar TEXTO] [--simular] [--agendada]
     python -m whis news [--agendada] [--fakes] [--simular]
@@ -26,11 +23,10 @@ continua o fio do terminal entre uma chamada e outra.
 `--daily` agenda a daily nos horários de `[daily].horarios` (e o vigia, que
 avisa por toast quando uma peça do Whis não subiu); `--news` agenda o jornal
 todo dia em `[noticias].horario` (e reagenda o vigia, se existe, para olhar
-por ele); `--limpeza` agenda a limpeza do áudio. As tarefas rodam mesmo que o
-PC estivesse desligado na hora.
+por ele). As tarefas rodam mesmo que o PC estivesse desligado na hora.
 
-Por padrão o comando usa os **adaptadores reais** — Deepgram para o STT, Claude
-(conta do usuário, OAuth) para os resumos, git/Linear/Slack para as fontes.
+Por padrão o comando usa os **adaptadores reais** — Claude (conta do usuário,
+OAuth) para os resumos, git/Linear/Slack para as fontes.
 `--fakes` troca todos pelas portas fake: é como exercitar as costuras inteiras
 sem gastar crédito nem rede.
 
@@ -43,9 +39,6 @@ também sem chamar o Claude).
 `0` completa, `3` parcial (uma fonte ou o Claude falhou — a nota existe,
 marcada), `1` não nasceu (todas as fontes falharam, nenhuma configurada, ou
 não havia nada no período). `2` é do argparse: erro de uso.
-
-A gravação em si também tem entrada própria (`python -m whis.gravador`),
-para diagnóstico de dispositivo; no uso normal quem a chama é a bandeja.
 """
 
 from __future__ import annotations
@@ -58,7 +51,6 @@ from pathlib import Path
 
 from . import palheta as _palheta
 from . import registro as _registro
-from . import retencao as _retencao
 from . import vault as _vault
 from .atalho_global import analisar_atalho
 from .atendente import ErroDeDM, PortaDM
@@ -82,25 +74,14 @@ from .fakes import (
     FormacaoFake,
     PublicacaoFake,
     ResumoDoDiaFake,
-    ResumoFake,
-    STTFake,
     fontes_de_exemplo,
     fontes_de_exemplo_da_daily,
 )
 from .fontes import PortaFonte, data_do_diario
-from .gravacao import GravacaoInvalida
 from .palheta import ROTULO_DO_BOTAO as ROTULO_DO_BOTAO_DA_DAILY  # noqa: F401 — reexport
 from .palheta import TITULO_DO_TOAST_DA_DAILY, texto_do_toast_da_daily  # noqa: F401 — reexport
 from .pergunta import PerguntaVazia, responder
-from .pipeline import processar
-from .portas import (
-    ErroDeResumo,
-    ErroDeSTT,
-    PortaDaily,
-    PortaResumo,
-    PortaResumoDoDia,
-    PortaSTT,
-)
+from .portas import PortaDaily, PortaResumoDoDia
 
 _log = logging.getLogger("whis")
 
@@ -136,9 +117,8 @@ def forcar_utf8_na_saida() -> None:
     Quando a saída não é um console interativo — pipe, redirecionamento para
     arquivo, captura pela bandeja ou por outro processo — o Python no Windows
     escolhe cp1252 e qualquer acento derruba o comando com `UnicodeEncodeError`.
-    Aqui isso morderia sempre: "Transcrição", "gravação", "simulação" aparecem
-    em toda saída. Mesmo tratamento que o gravador já faz (camada 02). Só a CLI
-    mexe nos fluxos do processo: quem importa o módulo como biblioteca não é
+    Aqui isso morderia sempre: "Diário", "simulação", "reunião" aparecem
+    em toda saída. Só a CLI mexe nos fluxos do processo: quem importa o módulo como biblioteca não é
     afetado.
     """
     for fluxo in (sys.stdout, sys.stderr):
@@ -152,7 +132,7 @@ def forcar_utf8_na_saida() -> None:
 
 
 def configurar_logs(verboso: bool = False) -> None:
-    """Logs legíveis do pipeline: gravação, transcrição, resumo, escrita."""
+    """Logs legíveis dos comandos: fontes, resumo, escrita."""
     logging.basicConfig(
         level=logging.DEBUG if verboso else logging.INFO,
         format="%(asctime)s  %(message)s",
@@ -161,38 +141,6 @@ def configurar_logs(verboso: bool = False) -> None:
     )
     if not verboso:
         logging.getLogger("httpx").setLevel(logging.WARNING)
-
-
-def montar_portas(
-    configuracao: Configuracao, *, fakes: bool = False
-) -> tuple[PortaSTT, PortaResumo]:
-    """Escolhe os adaptadores de STT e de resumo.
-
-    O padrão é o real: Deepgram com a chave da configuração e Claude com o
-    modelo da configuração (vazio = o modelo padrão da conta do usuário).
-    `fakes=True` devolve as portas fake — o modo de exercitar a costura sem
-    chamar serviço nenhum.
-
-    Os adaptadores reais são importados aqui dentro de propósito: `--fakes`
-    continua funcionando numa máquina onde o SDK do Claude ou o cliente HTTP
-    não estejam instalados.
-    """
-    if fakes:
-        _log.warning(
-            "Usando STT e resumo FAKE — nada é enviado à Deepgram nem ao Claude."
-        )
-        return STTFake(), ResumoFake()
-
-    from . import stt_deepgram
-    from .resumo_claude import ResumoClaude
-
-    stt = stt_deepgram.de_configuracao(configuracao)
-    resumo = ResumoClaude(modelo=configuracao.claude_modelo or None)
-    _log.info(
-        "STT: Deepgram; resumo: Claude (modelo %s).",
-        configuracao.claude_modelo or "padrão da conta",
-    )
-    return stt, resumo
 
 
 def montar_fontes(configuracao: Configuracao, *, fakes: bool = False) -> list[PortaFonte]:
@@ -329,111 +277,6 @@ def montar_dm(configuracao: Configuracao) -> PortaDM:
     from .dm_slack import de_configuracao
 
     return de_configuracao(configuracao)
-
-
-# -- processar --------------------------------------------------------------
-
-
-def _comando_processar(args: argparse.Namespace) -> int:
-    configuracao = _configuracao(args)
-    stt, resumo = montar_portas(configuracao, fakes=args.fakes)
-    resultado = processar(
-        Path(args.pasta),
-        configuracao=configuracao,
-        stt=stt,
-        resumo=resumo,
-        reprocessar=args.reprocessar,
-        reaproveitar_transcricao=not args.refazer_transcricao,
-    )
-    _relatar(resultado)
-    return 0
-
-
-# -- reprocessar ------------------------------------------------------------
-
-
-def _comando_reprocessar(args: argparse.Namespace) -> int:
-    """Completa gravações retidas: as que falharam ou nunca foram processadas.
-
-    Sem argumento, varre a pasta de gravações da configuração. É idempotente:
-    os nomes no vault vêm da pasta de gravação, então rodar de novo reescreve
-    os mesmos dois arquivos em vez de criar novos — e uma gravação já
-    concluída é reconhecida e pulada.
-    """
-    configuracao = _configuracao(args)
-    if args.pastas:
-        pastas = [Path(pasta) for pasta in args.pastas]
-    else:
-        pastas = list(_retencao.retidas(configuracao.gravacoes))
-        if not pastas:
-            print("Nenhuma gravação retida — nada a reprocessar.")
-            return 0
-        _log.info("%d gravação(ões) retida(s) em %s.", len(pastas), configuracao.gravacoes)
-
-    stt, resumo = montar_portas(configuracao, fakes=args.fakes)
-
-    falhas = 0
-    for pasta in pastas:
-        _log.info("Reprocessando %s", pasta)
-        try:
-            resultado = processar(
-                pasta,
-                configuracao=configuracao,
-                stt=stt,
-                resumo=resumo,
-                reprocessar=args.forcar,
-                reaproveitar_transcricao=not args.refazer_transcricao,
-            )
-        except (GravacaoInvalida, ErroDeSTT, ErroDeResumo) as erro:
-            _log.error("%s continua retida: %s", Path(pasta).name, erro)
-            falhas += 1
-            continue
-        _relatar(resultado)
-    return 1 if falhas else 0
-
-
-# -- limpar -----------------------------------------------------------------
-
-
-def _comando_limpar(args: argparse.Namespace) -> int:
-    """Apaga o áudio bruto já virado nota e vencido; `--simular` só mostra.
-
-    Registra também no arquivo de log: quando quem chama é a tarefa agendada
-    (sem console), o relatório impresso aqui não teria para onde ir.
-    """
-    configuracao = _configuracao(args)
-    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
-    limpeza = _retencao.limpar_da_configuracao(
-        configuracao, simular=args.simular, retencao_dias=args.dias
-    )
-
-    if limpeza.simulado:
-        print(f"Simulação — nada foi apagado. Retenção: {limpeza.retencao_dias} dias.")
-    else:
-        print(f"Retenção: {limpeza.retencao_dias} dias.")
-
-    verbo = "Apagaria" if limpeza.simulado else "Apagadas"
-    if limpeza.apagadas:
-        tamanho = _retencao.tamanho_legivel(limpeza.bytes_liberados)
-        print(f"{verbo} {len(limpeza.apagadas)} gravação(ões) ({tamanho}):")
-        for avaliacao in limpeza.apagadas:
-            print(f"  - {avaliacao.nome} — {avaliacao.motivo}")
-    elif not limpeza.falhas:
-        # Só é verdade quando nada venceu. Se as vencidas existem e o sistema de
-        # arquivos recusou apagá-las, quem fala é o bloco de falhas abaixo.
-        print("Nenhuma gravação venceu o prazo de retenção.")
-
-    if limpeza.preservadas:
-        print(f"Preservadas {len(limpeza.preservadas)}:")
-        for avaliacao in limpeza.preservadas:
-            print(f"  - {avaliacao.nome} [{avaliacao.status}] — {avaliacao.motivo}")
-
-    if limpeza.falhas:
-        print(f"Não foi possível apagar {len(limpeza.falhas)}:")
-        for avaliacao, erro in limpeza.falhas:
-            print(f"  - {avaliacao.nome} — {erro}")
-        return 1
-    return 0
 
 
 # -- diario -----------------------------------------------------------------
@@ -786,10 +629,9 @@ def _comando_atender(args: argparse.Namespace) -> int:
 def _comando_bandeja(args: argparse.Namespace) -> int:
     """Sobe o ícone na bandeja com a palheta hospedada nele.
 
-    A bandeja é casca fina sobre o coletor; aqui só se decide de onde vêm as
-    portas — reais por padrão, fakes com `--fakes` para ensaiar o gesto inteiro
-    sem gastar crédito. O `--fakes` vale também para os comandos da palheta:
-    `daily` e `perguntar` rodam com as mesmas fábricas dos subcomandos.
+    Aqui só se decide de onde vêm as portas dos comandos da palheta — reais por
+    padrão, fakes com `--fakes`: `daily`, `news` e `ask` rodam com as mesmas
+    fábricas dos subcomandos.
     """
     from . import bandeja as _bandeja
 
@@ -810,7 +652,6 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
 
     return _bandeja.executar(
         configuracao,
-        portas=lambda: montar_portas(configuracao, fakes=fakes),
         verboso=args.verboso,
         palheta=palheta,
         atalho=analisar_atalho(configuracao.palheta_atalho),
@@ -826,9 +667,8 @@ def _comando_init(args: argparse.Namespace) -> int:
 
     Antes disso o usuário tinha que criar o arquivo à mão, adivinhando as
     chaves — e o primeiro erro provável era a barra invertida do Windows. O
-    arquivo nasce com caminhos no perfil do usuário e comentários explicando o
-    que preencher; nada aqui inventa dispositivo de áudio, que é sempre da
-    máquina de destino.
+    arquivo nasce com o vault no perfil do usuário e comentários explicando o
+    que preencher.
     """
     destino = Path(args.config) if args.config else caminho_padrao()
     if destino.exists() and not args.forcar:
@@ -837,21 +677,15 @@ def _comando_init(args: argparse.Namespace) -> int:
         return 1
 
     perfil = Path.home()
-    conteudo = MODELO_DE_CONFIGURACAO.format(
-        vault=(perfil / "whis-vault").as_posix(),
-        gravacoes=(perfil / "whis-gravacoes").as_posix(),
-    )
+    conteudo = MODELO_DE_CONFIGURACAO.format(vault=(perfil / "whis-vault").as_posix())
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(conteudo, encoding="utf-8")
 
     print(f"Configuração criada em {destino}")
     print()
     print("Próximos passos:")
-    print("  1. Confira os caminhos do vault e das gravações no arquivo.")
-    print("  2. Cole a chave da Deepgram em [deepgram].api_key.")
-    print("  3. Rode 'python -m whis.gravador dispositivos' e preencha [audio]")
-    print("     se o canal do sistema não sair no dispositivo certo.")
-    print("  4. Rode 'python -m whis bandeja' e clique no ícone para gravar.")
+    print("  1. Confira o caminho do vault no arquivo.")
+    print("  2. Rode 'python -m whis bandeja' e abra a palheta pelo atalho ou pelo ícone.")
     return 0
 
 
@@ -877,11 +711,9 @@ def _horarios_por_extenso(configuracao: Configuracao) -> str:
 
 
 def _comando_windows(args: argparse.Namespace) -> int:
-    """Amarra (ou desamarra) o Whis ao Windows: logon, daily, jornal, vigia e limpeza.
+    """Amarra (ou desamarra) o Whis ao Windows: logon, daily, jornal e vigia.
 
-    Amarrações explícitas, cada uma com o seu `--remover`. A limpeza agendada
-    só existe se o usuário pedir: apagar áudio é irreversível e não pode ser
-    efeito colateral de instalar um atalho. A daily precisa da configuração
+    Amarrações explícitas, cada uma com o seu `--remover`. A daily precisa da configuração
     (é dela que saem os dias e horas); a tarefa recebe o caminho do arquivo
     explicitamente, porque não herda `WHIS_CONFIG` de quem a criou.
     """
@@ -893,9 +725,7 @@ def _comando_windows(args: argparse.Namespace) -> int:
     configuracao = _configuracao(args) if precisa_da_configuracao else None
     origem = (configuracao.origem if configuracao else None) or caminho_padrao()
     feitos: list[str] = []
-    so_remover_legado = args.remover_legado and not (
-        args.atendente or args.limpeza or args.daily or args.news
-    )
+    so_remover_legado = args.remover_legado and not (args.atendente or args.daily or args.news)
 
     if args.daily and not args.remover and not configuracao.daily_horarios:
         _log.error(
@@ -914,11 +744,12 @@ def _comando_windows(args: argparse.Namespace) -> int:
                 if legado.atalho
                 else f"Não havia atalho '{automacao.NOME_DO_ATALHO_LEGADO}' na Inicialização."
             )
-            feitos.append(
-                f"Tarefa antiga '{automacao.NOME_DA_TAREFA_LEGADA}' removida do Agendador."
-                if legado.tarefa
-                else f"Não havia tarefa '{automacao.NOME_DA_TAREFA_LEGADA}' no Agendador."
-            )
+            for nome in automacao.TAREFAS_LEGADAS:
+                feitos.append(
+                    f"Tarefa antiga '{nome}' removida do Agendador."
+                    if nome in legado.tarefas
+                    else f"Não havia tarefa '{nome}' no Agendador."
+                )
         if args.remover:
             atalho = automacao.remover_inicializacao()
             feitos.append(
@@ -959,19 +790,6 @@ def _comando_windows(args: argparse.Namespace) -> int:
                         f"Vigia reagendado como '{automacao.NOME_DA_TAREFA_DO_VIGIA}': "
                         f"agora vigia {', '.join(vigiadas)}."
                     )
-            if args.limpeza:
-                removida = automacao.desagendar_limpeza()
-                feitos.append(
-                    f"Tarefa '{automacao.NOME_DA_TAREFA}' removida do Agendador."
-                    if removida
-                    else "Não havia tarefa de limpeza agendada."
-                )
-                if removida and not args.daily:
-                    feitos.append(
-                        f"Se '{automacao.NOME_DA_TAREFA_DO_VIGIA}' estiver agendado, ele "
-                        f"continua vigiando a limpeza até você rodar 'whis windows --daily' "
-                        f"de novo."
-                    )
         elif not so_remover_legado:
             atalho = automacao.instalar_inicializacao()
             feitos.append(f"Atalho de inicialização criado em {atalho}")
@@ -986,13 +804,6 @@ def _comando_windows(args: argparse.Namespace) -> int:
                 feitos.append(
                     "O agente da DM do Slack passa a subir sozinho no próximo logon, "
                     "ao lado da bandeja."
-                )
-            if args.limpeza:
-                automacao.agendar_limpeza(hora=args.hora, config=origem)
-                feitos.append(
-                    f"Limpeza diária agendada às {args.hora} como "
-                    f"'{automacao.NOME_DA_TAREFA}' — apaga só o áudio já virado "
-                    f"nota e vencido pelo prazo de retenção."
                 )
             if args.news:
                 automacao.agendar_noticias(configuracao)
@@ -1027,7 +838,7 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"daily e todo dia às {automacao.HORA_DA_RONDA_DO_VIGIA} — avisa por "
                     f"toast se {' ou '.join(vigiadas)} falhou ou a bandeja não está no ar."
                 )
-            if args.limpeza or args.daily or args.news:
+            if args.daily or args.news:
                 feitos.append(
                     "As tarefas rodam mesmo que o PC estivesse desligado na hora: assim "
                     "que ele ligar, e acordando a máquina se estiver em suspensão."
@@ -1042,20 +853,6 @@ def _comando_windows(args: argparse.Namespace) -> int:
 
 
 # -- Bastidores da CLI ------------------------------------------------------
-
-
-def _dias_nao_negativos(texto: str) -> int:
-    """`--dias` só aceita prazo não negativo — apagar áudio não se desfaz."""
-    try:
-        dias = int(texto)
-    except ValueError:
-        raise argparse.ArgumentTypeError(f"{texto!r} não é um número de dias.") from None
-    if dias < 0:
-        raise argparse.ArgumentTypeError(
-            f"prazo negativo ({dias}) apagaria tudo que já virou nota; "
-            f"use 0 para apagar assim que virar nota."
-        )
-    return dias
 
 
 def _data_iso(texto: str) -> date:
@@ -1074,16 +871,6 @@ def _configuracao(args: argparse.Namespace) -> Configuracao:
     return configuracao
 
 
-def _relatar(resultado) -> None:
-    if resultado.reaproveitado:
-        print(f"Já processada. Nota: {resultado.nota}")
-        return
-    if resultado.transcricao_reaproveitada:
-        print("Transcrição reaproveitada da pasta de gravação — o STT não foi chamado.")
-    print(f"Nota:        {resultado.nota}")
-    print(f"Transcrição: {resultado.transcricao}")
-
-
 def _acrescentar_config(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--config",
@@ -1092,76 +879,13 @@ def _acrescentar_config(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _acrescentar_portas(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument(
-        "--fakes",
-        action="store_true",
-        help="usa STT e resumo fake em vez da Deepgram e do Claude (sem rede, sem crédito)",
-    )
-    parser.add_argument(
-        "--refazer-transcricao",
-        action="store_true",
-        help="ignora a transcrição guardada na pasta e chama o STT de novo (gasta crédito)",
-    )
-
-
 def construir_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="whis",
-        description="Coletor de reunião sob demanda: da gravação à nota no vault.",
+        description="Agente pessoal local: diário, daily, jornal e busca no vault Obsidian.",
     )
     parser.add_argument("-v", "--verboso", action="store_true", help="logs detalhados")
     subcomandos = parser.add_subparsers(dest="comando", required=True)
-
-    processar_cmd = subcomandos.add_parser(
-        "processar",
-        help="processa uma pasta de gravação e escreve nota + transcrição no vault",
-    )
-    processar_cmd.add_argument("pasta", help="caminho da pasta de gravação")
-    _acrescentar_config(processar_cmd)
-    _acrescentar_portas(processar_cmd)
-    processar_cmd.add_argument(
-        "--reprocessar",
-        action="store_true",
-        help="refaz o processamento mesmo que a gravação já esteja transcrita",
-    )
-    processar_cmd.set_defaults(funcao=_comando_processar)
-
-    reprocessar_cmd = subcomandos.add_parser(
-        "reprocessar",
-        help="completa gravações retidas (as que falharam ou nunca foram processadas)",
-    )
-    reprocessar_cmd.add_argument(
-        "pastas",
-        nargs="*",
-        help="pastas de gravação; sem argumento, todas as retidas da configuração",
-    )
-    _acrescentar_config(reprocessar_cmd)
-    _acrescentar_portas(reprocessar_cmd)
-    reprocessar_cmd.add_argument(
-        "--forcar",
-        action="store_true",
-        help="reescreve a nota mesmo de gravações já concluídas",
-    )
-    reprocessar_cmd.set_defaults(funcao=_comando_reprocessar)
-
-    limpar_cmd = subcomandos.add_parser(
-        "limpar",
-        help="apaga o áudio bruto já virado nota e vencido pelo prazo de retenção",
-    )
-    _acrescentar_config(limpar_cmd)
-    limpar_cmd.add_argument(
-        "--simular",
-        action="store_true",
-        help="só mostra o que seria apagado, sem apagar nada",
-    )
-    limpar_cmd.add_argument(
-        "--dias",
-        type=_dias_nao_negativos,
-        default=None,
-        help="prazo de retenção em dias (padrão: retencao_dias da configuração)",
-    )
-    limpar_cmd.set_defaults(funcao=_comando_limpar)
 
     diario_cmd = subcomandos.add_parser(
         "diario",
@@ -1287,13 +1011,13 @@ def construir_parser() -> argparse.ArgumentParser:
 
     bandeja_cmd = subcomandos.add_parser(
         "bandeja",
-        help="ícone na bandeja do Windows: um clique grava, outro vira nota no vault",
+        help="ícone na bandeja do Windows com a palheta no atalho global",
     )
     _acrescentar_config(bandeja_cmd)
     bandeja_cmd.add_argument(
         "--fakes",
         action="store_true",
-        help="ensaia o gesto inteiro com STT e resumo fake (sem rede, sem crédito)",
+        help="os comandos da palheta rodam com as portas fake (sem rede, sem gastar a assinatura)",
     )
     bandeja_cmd.set_defaults(funcao=_comando_bandeja)
 
@@ -1308,14 +1032,13 @@ def construir_parser() -> argparse.ArgumentParser:
 
     windows_cmd = subcomandos.add_parser(
         "windows",
-        help="faz a bandeja subir com o logon (e, opcionalmente, agenda a daily e a limpeza)",
+        help="faz a bandeja subir com o logon (e, opcionalmente, agenda a daily e o jornal)",
         description=(
             "Amarra o Whis ao Windows. Sozinho, cria o atalho de logon da bandeja. "
             "--daily agenda a daily nos dias e horas de [daily].horarios e o vigia que "
             "avisa por toast quando uma peça do Whis não subiu; --news agenda o jornal "
-            "todo dia em [noticias].horario; --limpeza agenda a limpeza do áudio. As "
-            "tarefas rodam mesmo que o PC estivesse desligado na hora. --remover com os "
-            "mesmos flags desfaz."
+            "todo dia em [noticias].horario. As tarefas rodam mesmo que o PC estivesse "
+            "desligado na hora. --remover com os mesmos flags desfaz."
         ),
     )
     _acrescentar_config(windows_cmd)
@@ -1341,24 +1064,14 @@ def construir_parser() -> argparse.ArgumentParser:
         ),
     )
     windows_cmd.add_argument(
-        "--limpeza",
-        action="store_true",
-        help="também agenda a limpeza diária do áudio bruto vencido",
-    )
-    windows_cmd.add_argument(
-        "--hora",
-        default="12:00",
-        help="hora da limpeza diária (padrão: 12:00, com o PC ligado)",
-    )
-    windows_cmd.add_argument(
         "--remover", action="store_true", help="desfaz o que foi instalado"
     )
     windows_cmd.add_argument(
         "--remover-legado",
         action="store_true",
         help=(
-            "apaga o atalho 'Second Brain.lnk' e a tarefa 'SecondBrain-Limpeza' do nome "
-            "antigo do projeto; sozinho, não instala nada"
+            "apaga o atalho 'Second Brain.lnk' e as tarefas 'SecondBrain-Limpeza' e "
+            "'Whis-Limpeza', que chamam o que não existe mais; sozinho, não instala nada"
         ),
     )
     windows_cmd.set_defaults(funcao=_comando_windows)
@@ -1380,9 +1093,6 @@ def main(argv: list[str] | None = None) -> int:
         return int(args.funcao(args))
     except (
         ConfiguracaoInvalida,
-        GravacaoInvalida,
-        ErroDeSTT,
-        ErroDeResumo,
         ErroDeBusca,
         PerguntaVazia,
         TodasAsFontesFalharam,

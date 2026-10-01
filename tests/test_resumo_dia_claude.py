@@ -136,7 +136,7 @@ def test_reuniao_com_nome_fora_do_padrao_volta_como_veio():
 def test_dia_sem_reuniao_diz_que_nao_houve():
     pergunta = montar_pergunta(EVENTOS, ())
 
-    assert "nenhuma reunião gravada" in pergunta
+    assert "nenhuma reunião no vault" in pergunta
 
 
 def test_dia_so_com_reuniao_diz_que_nao_houve_evento():

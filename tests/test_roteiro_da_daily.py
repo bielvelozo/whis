@@ -134,7 +134,7 @@ def test_pergunta_apresenta_a_reuniao_de_forma_legivel():
 
 def test_periodo_sem_evento_ou_sem_reuniao_diz_que_nao_houve():
     assert "nenhum evento das fontes passivas" in montar_pergunta_da_daily((), REUNIOES)
-    assert "nenhuma reunião gravada" in montar_pergunta_da_daily(EVENTOS, ())
+    assert "nenhuma reunião no vault" in montar_pergunta_da_daily(EVENTOS, ())
 
 
 def test_pergunta_leva_a_nota_viva_com_um_id_por_item_do_agente():

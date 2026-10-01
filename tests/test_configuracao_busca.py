@@ -18,7 +18,7 @@ from whis.configuracao import ConfiguracaoInvalida, carregar
 
 def escrever(tmp_path: Path, corpo: str) -> Path:
     arquivo = tmp_path / "config.toml"
-    arquivo.write_text(f'vault = "V"\ngravacoes = "G"\n{corpo}', encoding="utf-8")
+    arquivo.write_text(f'vault = "V"\n{corpo}', encoding="utf-8")
     return arquivo
 
 
@@ -83,7 +83,7 @@ def test_maximo_de_notas_invalido_e_configuracao_invalida(tmp_path: Path, valor:
 
 
 def test_o_modelo_de_configuracao_traz_as_duas_chaves_com_o_padrao():
-    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V", gravacoes="G"))
+    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V"))
 
     assert dados["privacidade"]["pastas_privadas"] == []
     assert dados["busca"]["maximo_de_notas"] == 40

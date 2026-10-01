@@ -47,7 +47,7 @@ class ExecutorEspiao:
 
 def escrever(tmp_path: Path, corpo: str) -> Path:
     arquivo = tmp_path / "config.toml"
-    arquivo.write_text(f'vault = "V"\ngravacoes = "G"\n[daily]\n{corpo}\n', encoding="utf-8")
+    arquivo.write_text(f'vault = "V"\n[daily]\n{corpo}\n', encoding="utf-8")
     return arquivo
 
 
@@ -57,7 +57,7 @@ def parametro(comando: list[str], nome: str) -> str:
 
 def configuracao_com(horarios: tuple[tuple[str, str], ...], origem: Path | None = None) -> Configuracao:
     return Configuracao(
-        vault=Path("V"), gravacoes=Path("G"), daily_horarios=horarios, origem=origem
+        vault=Path("V"), daily_horarios=horarios, origem=origem
     )
 
 
@@ -107,7 +107,7 @@ def test_horarios_que_nao_e_tabela_e_configuracao_invalida(tmp_path: Path):
 
 
 def test_o_modelo_de_configuracao_traz_a_tabela_do_usuario():
-    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V", gravacoes="G"))
+    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V"))
 
     assert dados["daily"]["horarios"] == {
         "segunda": "13:55",
@@ -202,23 +202,6 @@ def test_daily_agendada_consulta_o_modulo():
     assert "Get-ScheduledTask -TaskName 'Whis-Daily'" in parametro(espiao.comandos[0], "-Command")
 
 
-def test_a_limpeza_migrou_para_o_mesmo_script(tmp_path: Path):
-    espiao = ExecutorEspiao()
-
-    automacao.agendar_limpeza(hora="12:00", executar=espiao, config=tmp_path / "c.toml")
-    automacao.desagendar_limpeza(executar=espiao)
-    automacao.limpeza_agendada(executar=espiao)
-
-    assert "schtasks" not in " ".join(" ".join(c) for c in espiao.comandos)
-    assert parametro(espiao.comandos[0], "-Gatilhos") == "Daily=12:00"
-    assert "Unregister-ScheduledTask -TaskName 'Whis-Limpeza'" in parametro(
-        espiao.comandos[1], "-Command"
-    )
-    assert "Get-ScheduledTask -TaskName 'Whis-Limpeza'" in parametro(
-        espiao.comandos[2], "-Command"
-    )
-
-
 # -- o vigia ----------------------------------------------------------------
 
 
@@ -249,21 +232,16 @@ def test_o_vigia_e_um_powershell_autossuficiente_sem_python():
     assert "python" not in argumentos.lower()
 
 
-def test_o_vigia_so_vigia_a_limpeza_se_ela_estiver_agendada():
+def test_o_vigia_nunca_vigia_a_limpeza_que_saiu():
+    """Mesmo com `Whis-Limpeza` ainda no Agendador, o vigia não a cobra."""
     configuracao = configuracao_com((("segunda", "13:55"),))
 
-    sem_limpeza = ExecutorEspiao(**{"Get-ScheduledTask": 1})
-    assert automacao.agendar_vigia(configuracao, executar=sem_limpeza) == ["Whis-Daily"]
-    assert parametro(sem_limpeza.registros()[0], "-Argumentos").endswith("-Tarefas Whis-Daily")
-
-    com_limpeza = ExecutorEspiao(**{"'Whis-Noticias'": 1})
-    assert automacao.agendar_vigia(configuracao, executar=com_limpeza) == [
+    tudo_agendado = ExecutorEspiao()
+    assert automacao.agendar_vigia(configuracao, executar=tudo_agendado) == [
         "Whis-Daily",
-        "Whis-Limpeza",
+        "Whis-Noticias",
     ]
-    assert parametro(com_limpeza.registros()[0], "-Argumentos").endswith(
-        "-Tarefas Whis-Daily,Whis-Limpeza"
-    )
+    assert "Whis-Limpeza" not in " ".join(" ".join(c) for c in tudo_agendado.comandos)
 
 
 def test_perto_da_meia_noite_o_vigia_fica_no_mesmo_dia_da_semana():
@@ -418,20 +396,12 @@ def espiar_automacao(monkeypatch):
         lambda configuracao: chamadas.append(("vigia", configuracao.daily_horarios))
         or ["Whis-Daily"],
     )
-    monkeypatch.setattr(
-        automacao,
-        "agendar_limpeza",
-        lambda hora, config: chamadas.append(("limpeza", (hora, config))),
-    )
     monkeypatch.setattr(automacao, "remover_inicializacao", lambda: None)
     monkeypatch.setattr(
         automacao, "desagendar_daily", lambda: chamadas.append(("-daily", None)) or True
     )
     monkeypatch.setattr(
         automacao, "desagendar_vigia", lambda: chamadas.append(("-vigia", None)) or True
-    )
-    monkeypatch.setattr(
-        automacao, "desagendar_limpeza", lambda: chamadas.append(("-limpeza", None)) or True
     )
     return chamadas
 
@@ -466,27 +436,6 @@ def test_windows_daily_com_tabela_vazia_recusa_sem_instalar_nada(
     assert "[daily].horarios" in caplog.text and "vazia" in caplog.text
 
 
-def test_windows_daily_e_limpeza_agendam_a_limpeza_antes_do_vigia(
-    tmp_path: Path, espiar_automacao
-):
-    arquivo = escrever(tmp_path, HORARIOS_DO_USUARIO)
-
-    main(["windows", "--daily", "--limpeza", "--config", str(arquivo)])
-
-    assert [nome for nome, _ in espiar_automacao] == ["limpeza", "daily", "vigia"]
-    assert espiar_automacao[0][1] == ("12:00", arquivo)
-
-
-def test_windows_limpeza_sem_config_aponta_o_caminho_padrao(
-    tmp_path: Path, espiar_automacao, monkeypatch
-):
-    monkeypatch.setenv("APPDATA", str(tmp_path))
-
-    main(["windows", "--limpeza"])
-
-    assert espiar_automacao == [("limpeza", ("12:00", tmp_path / "whis" / "config.toml"))]
-
-
 def test_windows_remover_daily_desagenda_a_daily_e_o_vigia(espiar_automacao, capsys):
     codigo = main(["windows", "--remover", "--daily"])
 
@@ -494,14 +443,6 @@ def test_windows_remover_daily_desagenda_a_daily_e_o_vigia(espiar_automacao, cap
     assert codigo == 0
     assert [nome for nome, _ in espiar_automacao] == ["-daily", "-vigia"]
     assert "'Whis-Daily' removida" in saida and "'Whis-Vigia' removida" in saida
-
-
-def test_windows_remover_so_a_limpeza_avisa_que_o_vigia_continua(espiar_automacao, capsys):
-    main(["windows", "--remover", "--limpeza"])
-
-    saida = capsys.readouterr().out
-    assert [nome for nome, _ in espiar_automacao] == ["-limpeza"]
-    assert "continua vigiando a limpeza" in saida
 
 
 def test_windows_sem_daily_nao_agenda_a_daily(espiar_automacao):

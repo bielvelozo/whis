@@ -84,7 +84,7 @@ def test_o_start_do_cmd_nasce_sem_console():
 
 def test_o_cli_do_claude_recebe_o_stderr_em_pipe_e_nao_herda_o_do_pai():
     """Sob pythonw o pai não tem stderr; herdá-lo mata o CLI (Node) com EPIPE."""
-    from whis import busca_claude, resumo_claude
+    from whis import busca_claude, claude_cli
 
     opcoes = busca_claude.montar_opcoes(
         busca_claude.FerramentasDoVault.__new__(busca_claude.FerramentasDoVault),
@@ -93,9 +93,9 @@ def test_o_cli_do_claude_recebe_o_stderr_em_pipe_e_nao_herda_o_do_pai():
         maximo_de_turnos=1,
     ) if False else None  # montar_opcoes precisa de um vault de verdade; o callback é o que importa
 
-    assert resumo_claude.registrar_stderr_do_cli("linha do cli\n") is None
+    assert claude_cli.registrar_stderr_do_cli("linha do cli\n") is None
     import inspect
 
-    for modulo in ("busca_claude", "resumo_claude", "resumo_dia_claude"):
+    for modulo in ("busca_claude", "jornal_claude", "resumo_dia_claude"):
         fonte = inspect.getsource(__import__(f"whis.{modulo}", fromlist=[modulo]))
         assert "stderr=registrar_stderr_do_cli" in fonte, modulo

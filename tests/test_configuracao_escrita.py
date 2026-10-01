@@ -30,19 +30,10 @@ from whis.configuracao import (
 
 COMPLETO = """\
 vault = "C:/Users/gabí/whis-vault"
-gravacoes = "C:/Users/gabí/whis-gravacoes"
-retencao_dias = 12
-
-[deepgram]
-api_key = "dg-#segredo\\"com aspas\\" e \\\\ barra"
 
 [claude]
 modelo = "claude-opus-5"
 cli = "C:/Users/gabí/.local/bin/claude.exe"
-
-[audio]
-dispositivo_microfone = "Microfone (Realtek)"
-dispositivo_sistema = "Alto-falantes (Realtek)"
 
 [diario]
 inicio_do_dia = "05:00"
@@ -75,7 +66,7 @@ excluir = ["node_modules"]
 autores = ["gabi@x.com"]
 
 [linear]
-api_key = "lin_api_xxx"
+api_key = "lin_api_#segredo\\"com aspas\\" e \\\\ barra"
 
 [slack]
 user_token = "xoxp-1"
@@ -109,7 +100,7 @@ def test_ida_e_volta_devolve_a_mesma_configuracao(completo, tmp_path: Path):
     escrever(completo, destino)
 
     dados = tomllib.loads(destino.read_text(encoding="utf-8"))
-    assert dados["deepgram"]["api_key"] == 'dg-#segredo"com aspas" e \\ barra'
+    assert dados["linear"]["api_key"] == 'lin_api_#segredo"com aspas" e \\ barra'
     assert dados["daily"]["contexto_do_time"] == 'Ele disse "ok".\nSegunda linha com \\ e acento: ação'
     assert dados["privacidade"]["excluir"] == ["senha", 'a"b', "c\\d"]
     assert dados["daily"]["horarios"] == {"segunda": "13:55", "quarta": "10:25", "domingo": "09:00"}
@@ -136,7 +127,7 @@ def test_os_comentarios_do_modelo_sobrevivem_e_os_do_usuario_nao(completo, tmp_p
     escrever(completo, destino)
 
     texto = destino.read_text(encoding="utf-8")
-    assert "# crédito de US$ 200; sem ela o STT real não roda" in texto
+    assert "# Personal API Key read-only; vazio = fonte desligada" in texto
     assert "# o atalho global que abre a palheta" in texto
     assert "um lembrete meu" not in texto
     assert texto.startswith("# Configuração do Whis.")
@@ -149,7 +140,7 @@ def test_caminhos_saem_com_barra_normal_e_git_desligado_sai_vazio(completo, tmp_
 
     assert 'vault = "C:/Users/x/vault"' in texto
     assert 'raiz = ""' in texto
-    assert "\\" not in texto.split("[deepgram]")[0]
+    assert "\\" not in texto.split("[claude]")[0]
     assert carregar_de(texto, tmp_path).git_raiz is None
 
 
@@ -160,11 +151,11 @@ def carregar_de(texto: str, tmp_path: Path):
 
 
 def test_toda_chave_do_modelo_e_escrita_e_nenhuma_a_mais(completo):
-    do_modelo = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V", gravacoes="G"))
+    do_modelo = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V"))
     gerado = tomllib.loads(gerar_toml(valores_de(completo)))
 
     assert _achatar(gerado).keys() == _achatar(do_modelo).keys()
-    assert len(CHAVES) == len(_achatar(do_modelo)) == 31
+    assert len(CHAVES) == len(_achatar(do_modelo)) == 26
 
 
 def _achatar(dados: dict) -> dict[str, object]:
@@ -185,11 +176,11 @@ def test_o_backup_nasce_com_o_nome_e_o_conteudo_de_antes(completo, tmp_path: Pat
     destino = tmp_path / "config.toml"
     destino.write_text(COMPLETO, encoding="utf-8")
 
-    escrever(replace(completo, retencao_dias=3), destino, agora=datetime(2026, 9, 12, 14, 3, 7))
+    escrever(replace(completo, noticias_horario="06:00"), destino, agora=datetime(2026, 9, 12, 14, 3, 7))
 
     backup = tmp_path / "config.toml.bak-20260912-140307"
     assert backup.read_text(encoding="utf-8") == COMPLETO
-    assert carregar(destino).retencao_dias == 3
+    assert carregar(destino).noticias_horario == "06:00"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["config.toml", "config.toml.bak-20260912-140307"]
 
 
@@ -205,8 +196,8 @@ def test_configuracao_que_nao_carrega_nao_substitui_o_arquivo(completo, tmp_path
     destino = tmp_path / "config.toml"
     destino.write_text(COMPLETO, encoding="utf-8")
 
-    with pytest.raises(ConfiguracaoInvalida, match="retencao_dias"):
-        escrever(replace(completo, retencao_dias=-1), destino)
+    with pytest.raises(ConfiguracaoInvalida, match="profundidade"):
+        escrever(replace(completo, git_profundidade=0), destino)
 
     assert destino.read_text(encoding="utf-8") == COMPLETO
     assert [p.name for p in tmp_path.iterdir()] == ["config.toml"]
@@ -227,5 +218,5 @@ def test_escrever_nao_leva_segredo_nenhum_ao_log(completo, tmp_path: Path, caplo
     with caplog.at_level("DEBUG", logger="whis"):
         escrever(completo, tmp_path / "config.toml")
 
-    for segredo in ("dg-#segredo", "lin_api_xxx", "xoxp-1", "xoxb-2", "xapp-3"):
+    for segredo in ("lin_api_#segredo", "xoxp-1", "xoxb-2", "xapp-3"):
         assert segredo not in caplog.text

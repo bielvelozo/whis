@@ -47,7 +47,7 @@ from .busca import Citacao, ErroDeBusca, Resposta
 from .conversa import AGENTE, Turno
 from .ferramentas import Ferramentas, ForaDaFronteira, LimiteDeNotas
 from .fontes_ao_vivo import FontesAoVivo
-from .resumo_claude import VARIAVEIS_DE_API_PAGA, registrar_stderr_do_cli
+from .claude_cli import VARIAVEIS_DE_API_PAGA, registrar_stderr_do_cli
 
 _log = logging.getLogger("whis.busca")
 
@@ -92,7 +92,7 @@ cruas de tudo que aconteceu desde a daily anterior — commits do git, movimenta
 Linear, mensagens do Slack, com hora. É o registro mais completo do que aconteceu.
 - `diario/AAAA-MM-DD.md`: a narrativa de um dia civil, com destaques, pendências e as \
 mesmas listas cruas.
-- `reunioes/AAAA-MM-DD-HHMM-titulo.md`: decisões, ações e tópicos de uma reunião gravada.
+- `reunioes/AAAA-MM-DD-HHMM-titulo.md`: a nota de uma reunião.
 - `transcricoes/AAAA-MM-DD-HHMM-titulo.md`: a transcrição integral da mesma reunião. \
 Abra quando a nota da reunião não tiver o detalhe.
 - `notas/`: o que ele escreve à mão.

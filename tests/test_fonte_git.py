@@ -465,7 +465,6 @@ def test_raiz_inexistente_vira_erro_de_fonte_com_o_que_fazer(tmp_path: Path, jan
 def configuracao_com_git(raiz: Path, tmp_path: Path, **extras) -> Configuracao:
     return Configuracao(
         vault=tmp_path / "vault",
-        gravacoes=tmp_path / "gravacoes",
         git_raiz=raiz,
         origem=tmp_path / "config.toml",
         **extras,

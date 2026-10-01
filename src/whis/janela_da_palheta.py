@@ -366,8 +366,8 @@ class JanelaDaPalheta:
         self._sair_da_lista()
         self._campo.delete("1.0", "end")
         self._selecionada = 0
-        # Um rótulo pode ter mudado com a janela escondida ("Start recording" →
-        # "Stop recording"): a lista é sempre redesenhada ao abrir.
+        # A lista pode ter mudado com a janela escondida (o painel liga e
+        # desliga ações): é sempre redesenhada ao abrir.
         self._visiveis = ()
         self._atualizar()
         self._pintar_o_fundo()

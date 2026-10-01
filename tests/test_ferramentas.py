@@ -41,12 +41,12 @@ def vault(caminho_do_vault: Path) -> Path:
 
 
 @pytest.fixture
-def ferramentas_de(tmp_path: Path, vault: Path, caminho_das_gravacoes: Path):
+def ferramentas_de(tmp_path: Path, vault: Path):
     """Fábrica: `ferramentas_de(pastas_privadas=(...), maximo_de_notas=N)`."""
 
     def montar(**chaves) -> Ferramentas:
         return Ferramentas(
-            configuracao_da_busca(tmp_path, vault, caminho_das_gravacoes, **chaves)
+            configuracao_da_busca(tmp_path, vault, **chaves)
         )
 
     return montar

@@ -248,7 +248,7 @@ def test_prompts_tem_lista_e_stash_nao(palheta_com):
 
     assert por_nome["prompts"].lista is not None
     assert por_nome["stash"].lista is None
-    assert [comando.nome for comando in palheta.acoes()][4:6] == ["prompts", "stash"]
+    assert [comando.nome for comando in palheta.acoes()][3:5] == ["prompts", "stash"]
 
 
 # -- a lista ---------------------------------------------------------------------
@@ -339,7 +339,7 @@ def test_vazia_diz_como_comecar_ou_que_nada_casa(lista, configuracao_do_diario, 
     assert "No prompt matches" in lista.vazia
 
     vazia = ListaDePrompts(
-        configuracao_do_diario().__class__(vault=tmp_path / "vazio", gravacoes=tmp_path),
+        configuracao_do_diario().__class__(vault=tmp_path / "vazio"),
         area=AreaFake(),
         lancar=lambda _uri: None,
     )

@@ -1,8 +1,7 @@
 """Adaptador real das duas perguntas sobre trabalho: o Claude da conta do usuário.
 
-Irmão de `resumo_claude`, com outra entrada: no lugar da transcrição de uma
-reunião chegam os eventos das fontes passivas e as reuniões que já viraram nota
-no vault. A postura é a mesma — Claude Agent SDK, credenciais do `claude` CLI
+A entrada são os eventos das fontes passivas e as reuniões que já estão como
+nota no vault. Claude Agent SDK, credenciais do `claude` CLI
 (a conta Pro/Max do usuário por OAuth, como manda o ADR 0001), um turno só, sem
 ferramenta nenhuma. Se uma chave de API paga estiver no ambiente, o adaptador
 **recusa a chamada** em vez de gastar dinheiro do usuário sem ele pedir.
@@ -45,7 +44,7 @@ from claude_agent_sdk import (
 from .fontes import Evento
 from .nota_viva import SECAO_FAZENDO, SECAO_FIZ, SECOES, NotaViva
 from .portas import Daily, ErroDeDaily, ErroDeResumoDoDia, ItemNovo, ResumoDoDia
-from .resumo_claude import VARIAVEIS_DE_API_PAGA, registrar_stderr_do_cli
+from .claude_cli import VARIAVEIS_DE_API_PAGA, registrar_stderr_do_cli
 
 _log = logging.getLogger("whis.resumo_do_dia")
 
@@ -394,7 +393,7 @@ def montar_pergunta(eventos: Sequence[Evento], reunioes: Sequence[str]) -> str:
     if reunioes:
         linhas.extend(f"- {_reuniao_legivel(reuniao)}" for reuniao in reunioes)
     else:
-        linhas.append("(nenhuma reunião gravada neste dia)")
+        linhas.append("(nenhuma reunião no vault neste dia)")
 
     return "\n".join(linhas) + "\n"
 
@@ -441,7 +440,7 @@ def montar_pergunta_da_daily(
     if reunioes:
         linhas.extend(f"- {_reuniao_legivel(reuniao)}" for reuniao in reunioes)
     else:
-        linhas.append("(nenhuma reunião gravada neste período)")
+        linhas.append("(nenhuma reunião no vault neste período)")
 
     if contexto_do_time:
         linhas.extend(["", "Como este time funciona:", "", contexto_do_time])

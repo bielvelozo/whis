@@ -119,8 +119,8 @@ Com a bandeja no ar, aperte **Ctrl+Space** (se o seu `config.toml` ainda diz
 preto, de cantos arredondados e borda fina, aparece no alto da tela, no
 desenho do Raycast, com o que está atrás dele aparecendo desfocado por
 trás: um campo grande com "Type a command…", embaixo a lista de
-ações — **Open note**, **Generate daily**, **Start recording** primeiro, depois
-Ask, Note, Doubt, To-do, Settings — cada uma com o nome do comando em roxo à direita,
+ações — **Open note** e **Generate daily** primeiro, depois Generate news,
+Search prompts, Stash prompt, Ask, Note, Doubt, To-do, Settings — cada uma com o nome do comando em roxo à direita,
 e um rodapé com **Run ↵** e **Complete Tab**. ↑/↓ escolhem uma linha, Enter
 executa a escolhida (com o campo vazio), clicar também executa; digitar filtra
 a lista pelo comando **e** pelo rótulo
@@ -142,11 +142,10 @@ Teste, um por vez:
 | `open` (ou clique em **Open note**) | o Obsidian abre `daily/atual.md`. Teste **com o Obsidian fechado** também: o Windows deve lançá-lo e cair na nota |
 | `ask qual foi a decisão sobre retenção?` | a janela some; ~60 s depois um toast com o começo da resposta e o botão **Abrir no Obsidian**, que abre a nota nova em `respostas/`. Custa uma pergunta na sua conta (≈ US$ 0,56 equivalente) |
 | `daily` (ou **Generate daily**) | ~40 s depois, toast "A daily está pronta" com o botão; `daily/atual.md` atualizada |
-| **Start recording** | o ícone da bandeja fica vermelho; abra a palheta de novo e a linha diz **Stop recording** — clique para parar e processar |
 | `settings` | o painel de configuração abre |
-| Enter com o campo vazio e nada selecionado, `vagas` | a janela só some; `vagas` dá o toast "Não entendi" com os oito comandos |
+| Enter com o campo vazio e nada selecionado, `vagas` | a janela só some; `vagas` dá o toast "Não entendi" com a lista dos comandos |
 
-O item **Abrir a palheta** no menu da bandeja faz o mesmo que o atalho. Se o
+O clique esquerdo no ícone da bandeja e o item **Abrir a palheta** do menu fazem o mesmo que o atalho. Se o
 atalho não responder, veja no `bandeja.log` se o registro do hotkey foi
 recusado (outro programa já usa a combinação): troque `[palheta].atalho` no
 painel e reinicie a bandeja.

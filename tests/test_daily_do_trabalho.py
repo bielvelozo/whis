@@ -39,14 +39,13 @@ def agora() -> datetime:
 
 @pytest.fixture
 def configuracao_da_daily(
-    tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path, monkeypatch
+    tmp_path: Path, caminho_do_vault: Path, monkeypatch
 ):
     """Fábrica da configuração desta camada: referências e contexto do time."""
 
     def montar(*, pessoais: tuple[str, ...] = (), contexto: str = ""):
         linhas = [
             f'vault = "{caminho_do_vault.as_posix()}"',
-            f'gravacoes = "{caminho_das_gravacoes.as_posix()}"',
             "",
             "[daily]",
             "referencias_pessoais = ["

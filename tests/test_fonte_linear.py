@@ -505,7 +505,6 @@ def test_a_chave_nunca_aparece_na_mensagem_de_erro(resposta: httpx.Response):
 def configuracao_com_linear(chave: str, tmp_path: Path) -> Configuracao:
     return Configuracao(
         vault=tmp_path / "vault",
-        gravacoes=tmp_path / "gravacoes",
         linear_api_key=chave,
         origem=tmp_path / "config.toml",
     )

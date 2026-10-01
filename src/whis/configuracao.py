@@ -2,12 +2,13 @@ r"""Configuração local em TOML.
 
 Lida de `%APPDATA%\whis\config.toml`, com override pela variável de
 ambiente `WHIS_CONFIG` — é assim que os testes apontam para um
-diretório temporário. Nenhum segredo mora no repositório: as chaves da
-Deepgram, do Linear e do Slack vivem só neste arquivo, que está no
-`.gitignore`.
+diretório temporário. Nenhum segredo mora no repositório: as chaves do
+Linear e do Slack vivem só neste arquivo, que está no `.gitignore`.
 
 Toda chave nova nasce com padrão: uma configuração escrita antes das fontes
-passivas continua carregando sem edição nenhuma.
+passivas continua carregando sem edição nenhuma. Chave que o Whis não lê mais
+(`gravacoes`, `retencao_dias`, `[deepgram]`, `[audio]`, da gravação que saiu)
+é ignorada, e some do arquivo quando o painel o reescreve.
 """
 
 from __future__ import annotations
@@ -40,27 +41,18 @@ DIAS_DA_SEMANA = ("segunda", "terca", "quarta", "quinta", "sexta", "sabado", "do
 
 #: O `config.toml` que `whis init` escreve e que o painel regenera. Cada chave
 #: carrega o comentário que explica o que preencher: é a única documentação que
-#: o usuário lê na hora em que precisa. `{vault}` e `{gravacoes}` são os dois
-#: campos que `init` preenche com o perfil do usuário; as chaves da tabela de
-#: horários vão com chaves dobradas por causa do `format`.
+#: o usuário lê na hora em que precisa. `{vault}` é o campo que `init`
+#: preenche com o perfil do usuário; as chaves da tabela de horários vão com
+#: chaves dobradas por causa do `format`.
 MODELO_DE_CONFIGURACAO = """\
 # Configuração do Whis. Use barras normais (/) nos caminhos:
 # no TOML a barra invertida é escape e quebra o arquivo.
 
 vault = "{vault}"            # a pasta do vault Obsidian: a memória durável do Whis
-gravacoes = "{gravacoes}"    # onde o áudio bruto das reuniões fica até virar nota
-retencao_dias = 7            # dias que o áudio bruto sobrevive depois de virar nota
-
-[deepgram]
-api_key = ""                 # crédito de US$ 200; sem ela o STT real não roda
 
 [claude]
 modelo = ""                  # vazio = o modelo padrão da sua conta
 cli = ""                     # caminho do claude.exe; vazio = acha sozinho
-
-[audio]
-dispositivo_microfone = ""   # vazio = microfone padrão do Windows
-dispositivo_sistema = ""     # vazio = loopback da saída padrão do Windows
 
 [diario]
 inicio_do_dia = "04:00"      # o diário de um dia vai desta hora à mesma hora do dia seguinte
@@ -142,13 +134,8 @@ class Chave:
 #: confere que os dois batem.
 CHAVES: tuple[Chave, ...] = (
     Chave("", "vault", "vault", Tipo.CAMINHO),
-    Chave("", "gravacoes", "gravacoes", Tipo.CAMINHO),
-    Chave("", "retencao_dias", "retencao_dias", Tipo.INTEIRO),
-    Chave("deepgram", "api_key", "deepgram_api_key", Tipo.SEGREDO),
     Chave("claude", "modelo", "claude_modelo", Tipo.TEXTO),
     Chave("claude", "cli", "claude_cli", Tipo.TEXTO),
-    Chave("audio", "dispositivo_microfone", "dispositivo_microfone", Tipo.TEXTO),
-    Chave("audio", "dispositivo_sistema", "dispositivo_sistema", Tipo.TEXTO),
     Chave("diario", "inicio_do_dia", "diario_inicio_do_dia", Tipo.HORA),
     Chave("diario", "hora_da_tarefa", "diario_hora_da_tarefa", Tipo.HORA),
     Chave("daily", "ativa", "daily_ativa", Tipo.BOOLEANO),
@@ -179,11 +166,11 @@ CHAVES: tuple[Chave, ...] = (
 class Configuracao:
     """Os caminhos e opções da máquina do usuário.
 
-    `vault` e `gravacoes` são obrigatórios; o resto tem padrão. Nenhum valor
+    `vault` é obrigatório; o resto tem padrão. Nenhum valor
     é derivado de hardware desta máquina — quem preenche é o usuário.
 
     `claude_modelo` vazio significa "o modelo padrão da conta do usuário": o
-    coletor roda contra a assinatura dele, e o CLI já escolhe um modelo que
+    Whis roda contra a assinatura dele, e o CLI já escolhe um modelo que
     aquela conta pode usar. Preencher é para quem quer fixar um id.
 
     `claude_cli` vazio significa "achar o `claude.exe` sozinho"; preencher é
@@ -224,13 +211,8 @@ class Configuracao:
     """
 
     vault: Path
-    gravacoes: Path
-    retencao_dias: int = 7
-    deepgram_api_key: str = ""
     claude_modelo: str = ""
     claude_cli: str = ""
-    dispositivo_microfone: str = ""
-    dispositivo_sistema: str = ""
     diario_inicio_do_dia: str = INICIO_DO_DIA_PADRAO
     diario_hora_da_tarefa: str = "19:00"
     daily_ativa: bool = True
@@ -284,7 +266,7 @@ def carregar(caminho: Path | str | None = None) -> Configuracao:
     if not arquivo.is_file():
         raise ConfiguracaoInvalida(
             f"Configuração não encontrada em {arquivo}. "
-            f"Crie o arquivo com as chaves 'vault' e 'gravacoes', ou aponte "
+            f"Crie o arquivo com a chave 'vault', ou aponte "
             f"{VARIAVEL_DE_AMBIENTE} para outro caminho."
         )
     return carregar_texto(arquivo.read_text(encoding="utf-8"), origem=arquivo)
@@ -304,17 +286,12 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
             f"Configuração inválida em {arquivo}: {erro}{_dica_de_barra_invertida(texto)}"
         ) from erro
 
-    faltando = [chave for chave in ("vault", "gravacoes") if not dados.get(chave)]
-    if faltando:
+    if not dados.get("vault"):
         raise ConfiguracaoInvalida(
-            f"Configuração em {arquivo} sem as chaves obrigatórias: {', '.join(faltando)}."
+            f"Configuração em {arquivo} sem a chave obrigatória: vault."
         )
 
-    retencao_dias = _dias_de_retencao(dados.get("retencao_dias", 7), arquivo)
-
-    deepgram = dados.get("deepgram") or {}
     claude = dados.get("claude") or {}
-    audio = dados.get("audio") or {}
     diario = dados.get("diario") or {}
     daily = dados.get("daily") or {}
     noticias = dados.get("noticias") or {}
@@ -328,13 +305,8 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
     raiz_do_git = str(git.get("raiz", "")).strip()
     return Configuracao(
         vault=Path(dados["vault"]),
-        gravacoes=Path(dados["gravacoes"]),
-        retencao_dias=retencao_dias,
-        deepgram_api_key=str(deepgram.get("api_key", "")),
         claude_modelo=str(claude.get("modelo", "")),
         claude_cli=str(claude.get("cli", "")).strip(),
-        dispositivo_microfone=str(audio.get("dispositivo_microfone", "")),
-        dispositivo_sistema=str(audio.get("dispositivo_sistema", "")),
         diario_inicio_do_dia=_hora(
             diario.get("inicio_do_dia", INICIO_DO_DIA_PADRAO),
             "[diario].inicio_do_dia",
@@ -534,29 +506,6 @@ def _profundidade(valor: object, arquivo: Path) -> int:
     return niveis
 
 
-def _dias_de_retencao(valor: object, arquivo: Path) -> int:
-    """Valida `retencao_dias` antes que ele mande apagar áudio.
-
-    A limpeza é irreversível e lê este número como "tudo mais velho que isto
-    pode sumir": um valor negativo diria "apague tudo que já virou nota",
-    incluindo a reunião de agora de manhã. Prazo inválido é erro de
-    configuração, não um padrão silencioso.
-    """
-    try:
-        dias = int(valor)
-    except (TypeError, ValueError):
-        raise ConfiguracaoInvalida(
-            f"Configuração em {arquivo}: 'retencao_dias' precisa ser um número "
-            f"inteiro de dias, e veio {valor!r}."
-        ) from None
-    if dias < 0:
-        raise ConfiguracaoInvalida(
-            f"Configuração em {arquivo}: 'retencao_dias' não pode ser negativo "
-            f"(veio {dias}). Use 0 para apagar o áudio assim que ele virar nota."
-        )
-    return dias
-
-
 # -- escrever ---------------------------------------------------------------
 
 #: Uma linha `chave = valor  # comentário` do modelo.
@@ -583,7 +532,7 @@ def gerar_toml(valores: Mapping[Chave, object]) -> str:
     registrado na spec: um comentário escrito à mão no arquivo se perde — o
     backup guarda.
     """
-    modelo = MODELO_DE_CONFIGURACAO.format(vault="", gravacoes="")
+    modelo = MODELO_DE_CONFIGURACAO.format(vault="")
     por_caminho = {(chave.secao, chave.nome): chave for chave in CHAVES}
     linhas: list[str] = []
     secao = ""
@@ -613,7 +562,7 @@ def escrever(configuracao: Configuracao, destino: Path, *, agora: datetime | Non
     Escreve primeiro num `.tmp` ao lado e o relê com `carregar`: se o que
     saiu não carrega, nada é trocado e o erro sobe. Só então o arquivo atual
     vira `config.toml.bak-YYYYMMDD-HHMMSS` e o novo toma o lugar. UTF-8 sem
-    BOM e `\\n`, como `init` escreve. Nenhum valor vai ao log: cinco deles são
+    BOM e `\\n`, como `init` escreve. Nenhum valor vai ao log: quatro deles são
     segredos.
     """
     destino = Path(destino)

@@ -1,8 +1,8 @@
 r"""Onde o Whis escreve o log quando não há ninguém olhando o terminal.
 
-Dois comandos rodam sem console: a bandeja (iniciada pelo atalho de logon, com
-`pythonw.exe`) e a limpeza diária (tarefa agendada). Sem arquivo de log, o que
-eles fizeram — e por que uma reunião falhou, e o que a limpeza apagou — some.
+Os comandos que rodam sem console — a bandeja (iniciada pelo atalho de logon,
+com `pythonw.exe`) e as tarefas agendadas da daily e do jornal — não teriam
+outro lugar para contar o que fizeram e por que falharam.
 
 O arquivo mora ao lado do `config.toml`, em `%APPDATA%\whis\`, que é o
 lugar que o usuário já conhece por causa da configuração.

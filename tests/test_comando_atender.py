@@ -20,9 +20,9 @@ from whis.fakes import RESPOSTA_PADRAO, DMFake
 
 
 @pytest.fixture
-def configuracao(tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path, monkeypatch):
+def configuracao(tmp_path: Path, caminho_do_vault: Path, monkeypatch):
     habitar_vault(caminho_do_vault)
-    configuracao = configuracao_da_busca(tmp_path, caminho_do_vault, caminho_das_gravacoes)
+    configuracao = configuracao_da_busca(tmp_path, caminho_do_vault)
     monkeypatch.setenv(VARIAVEL_DE_AMBIENTE, str(configuracao.origem))
     return configuracao
 

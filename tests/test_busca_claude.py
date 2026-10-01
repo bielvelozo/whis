@@ -42,7 +42,7 @@ from whis.busca_claude import (
 )
 from whis.conversa import AGENTE, USUARIO, Turno
 from whis.ferramentas import Ferramentas
-from whis.resumo_claude import VARIAVEIS_DE_API_PAGA
+from whis.claude_cli import VARIAVEIS_DE_API_PAGA
 
 FUSO = timezone(timedelta(hours=-3))
 MANHA = datetime(2026, 9, 4, 9, 0, tzinfo=FUSO)
@@ -114,11 +114,11 @@ def resultado_de(ferramenta, args: dict) -> dict:
 
 
 @pytest.fixture
-def ferramentas(tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path) -> Ferramentas:
+def ferramentas(tmp_path: Path, caminho_do_vault: Path) -> Ferramentas:
     habitar_vault(caminho_do_vault)
     return Ferramentas(
         configuracao_da_busca(
-            tmp_path, caminho_do_vault, caminho_das_gravacoes, pastas_privadas=(PASTA_PRIVADA,)
+            tmp_path, caminho_do_vault, pastas_privadas=(PASTA_PRIVADA,)
         )
     )
 
@@ -255,11 +255,11 @@ def test_ler_recusado_diz_ao_modelo_que_nao_existe(vault: FerramentasDoVault, ca
 
 
 def test_ler_alem_do_teto_manda_responder_com_o_que_ja_leu(
-    tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path
+    tmp_path: Path, caminho_do_vault: Path
 ):
     habitar_vault(caminho_do_vault)
     ferramentas = Ferramentas(
-        configuracao_da_busca(tmp_path, caminho_do_vault, caminho_das_gravacoes, maximo_de_notas=1)
+        configuracao_da_busca(tmp_path, caminho_do_vault, maximo_de_notas=1)
     )
     _, ler, _ = FerramentasDoVault(ferramentas).tools()
     chamar(ler, {"caminho": NOTA_PUBLICA})

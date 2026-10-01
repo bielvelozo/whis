@@ -26,7 +26,6 @@ from whis import vault as _vault
 from whis.bandeja import Bandeja
 from whis.busca import Citacao, Resposta
 from whis.busca_claude import PROMPT_DA_BUSCA
-from whis.coletor import Coletor
 from whis.configuracao import MODELO_DE_CONFIGURACAO, ConfiguracaoInvalida, carregar
 from whis.conversa import NOME_DO_ARQUIVO
 from whis.fakes import (
@@ -34,8 +33,6 @@ from whis.fakes import (
     RESPOSTA_PADRAO,
     BuscaFake,
     DailyFake,
-    ResumoFake,
-    STTFake,
     fontes_de_exemplo_da_daily,
 )
 from whis.janela_da_palheta import Acao, comando_destacado, comando_pelo_rotulo, completar, filtrar
@@ -49,13 +46,12 @@ from whis.palheta import (
     interpretar,
 )
 from test_bandeja import IconeDublê
-from test_coletor import GravadorDublê
 
 FUSO = timezone(timedelta(hours=-3))
 MOMENTO = datetime(2026, 9, 12, 14, 3, tzinfo=FUSO)
 PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 NOTA_DA_RESPOSTA = "respostas/2026-09-12-1403-o-que-ficou-decidido-sobre-a-retencao-de-180-dias.md"
-COMANDOS = ("daily", "news", "note", "doubt", "do", "ask", "open", "record", "settings", "prompts", "stash")
+COMANDOS = ("daily", "news", "note", "doubt", "do", "ask", "open", "settings", "prompts", "stash")
 
 
 class AvisoEspiao:
@@ -114,7 +110,7 @@ def aviso() -> AvisoEspiao:
 def montar(configuracao_do_diario, aviso: AvisoEspiao):
     """Uma palheta com os comandos de verdade sobre as portas fake, síncrona."""
 
-    def construir(*, busca=None, roteiro=None, lancados=None, abrir_painel=None, gravar=None, gravando=None, extras=()):
+    def construir(*, busca=None, roteiro=None, lancados=None, abrir_painel=None, extras=()):
         configuracao = configuracao_do_diario()
         comandos = comandos_padrao(
             fontes_da_daily=lambda _atual: fontes_de_exemplo_da_daily(),
@@ -129,8 +125,6 @@ def montar(configuracao_do_diario, aviso: AvisoEspiao):
             avisar=aviso,
             iniciar_thread=lambda alvo: alvo(),
             abrir_painel=abrir_painel,
-            gravar=gravar,
-            gravando=gravando,
         )
 
     return construir
@@ -395,7 +389,7 @@ def test_ask_sem_pergunta_nao_chama_a_busca(montar, aviso):
     assert aviso.ultimo()[0] == "Perguntar o quê?"
 
 
-# -- open, record, settings -----------------------------------------------------
+# -- open, settings -------------------------------------------------------------
 
 
 def test_open_lanca_a_uri_da_nota_viva_sem_toast(montar, caminho_do_vault: Path, aviso):
@@ -406,31 +400,6 @@ def test_open_lanca_a_uri_da_nota_viva_sem_toast(montar, caminho_do_vault: Path,
 
     assert lancados == [f"obsidian://open?vault={caminho_do_vault.name}&file=daily%2Fatual"]
     assert aviso.avisos == []
-
-
-def test_record_alterna_o_gravador_injetado_e_o_rotulo_segue_o_estado(montar, aviso):
-    estado = {"gravando": False}
-
-    def alternar() -> None:
-        estado["gravando"] = not estado["gravando"]
-
-    palheta = montar(gravar=alternar, gravando=lambda: estado["gravando"])
-    record = next(comando for comando in palheta.comandos if comando.nome == "record")
-    assert record.rotulo_atual() == "Start recording"
-
-    palheta.despachar("record")
-
-    assert estado["gravando"] is True
-    assert record.rotulo_atual() == "Stop recording"
-    assert aviso.avisos == []
-
-
-def test_record_sem_bandeja_vira_toast_de_falha(montar, aviso):
-    palheta = montar()
-
-    palheta.despachar("record")
-
-    assert aviso.ultimo()[0] == "O comando falhou"
 
 
 def test_settings_abre_o_painel_injetado_sem_toast(montar, aviso):
@@ -472,7 +441,7 @@ def test_sao_os_dez_comandos_e_nenhum_futuro_nem_ajuda(montar):
 
     assert {comando.nome for comando in palheta.comandos} == set(COMANDOS)
     assert [acao.nome for acao in palheta.acoes()] == list(ORDEM_DAS_ACOES)
-    assert [acao.rotulo_atual() for acao in palheta.acoes()[:3]] == ["Open note", "Generate daily", "Start recording"]
+    assert [acao.rotulo_atual() for acao in palheta.acoes()[:3]] == ["Open note", "Generate daily", "Generate news"]
     assert all(acao.icone and acao.descricao for acao in palheta.acoes())
 
 
@@ -525,12 +494,31 @@ def test_a_falha_da_busca_chega_ao_usuario_pela_mensagem_dela(montar, aviso):
     assert aviso.ultimo()[:2] == ("O comando falhou", "sem conta logada")
 
 
+def test_a_busca_com_o_login_do_claude_vencido_pede_o_login(montar, aviso):
+    from whis.busca import ErroDeBusca
+
+    palheta = montar(
+        busca=BuscaFake(
+            erro=ErroDeBusca(
+                "Falha ao falar com o Claude (ResultError): Claude Code returned an error result: "
+                "Failed to authenticate: OAuth session expired and could not be refreshed (exit code: 1)"
+            )
+        )
+    )
+
+    palheta.despachar("ask x")
+
+    titulo, texto, botao = aviso.ultimo()
+    assert titulo == "O login do Claude venceu"
+    assert texto == "Rode 'claude auth login' num terminal. Depois repita o comando."
+    assert botao is None
+
+
 # -- a janela -------------------------------------------------------------------
 
 ACOES = (
     Acao("open", "▤", "Open note", "daily/atual.md in Obsidian"),
     Acao("daily", "☀", "Generate daily"),
-    Acao("record", "●", lambda: "Start recording"),
     Acao("news", "📰", "Generate news"),
     Acao("prompts", "❝", "Search prompts", aceita_argumento=True),
     Acao("stash", "⧉", "Stash prompt", aceita_argumento=True),
@@ -564,7 +552,6 @@ def test_o_rotulo_tambem_filtra_e_o_nome_do_comando_vem_primeiro():
     assert [acao.nome for acao in filtrar(ACOES, "generate")] == ["daily", "news"]
     assert [acao.nome for acao in filtrar(ACOES, "generate daily")] == ["daily", "news"]
     assert [acao.nome for acao in filtrar(ACOES, "Open note")] == ["open"]
-    assert [acao.nome for acao in filtrar(ACOES, "start")] == ["record"]
     assert [acao.nome for acao in filtrar(ACOES, "no")] == ["note", "open"]
     assert [acao.nome for acao in filtrar(ACOES, "d")] == ["daily", "doubt", "do"]
 
@@ -581,7 +568,6 @@ def test_a_primeira_palavra_ganha_destaque_so_quando_e_um_comando():
 def test_o_rotulo_inteiro_ganha_destaque_quando_e_ele_que_casa():
     assert comando_destacado("generate daily", ACOES) == (0, 14)
     assert comando_destacado("  Generate Daily ", ACOES) == (2, 16)
-    assert comando_destacado("start recording", ACOES) == (0, 15)
     assert comando_destacado("generate daily agora", ACOES) is None
     assert comando_destacado("generate", ACOES) is None
 
@@ -589,7 +575,6 @@ def test_o_rotulo_inteiro_ganha_destaque_quando_e_ele_que_casa():
 def test_o_texto_igual_ao_rotulo_vira_o_comando():
     assert comando_pelo_rotulo("generate daily", ACOES) == "daily"
     assert comando_pelo_rotulo("  GENERATE   DAILY ", ACOES) == "daily"
-    assert comando_pelo_rotulo("Start recording", ACOES) == "record"
     assert comando_pelo_rotulo("Ask", ACOES) == "ask"
     assert comando_pelo_rotulo("daily", ACOES) is None
     assert comando_pelo_rotulo("vagas", ACOES) is None
@@ -598,14 +583,15 @@ def test_o_texto_igual_ao_rotulo_vira_o_comando():
 
 def test_tab_completa_o_comando_e_deixa_o_espaco_quando_ha_argumento():
     assert completar(ACOES[1]) == "daily"
-    assert completar(ACOES[6]) == "ask "
-    assert completar(ACOES[7]) == "note "
-    assert completar(ACOES[9]) == "do "
-    assert completar(ACOES[10]) == "settings"
+    assert completar(ACOES[5]) == "ask "
+    assert completar(ACOES[6]) == "note "
+    assert completar(ACOES[8]) == "do "
+    assert completar(ACOES[9]) == "settings"
 
 
 def test_o_rotulo_de_uma_acao_pode_ser_funcao():
-    assert ACOES[2].rotulo_atual() == "Start recording"
+    """É como a bandeja entrega o rótulo: `Comando.rotulo_atual`, chamado ao desenhar."""
+    assert Acao("daily", "☀", lambda: "Generate daily").rotulo_atual() == "Generate daily"
 
 
 def test_a_janela_some_no_enter_e_o_comando_e_despachado(montar, aviso):
@@ -719,19 +705,12 @@ def test_a_janela_de_verdade_filtra_destaca_e_some_no_enter_e_no_esc():
         janela._sondar()
         assert chamadas == ["de outro thread"]
 
-        gravando = {"sim": False}
-        janela.definir_acoes(
-            (*ACOES[:2], Acao("record", "●", lambda: "Stop recording" if gravando["sim"] else "Start recording"))
-        )
+        janela.definir_acoes(ACOES[:3])
         janela.mostrar()
         janela.raiz.update()
-        assert janela.titulos_desenhados() == ["Open note", "Generate daily", "Start recording"]
+        assert janela.titulos_desenhados() == ["Open note", "Generate daily", "Generate news"]
         janela._clicar(2)
-        assert enviados[-1] == "record"
-        gravando["sim"] = True
-        janela.mostrar()
-        janela.raiz.update()
-        assert janela.titulos_desenhados() == ["Open note", "Generate daily", "Stop recording"]
+        assert enviados[-1] == "news"
     finally:
         janela.raiz.destroy()
 
@@ -741,7 +720,7 @@ def test_a_janela_de_verdade_filtra_destaca_e_some_no_enter_e_no_esc():
 
 def _config_com(tmp_path: Path, corpo_do_toml: str) -> Path:
     arquivo = tmp_path / "config.toml"
-    arquivo.write_text(f'vault = "V"\ngravacoes = "G"\n{corpo_do_toml}', encoding="utf-8")
+    arquivo.write_text(f'vault = "V"\n{corpo_do_toml}', encoding="utf-8")
     return arquivo
 
 
@@ -758,7 +737,7 @@ def test_atalho_invalido_e_configuracao_invalida(tmp_path: Path):
 
 
 def test_o_modelo_traz_o_atalho_padrao_comentado():
-    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V", gravacoes="G"))
+    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V"))
 
     assert dados["palheta"]["atalho"] == "ctrl+space"
     assert "# o atalho global" in MODELO_DE_CONFIGURACAO
@@ -792,54 +771,29 @@ class HospedeiroDublê:
         self.executou = True
 
 
-@pytest.fixture
-def coletor(configuracao, caminho_das_gravacoes: Path) -> Coletor:
-    return Coletor(
-        configuracao,
-        portas=lambda: (STTFake(), ResumoFake()),
-        gravador=GravadorDublê(caminho_das_gravacoes),
-        em_segundo_plano=False,
-    )
-
-
 def rotulos(bandeja: Bandeja) -> list[str]:
-    return [
-        item.rotulo if isinstance(item.rotulo, str) else item.rotulo()
-        for item in bandeja.itens_do_menu()
-        if not item.separador
-    ]
+    return [item.rotulo for item in bandeja.itens_do_menu() if not item.separador]
 
 
-def test_o_menu_ganha_abrir_a_palheta_logo_abaixo_do_gesto_e_configurar_antes_de_sair(coletor):
+def test_o_menu_tem_abrir_a_palheta_primeiro_e_configurar_antes_de_sair():
     abertos: list[str] = []
     bandeja = Bandeja(
-        coletor,
         icone=IconeDestacavel(),
         abrir_palheta=lambda: abertos.append("palheta"),
         abrir_configuracao=lambda: abertos.append("configuracao"),
     )
 
-    nomes = rotulos(bandeja)
-
-    assert nomes[0] == "Gravar reunião" and nomes[2] == "Abrir a palheta"
-    assert nomes[-2:] == ["Configurar", "Sair"]
+    assert rotulos(bandeja) == ["Abrir a palheta", "Configurar", "Sair"]
     bandeja.abrir_palheta()
     bandeja.abrir_configuracao()
     assert abertos == ["palheta", "configuracao"]
 
 
-def test_sem_palheta_o_menu_e_o_de_sempre(coletor):
-    nomes = rotulos(Bandeja(coletor, icone=IconeDublê()))
-
-    assert "Abrir a palheta" not in nomes and "Configurar" not in nomes
-    assert nomes[0] == "Gravar reunião" and nomes[-1] == "Sair"
-
-
-def test_com_hospedeiro_o_icone_vai_para_o_thread_secundario_e_sair_encerra_os_tres(coletor):
+def test_com_hospedeiro_o_icone_vai_para_o_thread_secundario_e_sair_encerra_os_tres():
     icone = IconeDestacavel()
     hospedeiro = HospedeiroDublê()
     encerrados: list[str] = []
-    bandeja = Bandeja(coletor, icone=icone, abrir_palheta=lambda: None, ao_sair=lambda: encerrados.append("atalho e janela"))
+    bandeja = Bandeja(icone=icone, abrir_palheta=lambda: None, ao_sair=lambda: encerrados.append("atalho e janela"))
 
     bandeja.executar(hospedeiro=hospedeiro)
     assert icone.destacado and not icone.rodou and hospedeiro.executou
@@ -848,10 +802,10 @@ def test_com_hospedeiro_o_icone_vai_para_o_thread_secundario_e_sair_encerra_os_t
     assert icone.parou and encerrados == ["atalho e janela"]
 
 
-def test_sem_hospedeiro_o_icone_roda_no_thread_principal_como_sempre(coletor):
+def test_sem_hospedeiro_o_icone_roda_no_thread_principal():
     icone = IconeDublê()
 
-    Bandeja(coletor, icone=icone).executar()
+    Bandeja(icone=icone).executar()
 
     assert icone.rodou
 

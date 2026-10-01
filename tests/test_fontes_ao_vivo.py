@@ -255,7 +255,6 @@ def test_a_blocklist_do_slack_vale_de_graca_pelo_coletor_de_verdade(tmp_path: Pa
         "\n".join(
             [
                 'vault = "V"',
-                'gravacoes = "G"',
                 "",
                 "[slack]",
                 f'user_token = "{TOKEN_FALSO}"',
@@ -305,10 +304,10 @@ def test_fonte_que_falha_vira_texto_util_e_nao_excecao():
 
 
 @pytest.fixture
-def vault(tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path) -> FerramentasDoVault:
+def vault(tmp_path: Path, caminho_do_vault: Path) -> FerramentasDoVault:
     habitar_vault(caminho_do_vault)
     return FerramentasDoVault(
-        Ferramentas(configuracao_da_busca(tmp_path, caminho_do_vault, caminho_das_gravacoes))
+        Ferramentas(configuracao_da_busca(tmp_path, caminho_do_vault))
     )
 
 
@@ -339,14 +338,13 @@ def test_o_prompt_manda_procurar_no_vault_antes_e_citar_com_a_origem_propria():
 
 
 def test_montar_busca_liga_so_as_fontes_configuradas(
-    tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path, monkeypatch
+    tmp_path: Path, caminho_do_vault: Path, monkeypatch
 ):
     arquivo = tmp_path / "config.toml"
     arquivo.write_text(
         "\n".join(
             [
                 f'vault = "{caminho_do_vault.as_posix()}"',
-                f'gravacoes = "{caminho_das_gravacoes.as_posix()}"',
                 "",
                 "[privacidade]",
                 'excluir = ["terapia"]',
@@ -377,9 +375,9 @@ def test_montar_busca_liga_so_as_fontes_configuradas(
 
 
 def test_montar_busca_sem_fonte_nenhuma_responde_so_com_o_vault(
-    tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path, caplog
+    tmp_path: Path, caminho_do_vault: Path, caplog
 ):
-    configuracao = configuracao_da_busca(tmp_path, caminho_do_vault, caminho_das_gravacoes)
+    configuracao = configuracao_da_busca(tmp_path, caminho_do_vault)
 
     with caplog.at_level("INFO", logger="whis"):
         busca = cli.montar_busca(configuracao)

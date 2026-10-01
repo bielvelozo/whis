@@ -74,7 +74,7 @@ class FormularioDublê:
 
 def escrever(tmp_path: Path, corpo: str) -> Path:
     arquivo = tmp_path / "config.toml"
-    arquivo.write_text(f'vault = "V"\ngravacoes = "G"\n{corpo}', encoding="utf-8")
+    arquivo.write_text(f'vault = "V"\n{corpo}', encoding="utf-8")
     return arquivo
 
 
@@ -118,7 +118,7 @@ def test_jornal_ativo_que_nao_e_booleano_e_recusado(tmp_path: Path):
 
 
 def test_o_modelo_traz_o_jornal_ligado_e_o_cli_vazio():
-    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V", gravacoes="G"))
+    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V"))
 
     assert dados["noticias"] == {"ativa": True, "horario": "08:20"}
     assert dados["claude"]["cli"] == ""
@@ -129,7 +129,7 @@ def test_o_modelo_traz_o_jornal_ligado_e_o_cli_vazio():
 
 def test_o_painel_mostra_o_jornal_e_o_cli():
     configuracao = Configuracao(
-        vault=Path("V"), gravacoes=Path("G"), noticias_horario="07:45", claude_cli="C:/c.exe"
+        vault=Path("V"), noticias_horario="07:45", claude_cli="C:/c.exe"
     )
 
     assert texto_do_valor(configuracao, ATIVA) == "true"
@@ -173,7 +173,7 @@ def test_o_painel_recusa_horario_invalido_sem_escrever(tmp_path: Path):
 
 def test_o_jornal_ganha_um_gatilho_diario_no_horario_e_roda_news_agendada(tmp_path: Path):
     configuracao = Configuracao(
-        vault=Path("V"), gravacoes=Path("G"), noticias_horario="07:45",
+        vault=Path("V"), noticias_horario="07:45",
         origem=tmp_path / "config.toml",
     )
     espiao = ExecutorEspiao()
@@ -194,7 +194,7 @@ def test_sem_origem_o_jornal_aponta_o_caminho_padrao(tmp_path: Path, monkeypatch
     monkeypatch.setenv("APPDATA", str(tmp_path))
     espiao = ExecutorEspiao()
 
-    automacao.agendar_noticias(Configuracao(vault=Path("V"), gravacoes=Path("G")), executar=espiao)
+    automacao.agendar_noticias(Configuracao(vault=Path("V")), executar=espiao)
 
     assert parametro(espiao.registros()[0], "-Argumentos").endswith(
         f'--config "{tmp_path / "whis" / "config.toml"}"'
@@ -204,7 +204,7 @@ def test_sem_origem_o_jornal_aponta_o_caminho_padrao(tmp_path: Path, monkeypatch
 def test_falha_do_agendador_no_jornal_vira_erro_legivel():
     with pytest.raises(automacao.ErroDeAutomacao, match="Whis-Noticias"):
         automacao.agendar_noticias(
-            Configuracao(vault=Path("V"), gravacoes=Path("G")), executar=ExecutorEspiao(codigo=1)
+            Configuracao(vault=Path("V")), executar=ExecutorEspiao(codigo=1)
         )
 
 
@@ -224,8 +224,8 @@ def test_desagendar_e_consultar_o_jornal():
 
 
 def test_o_vigia_so_olha_o_jornal_se_ele_existe_no_agendador():
-    sem_jornal = ExecutorEspiao(**{"'Whis-Noticias'": 1, "'Whis-Limpeza'": 1})
-    com_jornal = ExecutorEspiao(**{"'Whis-Limpeza'": 1})
+    sem_jornal = ExecutorEspiao(**{"'Whis-Noticias'": 1})
+    com_jornal = ExecutorEspiao()
 
     assert automacao.tarefas_vigiadas(executar=sem_jornal) == ["Whis-Daily"]
     assert automacao.tarefas_vigiadas(executar=com_jornal) == ["Whis-Daily", "Whis-Noticias"]
@@ -319,7 +319,7 @@ def test_windows_remover_news_desagenda_e_tira_o_jornal_do_vigia(
 def test_windows_news_monta_o_comando_de_verdade_com_executor_falso(
     tmp_path: Path, monkeypatch, capsys
 ):
-    espiao = ExecutorEspiao(**{"'Whis-Limpeza'": 1})
+    espiao = ExecutorEspiao()
     monkeypatch.setattr(automacao, "instalar_inicializacao", lambda: Path("Whis.lnk"))
     for nome in ("agendar_noticias", "agendar_vigia"):
         monkeypatch.setattr(automacao, nome, partial(getattr(automacao, nome), executar=espiao))

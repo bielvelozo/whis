@@ -37,10 +37,10 @@ def horas(quantidade: float) -> datetime:
 
 
 @pytest.fixture
-def configuracao_com_pasta_privada(tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path):
+def configuracao_com_pasta_privada(tmp_path: Path, caminho_do_vault: Path):
     habitar_vault(caminho_do_vault)
     return configuracao_da_busca(
-        tmp_path, caminho_do_vault, caminho_das_gravacoes, pastas_privadas=(PASTA_PRIVADA,)
+        tmp_path, caminho_do_vault, pastas_privadas=(PASTA_PRIVADA,)
     )
 
 

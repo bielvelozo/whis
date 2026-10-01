@@ -1,11 +1,11 @@
 # Whis
 
-Agente pessoal local que observa o trabalho do usuário no PC, transcreve reuniões e recupera contexto, com um vault Obsidian como memória durável.
+Agente pessoal local que observa o trabalho do usuário no PC e recupera contexto, com um vault Obsidian como memória durável. Reunião não é gravada aqui: desde 2026-09-30 ela fica no Granola (ADR 0002).
 
 ## Language
 
 **Coletor**:
-Componente que captura um tipo de sinal (áudio de reunião, fontes passivas de trabalho) e o transforma em notas no vault.
+Componente que captura um tipo de sinal (as fontes passivas de trabalho) e o transforma em notas no vault.
 _Avoid_: watcher, observador, collector
 
 **Fonte passiva**:
@@ -33,10 +33,10 @@ _Avoid_: standup, resumo diário
 _Avoid_: painel, dashboard, `daily/hoje.md`, `notas/daily.md`
 
 **Zona de propriedade**:
-Divisão do vault em três contratos: as pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`, `daily/`, `respostas/`, `noticias/`); a zona do usuário (`notas/`), que o agente nunca toca; e a **Nota viva**, onde os dois escrevem, cada um nas suas seções. `prompts/` é do usuário como `notas/`, com uma exceção: o agente cria um arquivo novo ou troca a linha `favorito:` quando é mandado. `noticias/` é do agente (o **Jornal** e a **Trilha**), com uma exceção: `noticias/fontes.md` é do usuário — o agente o cria uma vez, a partir do modelo, e nunca mais escreve nele. `notas/daily.md` foi aposentado em 2026-09-12 — nunca foi usado; o que era dele vive nas seções do usuário da nota viva.
+Divisão do vault em três contratos: as pastas que o agente cria e pode regenerar (`reunioes/`, `transcricoes/`, `diario/`, `daily/`, `respostas/`, `noticias/` — em `reunioes/` e `transcricoes/` nenhum coletor escreve desde que a gravação saiu; o diário, a daily e o `ask` só as leem); a zona do usuário (`notas/`), que o agente nunca toca; e a **Nota viva**, onde os dois escrevem, cada um nas suas seções. `prompts/` é do usuário como `notas/`, com uma exceção: o agente cria um arquivo novo ou troca a linha `favorito:` quando é mandado. `noticias/` é do agente (o **Jornal** e a **Trilha**), com uma exceção: `noticias/fontes.md` é do usuário — o agente o cria uma vez, a partir do modelo, e nunca mais escreve nele. `notas/daily.md` foi aposentado em 2026-09-12 — nunca foi usado; o que era dele vive nas seções do usuário da nota viva.
 
 **Palheta**:
-A janela de comandos do Whis, aberta por atalho global de teclado no PC (`ctrl+space`), no estilo Raycast: um campo de texto e uma lista de ações clicáveis, num painel acrílico translúcido; os comandos são em inglês (`daily`, `news`, `note`, `doubt`, `do`, `ask`, `open`, `record`, `prompts`, `stash`, `settings`), o rótulo de uma ação digitado inteiro vale como o comando, Tab completa o comando da ação selecionada, e a janela some ao despachar. Todo comando **dispara e some** — menos `prompts`, que troca a lista de comandos pela dos **Prompts** sem fechar a janela — roda em segundo plano, o resultado vira nota no vault e um toast avisa quando fica pronto. Substitui a DM do Slack como o lugar de perguntar e anotar; a bandeja continua sendo o gesto de gravar reunião. Uma resposta de `ask` nasce em `respostas/`, zona do agente.
+A janela de comandos do Whis, aberta por atalho global de teclado no PC (`ctrl+space`), no estilo Raycast: um campo de texto e uma lista de ações clicáveis, num painel acrílico translúcido; os comandos são em inglês (`daily`, `news`, `note`, `doubt`, `do`, `ask`, `open`, `prompts`, `stash`, `settings`), o rótulo de uma ação digitado inteiro vale como o comando, Tab completa o comando da ação selecionada, e a janela some ao despachar. Todo comando **dispara e some** — menos `prompts`, que troca a lista de comandos pela dos **Prompts** sem fechar a janela — roda em segundo plano, o resultado vira nota no vault e um toast avisa quando fica pronto. Substitui a DM do Slack como o lugar de perguntar e anotar; a bandeja é a casa dela, e o clique no ícone também a abre. Uma resposta de `ask` nasce em `respostas/`, zona do agente.
 _Avoid_: launcher, painel com abas, chat
 
 **Jornal**:
@@ -52,11 +52,11 @@ Um texto guardado para colar num chat de IA: um `.md` em `prompts/` no vault. O 
 _Avoid_: snippet, template
 
 **Vigia**:
-Uma tarefa agendada fora do Whis (`Whis-Vigia`, um script PowerShell autossuficiente) que consulta o Agendador e a lista de processos e dispara um toast quando uma peça não subiu — a daily não nasceu, a limpeza falhou, a bandeja não está no ar. Existe porque quem avisa que o Whis caiu não pode ser o Whis.
+Uma tarefa agendada fora do Whis (`Whis-Vigia`, um script PowerShell autossuficiente) que consulta o Agendador e a lista de processos e dispara um toast quando uma peça não subiu — a daily ou o jornal não nasceu, a bandeja não está no ar. Existe porque quem avisa que o Whis caiu não pode ser o Whis.
 _Avoid_: watchdog, healthcheck
 
 **Tracer bullet**:
-A primeira fatia construível de ponta a ponta: "aperto um botão durante a reunião → nota transcrita/resumida aparece no vault".
+A primeira fatia construível de ponta a ponta: "aperto um botão durante a reunião → nota transcrita/resumida aparece no vault". Histórico: a gravação saiu do Whis em 2026-09-30 (ADR 0002).
 _Avoid_: MVP, PoC
 
 **Whis**:

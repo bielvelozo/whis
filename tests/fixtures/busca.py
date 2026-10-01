@@ -53,7 +53,6 @@ def habitar_vault(vault: Path) -> Path:
 def configuracao_da_busca(
     tmp_path: Path,
     vault: Path,
-    gravacoes: Path,
     *,
     pastas_privadas: tuple[str, ...] = (),
     maximo_de_notas: int = 40,
@@ -61,7 +60,6 @@ def configuracao_da_busca(
     """Escreve um `config.toml` com as chaves da busca e o carrega do disco."""
     linhas = [
         f'vault = "{vault.as_posix()}"',
-        f'gravacoes = "{gravacoes.as_posix()}"',
         "",
         "[privacidade]",
         "pastas_privadas = [" + ", ".join(f'"{pasta}"' for pasta in pastas_privadas) + "]",

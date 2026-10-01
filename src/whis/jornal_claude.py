@@ -1,6 +1,6 @@
 """Os três adaptadores do Claude no jornal: o editor, a formação e a publicação.
 
-Mesma postura dos irmãos (`resumo_claude`, `resumo_dia_claude`, `busca_claude`):
+Mesma postura dos irmãos (`resumo_dia_claude`, `busca_claude`):
 Claude Agent SDK, credenciais do `claude` CLI (a conta Pro/Max do usuário por
 OAuth, ADR 0001), recusa de API key paga, sem skills, sem configuração de
 arquivo, sem MCP, custo no log. Três diferenças que só o jornal tem:
@@ -51,7 +51,6 @@ from .portas import (
     ErroDeEditor,
     ErroDeFormacao,
     ErroDePublicacao,
-    ErroDeResumo,
     Escolha,
     Formacao,
     ItemEscolhido,
@@ -59,7 +58,7 @@ from .portas import (
     Medida,
     Publicacao,
 )
-from .resumo_claude import caminho_do_cli, registrar_stderr_do_cli, verificar_credencial
+from .claude_cli import VARIAVEIS_DE_API_PAGA, caminho_do_cli, registrar_stderr_do_cli
 
 _log = logging.getLogger("whis.jornal")
 
@@ -273,10 +272,14 @@ class _AdaptadorDoJornal:
         self.timeout_s = timeout_s
 
     def _verificar_credencial(self) -> None:
-        try:
-            verificar_credencial()
-        except ErroDeResumo as erro:
-            raise self.erro(str(erro)) from erro
+        presentes = [nome for nome in VARIAVEIS_DE_API_PAGA if os.environ.get(nome)]
+        if not presentes:
+            return
+        raise self.erro(
+            f"O jornal usa a conta Claude do usuário (OAuth), nunca uma API key paga, "
+            f"mas {' e '.join(presentes)} está no ambiente e o Claude cobraria por ela. "
+            f"Remova a variável e entre com `claude login`."
+        )
 
     def _opcoes(
         self,

@@ -1,9 +1,10 @@
-"""Escrita no vault: pastas, nota de reunião, transcrição, diário, daily, nota viva e jornal.
+"""Escrita no vault: pastas, diário, daily, nota viva, respostas e jornal.
 
 A zona de propriedade é uma invariante deste módulo, não só dos testes — e ela
 é **por coletor**: `escrever` recebe as zonas que aquela chamada permite. O
-coletor de reunião escreve em `reunioes/` e `transcricoes/`; o do diário, só em
-`diario/`; o da daily, só em `daily/`. Nenhum alcança a zona do outro.
+do diário escreve só em `diario/`; o da daily, só em `daily/`. Nenhum alcança
+a zona do outro. `reunioes/` e `transcricoes/` só são lidas: nenhum coletor
+escreve nelas desde que a gravação saiu do Whis.
 
 `notas/` é a zona do usuário e é recusada para todos eles. A nota viva
 `daily/atual.md` é a terceira zona: mora em `daily/`, mas o que o agente pode
@@ -16,6 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from collections.abc import Sequence
 from datetime import date, datetime
 from pathlib import Path
@@ -34,7 +36,7 @@ from .nota_viva import (
     NotaViva,
     sem_brancos_nas_pontas,
 )
-from .portas import Resumo, ResumoDoDia, Transcricao
+from .portas import ResumoDoDia
 
 if TYPE_CHECKING:  # ambos importam este módulo em tempo de execução
     from .busca import Resposta
@@ -63,9 +65,6 @@ ESTRUTURA = (
     PASTA_NOTICIAS,
 )
 
-#: As únicas pastas em que o coletor de reunião pode escrever.
-ZONAS_DE_ESCRITA = (PASTA_REUNIOES, PASTA_TRANSCRICOES)
-
 #: A única pasta em que o coletor de diário pode escrever.
 ZONAS_DO_DIARIO = (PASTA_DIARIO,)
 
@@ -91,8 +90,6 @@ _SEPARADOR = "---"
 _NADA_REGISTRADO = "_(nada registrado)_"
 
 #: Valor do campo `tipo` no frontmatter de cada artefato.
-TIPO_REUNIAO = "reuniao"
-TIPO_TRANSCRICAO = "transcricao"
 TIPO_DIARIO = "diario"
 TIPO_DAILY = "daily"
 TIPO_RESPOSTA = "resposta"
@@ -153,14 +150,14 @@ def escrever(
     relativo: str,
     conteudo: str,
     *,
-    zonas: Sequence[str] = ZONAS_DE_ESCRITA,
+    zonas: Sequence[str],
     literal: bool = False,
 ) -> Path:
     """Escreve um arquivo no vault, recusando caminhos fora de `zonas`.
 
-    As zonas são parâmetro porque a propriedade é de cada coletor: o de
-    reunião nunca escreve em `diario/`, o do diário nunca escreve em
-    `reunioes/`, e `notas/` fica fora do alcance dos dois.
+    As zonas são parâmetro porque a propriedade é de cada coletor: o do
+    diário nunca escreve em `daily/`, o da daily nunca escreve em `diario/`,
+    e `notas/` fica fora do alcance de todos.
 
     A checagem é feita no caminho **resolvido**: não basta começar com o nome
     de uma zona, o arquivo precisa terminar dentro dela. Assim `..` no meio do
@@ -194,16 +191,6 @@ def _recusa(relativo: str, zonas: Sequence[str]) -> str:
     return f"Esta escrita só alcança {permitidas} — recusado: {relativo!r}"
 
 
-def caminho_da_nota(basename: str) -> str:
-    """Caminho relativo da nota de reunião, no formato do contrato."""
-    return f"{PASTA_REUNIOES}/{basename}.md"
-
-
-def caminho_da_transcricao(basename: str) -> str:
-    """Caminho relativo da transcrição, com o mesmo basename da nota."""
-    return f"{PASTA_TRANSCRICOES}/{basename}.md"
-
-
 def uri_do_obsidian(configuracao: Configuracao, caminho_relativo: str) -> str:
     """A URI `obsidian://open` de uma nota do vault — ver `whis.obsidian`.
 
@@ -222,69 +209,6 @@ def wikilink(caminho_relativo: str) -> str:
     return f"[[{caminho_relativo.removesuffix('.md')}]]"
 
 
-def montar_nota(
-    *,
-    basename: str,
-    data: str,
-    titulo: str,
-    participantes: tuple[str, ...],
-    resumo: Resumo,
-) -> str:
-    """Monta o markdown da nota de reunião: frontmatter mínimo + resumo."""
-    frontmatter = _frontmatter(
-        {
-            "data": data,
-            "tipo": TIPO_REUNIAO,
-            "participantes": list(participantes),
-            "transcricao": wikilink(caminho_da_transcricao(basename)),
-        }
-    )
-    corpo = [
-        f"# {titulo}",
-        "",
-        "## Decisões",
-        "",
-        _lista(resumo.decisoes),
-        "",
-        "## Ações e pendências",
-        "",
-        _lista(resumo.acoes),
-        "",
-        "## Tópicos",
-        "",
-        _lista(resumo.topicos),
-        "",
-        "---",
-        "",
-        f"Transcrição completa: {wikilink(caminho_da_transcricao(basename))}",
-        "",
-    ]
-    return frontmatter + "\n".join(corpo)
-
-
-def montar_transcricao(
-    *,
-    basename: str,
-    data: str,
-    titulo: str,
-    transcricao: Transcricao,
-) -> str:
-    """Monta o markdown da transcrição bruta, uma fala por parágrafo."""
-    frontmatter = _frontmatter(
-        {
-            "data": data,
-            "tipo": TIPO_TRANSCRICAO,
-            "idioma": transcricao.idioma,
-            "reuniao": wikilink(caminho_da_nota(basename)),
-        }
-    )
-    corpo = [f"# Transcrição — {titulo}", ""]
-    for fala in transcricao.falas:
-        corpo.append(f"**{fala.falante}:** {fala.texto}")
-        corpo.append("")
-    return frontmatter + "\n".join(corpo)
-
-
 def caminho_do_diario(data: date) -> str:
     """Caminho relativo do diário: um arquivo por dia, sem hora no nome."""
     return f"{PASTA_DIARIO}/{data.isoformat()}.md"
@@ -293,9 +217,9 @@ def caminho_do_diario(data: date) -> str:
 def reunioes_na_janela(vault: Path, janela: Janela) -> tuple[str, ...]:
     """As notas de reunião cujo horário cai na janela, em ordem cronológica.
 
-    O horário vem do prefixo `YYYY-MM-DD-HHMM` do nome do arquivo, fixado pelo
-    contrato da pasta de gravação. É o que faz a reunião da meia-noite e meia
-    aparecer no diário do dia anterior, igual aos commits.
+    O horário vem do prefixo `YYYY-MM-DD-HHMM` do nome do arquivo. É o que faz
+    a reunião da meia-noite e meia aparecer no diário do dia anterior, igual
+    aos commits.
 
     Arquivo com nome fora do padrão é ignorado em silêncio: o diário não pode
     quebrar por causa de uma nota renomeada à mão.
@@ -474,14 +398,15 @@ def caminho_da_daily(data: date) -> str:
 
 
 def caminho_da_resposta(momento: datetime, pergunta: str) -> str:
-    """`respostas/YYYY-MM-DD-HHMM-<slug>.md` — o mesmo slug das pastas de gravação.
+    """`respostas/YYYY-MM-DD-HHMM-<slug>.md`, o slug tirado da pergunta."""
+    return f"{PASTA_RESPOSTAS}/{momento:%Y-%m-%d-%H%M}-{_slug(pergunta)}.md"
 
-    O import é tardio porque o gravador puxa o PyAudio, que quem só lê o vault
-    não precisa carregar.
-    """
-    from .gravador import criar_slug
 
-    return f"{PASTA_RESPOSTAS}/{momento:%Y-%m-%d-%H%M}-{criar_slug(pergunta)}.md"
+def _slug(texto: str) -> str:
+    """Só `a-z`, `0-9` e hífen, até 60 caracteres; sem nada aproveitável, `resposta`."""
+    ascii_ = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", ascii_).strip("-").lower()
+    return slug[:60].strip("-") or TIPO_RESPOSTA
 
 
 def montar_resposta(*, pergunta: str, resposta: "Resposta") -> str:

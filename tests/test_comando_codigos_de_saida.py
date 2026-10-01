@@ -63,7 +63,7 @@ def _fontes_do_diario_com_o_slack_falhando(configuracao, *, fakes: bool = False)
 
 @pytest.fixture
 def configuracao_so_com_git_inexistente(
-    tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path, monkeypatch
+    tmp_path: Path, caminho_do_vault: Path, monkeypatch
 ):
     """Uma configuração real cuja única fonte é um git apontado para o nada."""
     arquivo = tmp_path / "config-git.toml"
@@ -71,7 +71,6 @@ def configuracao_so_com_git_inexistente(
         "\n".join(
             [
                 f'vault = "{caminho_do_vault.as_posix()}"',
-                f'gravacoes = "{caminho_das_gravacoes.as_posix()}"',
                 "",
                 "[git]",
                 f'raiz = "{(tmp_path / "nao-existe").as_posix()}"',

@@ -211,7 +211,7 @@ def test_token_recusado_ao_iniciar_vira_erro_de_dm_sem_ecoar_o_token():
 
 def test_de_configuracao_sem_os_tokens_diz_quais_faltam_e_onde_esta_o_roteiro(tmp_path: Path):
     arquivo = tmp_path / "config.toml"
-    arquivo.write_text('vault = "V"\ngravacoes = "G"\n', encoding="utf-8")
+    arquivo.write_text('vault = "V"\n', encoding="utf-8")
 
     with pytest.raises(ErroDeDM) as erro:
         de_configuracao(carregar(arquivo))
@@ -224,7 +224,7 @@ def test_de_configuracao_sem_os_tokens_diz_quais_faltam_e_onde_esta_o_roteiro(tm
 def test_de_configuracao_com_os_dois_tokens_monta_a_dm(tmp_path: Path):
     arquivo = tmp_path / "config.toml"
     arquivo.write_text(
-        f'vault = "V"\ngravacoes = "G"\n\n[slack]\nbot_token = "{BOT_TOKEN}"\napp_token = "{APP_TOKEN}"\n',
+        f'vault = "V"\n\n[slack]\nbot_token = "{BOT_TOKEN}"\napp_token = "{APP_TOKEN}"\n',
         encoding="utf-8",
     )
 

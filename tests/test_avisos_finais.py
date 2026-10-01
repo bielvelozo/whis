@@ -1,9 +1,9 @@
-"""Camada 5 da interface: o toast que abre a nota certa e o gesto da bandeja consertado.
+"""Camada 5 da interface: o toast que abre a nota certa e o lançador da URI.
 
 Nenhum toast sai e nada é aberto de verdade: `avisos.avisar` entra espionado
 no subcomando, e quem lança a URI no Windows entra injetado em
-`abrir_no_windows`. O que se prova é a URI montada, o texto do toast nos dois
-casos e que o gesto da bandeja passa pela URI quando a nota é do vault.
+`obsidian.lancar`. O que se prova é a URI montada, o texto do toast nos dois
+casos e as duas portas do lançador.
 """
 
 from __future__ import annotations
@@ -16,24 +16,19 @@ from pathlib import Path
 import pytest
 
 from whis import __main__ as cli
-from whis import avisos, vault
-from whis import bandeja as _bandeja
+from whis import avisos, obsidian, vault
 from whis.__main__ import MODELO_DE_CONFIGURACAO, main, texto_do_toast_da_daily
-from whis.bandeja import Bandeja
-from whis.coletor import Coletor
 from whis.configuracao import Configuracao, carregar
 from whis.daily import JanelaDaDaily, ResultadoDaDaily
-from whis.fakes import DailyFake, ResumoFake, STTFake
+from whis.fakes import DailyFake
 from whis.nota_viva import Mudancas
 from whis.portas import ErroDeDaily
-from test_bandeja import IconeDublê
-from test_coletor import GravadorDublê
 
 ID_DO_VAULT = "245833c11ad43e6e"
 
 
 def configuracao_com(vault_do_obsidian: str = "", pasta: str = "C:/Users/x/whis-vault") -> Configuracao:
-    return Configuracao(vault=Path(pasta), gravacoes=Path("G"), obsidian_vault=vault_do_obsidian)
+    return Configuracao(vault=Path(pasta), obsidian_vault=vault_do_obsidian)
 
 
 # -- a URI do Obsidian ------------------------------------------------------
@@ -71,7 +66,7 @@ def test_a_uri_aceita_o_caminho_como_o_windows_o_escreve():
 
 def escrever(tmp_path: Path, corpo: str) -> Path:
     arquivo = tmp_path / "config.toml"
-    arquivo.write_text(f'vault = "V"\ngravacoes = "G"\n{corpo}', encoding="utf-8")
+    arquivo.write_text(f'vault = "V"\n{corpo}', encoding="utf-8")
     return arquivo
 
 
@@ -84,7 +79,7 @@ def test_obsidian_vault_chega_achatado_e_nasce_vazio(tmp_path: Path):
 
 
 def test_o_modelo_traz_o_id_do_vault_desta_maquina():
-    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V", gravacoes="G"))
+    dados = tomllib.loads(MODELO_DE_CONFIGURACAO.format(vault="V"))
 
     assert dados["obsidian"]["vault"] == ID_DO_VAULT
 
@@ -238,41 +233,7 @@ def test_o_toast_que_nao_saiu_nao_muda_o_codigo_de_saida(configuracao_do_diario,
     assert main(["daily", "--fakes"]) == 0
 
 
-# -- o gesto da bandeja -----------------------------------------------------
-
-
-class LancadorEspiao:
-    def __init__(self) -> None:
-        self.lancados: list[str] = []
-
-    def __call__(self, alvo: str) -> None:
-        self.lancados.append(alvo)
-
-
-def test_nota_do_vault_abre_pela_uri(configuracao: Configuracao):
-    espiao = LancadorEspiao()
-    nota = Path(configuracao.vault) / "reunioes" / "2026-09-11-1400-daily do time.md"
-
-    alvo = _bandeja.abrir_no_windows(nota, configuracao, lancar=espiao)
-
-    assert alvo == (
-        f"obsidian://open?vault={configuracao.vault.name}"
-        f"&file=reunioes%2F2026-09-11-1400-daily%20do%20time"
-    )
-    assert espiao.lancados == [alvo]
-
-
-def test_pasta_e_arquivo_fora_do_vault_continuam_por_caminho(
-    configuracao: Configuracao, tmp_path: Path
-):
-    espiao = LancadorEspiao()
-    pasta = Path(configuracao.gravacoes)
-    fora = tmp_path / "outra" / "nota.md"
-
-    assert _bandeja.abrir_no_windows(pasta, configuracao, lancar=espiao) == str(pasta)
-    assert _bandeja.abrir_no_windows(fora, configuracao, lancar=espiao) == str(fora)
-    assert _bandeja.abrir_no_windows(fora, lancar=espiao) == str(fora)
-    assert espiao.lancados == [str(pasta), str(fora), str(fora)]
+# -- o lançador ---------------------------------------------------------------
 
 
 def test_se_o_startfile_recusa_a_uri_o_start_do_cmd_e_a_segunda_porta():
@@ -281,7 +242,7 @@ def test_se_o_startfile_recusa_a_uri_o_start_do_cmd_e_a_segunda_porta():
     def recusa(alvo: str) -> None:
         raise OSError("protocolo desconhecido")
 
-    _bandeja._lancar(
+    obsidian.lancar(
         "obsidian://open?vault=v&file=daily%2Fatual",
         iniciar=recusa,
         executar=lambda comando, **_: comandos.append(comando),
@@ -296,8 +257,8 @@ def test_um_caminho_que_o_startfile_recusa_so_vai_para_o_log(caplog):
     def recusa(alvo: str) -> None:
         raise OSError("sem programa associado")
 
-    with caplog.at_level("ERROR", logger="whis.bandeja"):
-        _bandeja._lancar(
+    with caplog.at_level("ERROR", logger="whis.obsidian"):
+        obsidian.lancar(
             r"C:\x\nota.md", iniciar=recusa, executar=lambda c, **_: comandos.append(c)
         )
 
@@ -309,31 +270,6 @@ def test_quando_o_startfile_aceita_ninguem_mais_e_chamado():
     aceitos: list[str] = []
     comandos: list[list[str]] = []
 
-    _bandeja._lancar("obsidian://open?vault=v&file=x", iniciar=aceitos.append, executar=lambda c, **_: comandos.append(c))
+    obsidian.lancar("obsidian://open?vault=v&file=x", iniciar=aceitos.append, executar=lambda c, **_: comandos.append(c))
 
     assert aceitos == ["obsidian://open?vault=v&file=x"] and comandos == []
-
-
-def test_abrir_a_ultima_nota_passa_a_configuracao_do_coletor(
-    configuracao: Configuracao, caminho_das_gravacoes: Path, monkeypatch
-):
-    abertos: list[tuple[Path, Configuracao]] = []
-    monkeypatch.setattr(
-        _bandeja, "abrir_no_windows", lambda caminho, configuracao: abertos.append((caminho, configuracao))
-    )
-    coletor = Coletor(
-        configuracao,
-        portas=lambda: (STTFake(), ResumoFake()),
-        gravador=GravadorDublê(caminho_das_gravacoes),
-        em_segundo_plano=False,
-    )
-    bandeja = Bandeja(coletor, icone=IconeDublê())
-    bandeja.alternar()
-    bandeja.alternar()
-
-    bandeja.abrir_ultima_nota()
-
-    [(nota, recebida)] = abertos
-    assert nota == coletor.situacao().nota
-    assert recebida is configuracao
-    assert _bandeja.alvo_para_abrir(nota, recebida).startswith("obsidian://open?vault=")

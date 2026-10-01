@@ -167,7 +167,7 @@ def cenario(tmp_path: Path, monkeypatch):
         lambda agora, transporte=None: Efemeride(1977, "O Corinthians é campeão paulista.", "https://pt.wikipedia.org/wiki/X", None),
     )
     vault = tmp_path / "vault"
-    configuracao = Configuracao(vault=vault, gravacoes=tmp_path / "g")
+    configuracao = Configuracao(vault=vault)
     estado.update(vault=vault, configuracao=configuracao, pasta=tmp_path / "edicao")
     return estado
 

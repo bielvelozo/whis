@@ -24,10 +24,10 @@ PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 
 
 @pytest.fixture
-def configuracao(tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path, monkeypatch):
+def configuracao(tmp_path: Path, caminho_do_vault: Path, monkeypatch):
     habitar_vault(caminho_do_vault)
     configuracao = configuracao_da_busca(
-        tmp_path, caminho_do_vault, caminho_das_gravacoes, pastas_privadas=(PASTA_PRIVADA,)
+        tmp_path, caminho_do_vault, pastas_privadas=(PASTA_PRIVADA,)
     )
     monkeypatch.setenv(VARIAVEL_DE_AMBIENTE, str(configuracao.origem))
     return configuracao

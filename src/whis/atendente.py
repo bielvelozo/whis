@@ -21,8 +21,7 @@ Regras que valem sempre:
   uma linha em *Pontos* da nota viva pelo mesmo caminho de `daily --anotar` —
   sem passar pelo modelo, para a seção do usuário continuar dele.
 
-É um processo separado da bandeja de propósito: ela tem trava de instância e
-máquina de estados de gravação, e o pipeline de reunião está em uso real.
+É um processo separado da bandeja, com trava de instância própria.
 """
 
 from __future__ import annotations

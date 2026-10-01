@@ -1,9 +1,7 @@
-r"""As amarrações com o Windows: subir com o logon, limpar sozinho, avisar.
+r"""As amarrações com o Windows: subir com o logon, agendar, avisar.
 
-Enquanto a bandeja depender de alguém digitar um comando, ela não é "um clique
-durante a reunião" — é um comando antes de cada reunião. E enquanto a limpeza
-depender disso também, o áudio bruto se acumula (uma reunião de 40 min ocupa
-~420 MB nos dois canais).
+Enquanto a bandeja depender de alguém digitar um comando, a palheta não está
+no atalho quando o usuário precisa dela.
 
 Este módulo faz poucas coisas, todas **explícitas e reversíveis**:
 
@@ -17,16 +15,13 @@ Este módulo faz poucas coisas, todas **explícitas e reversíveis**:
 - `agendar_noticias()` registra a tarefa diária `Whis-Noticias` no horário de
   `[noticias].horario`, rodando `whis news --agendada` (que sai sem gerar nada
   quando `[noticias].ativa` é falso);
-- `agendar_limpeza()` registra a tarefa diária `Whis-Limpeza` rodando
-  `whis limpar`;
 - `agendar_vigia()` registra `Whis-Vigia`, um script PowerShell autossuficiente
   que consulta o Agendador e dispara toast quando uma peça do Whis não subiu;
-- `remover_legado()` tira da máquina o atalho e a tarefa do nome antigo do
-  projeto, que apontam para um módulo que não existe mais.
+- `remover_legado()` tira da máquina o atalho e as tarefas que chamam um
+  módulo ou um comando que não existe mais.
 
 Nada disso acontece sozinho: são subcomandos que o usuário chama, e cada um tem
-o par `--remover`. Apagar áudio é irreversível, então a tarefa agendada nasce da
-decisão do usuário, nunca de um efeito colateral de subir a bandeja.
+o par `--remover`.
 
 As tarefas são registradas pelo módulo PowerShell `ScheduledTasks`, e não por
 `schtasks`: só ele liga `-StartWhenAvailable`, sem o qual a daily de um dia em
@@ -58,7 +53,6 @@ _log = logging.getLogger("whis.automacao")
 NOME_DO_ATALHO = "Whis.lnk"
 NOME_DO_ATALHO_DO_ATENDENTE = "Whis Atendente.lnk"
 NOME_DO_ATALHO_DO_MENU = "Whis.lnk"
-NOME_DA_TAREFA = "Whis-Limpeza"
 NOME_DA_TAREFA_DA_DAILY = "Whis-Daily"
 NOME_DA_TAREFA_DO_VIGIA = "Whis-Vigia"
 NOME_DA_TAREFA_DO_JORNAL = "Whis-Noticias"
@@ -95,11 +89,14 @@ AUMID = "Whis.Agente"
 #: O script que grava o `.lnk` com a AUMID — o `WScript.Shell` não sabe fazê-lo.
 SCRIPT_DO_ATALHO_COM_AUMID = Path(__file__).with_name("atalho_com_aumid.ps1")
 
-#: Os nomes que o projeto usava antes de virar Whis, em 2026-09-09. O atalho e a
-#: tarefa com esses nomes chamam `-m second_brain`, que não existe mais, e
-#: falham calados desde então.
+#: O atalho do nome que o projeto usava antes de virar Whis, em 2026-09-09: chama
+#: `-m second_brain`, que não existe mais, e falha calado desde então.
 NOME_DO_ATALHO_LEGADO = "Second Brain.lnk"
-NOME_DA_TAREFA_LEGADA = "SecondBrain-Limpeza"
+
+#: Tarefas que chamam o que não existe mais: `SecondBrain-Limpeza`, do nome
+#: antigo (`-m second_brain`), e `Whis-Limpeza`, que rodava `whis limpar` até a
+#: gravação sair do Whis, em 2026-09-30.
+TAREFAS_LEGADAS = ("SecondBrain-Limpeza", "Whis-Limpeza")
 
 #: Assinatura de quem executa um processo externo (injetável em teste).
 Executor = Callable[[list[str]], subprocess.CompletedProcess]
@@ -168,7 +165,7 @@ def instalar_inicializacao(*, executar: Executor = _rodar) -> Path:
     atalho = _criar_atalho(
         caminho_do_atalho(),
         argumentos="-m whis bandeja",
-        descricao="Whis — coletor de reunião na bandeja",
+        descricao="Whis — a palheta na bandeja",
         executar=executar,
     )
     _criar_atalho_com_aumid(
@@ -225,7 +222,7 @@ def instalar_atendente(*, executar: Executor = _rodar) -> Path:
     """Cria o atalho de inicialização do atendente, ao lado do da bandeja.
 
     É um atalho separado, e não um argumento a mais no da bandeja, porque são
-    dois processos: o atendente tem trava própria e não sabe gravar reunião.
+    dois processos, cada um com a sua trava de instância.
     """
     return _criar_atalho(
         caminho_do_atalho_do_atendente(),
@@ -470,38 +467,6 @@ def noticias_agendada(*, executar: Executor = _rodar) -> bool:
     return _tarefa_agendada(NOME_DA_TAREFA_DO_JORNAL, executar=executar)
 
 
-# -- limpeza agendada -------------------------------------------------------
-
-
-def agendar_limpeza(
-    *, hora: str = "12:00", executar: Executor = _rodar, config: Path | None = None
-) -> str:
-    """Registra a tarefa diária que apaga o áudio já vencido.
-
-    Meio-dia por padrão, e não de madrugada, porque a máquina precisa estar
-    ligada para a tarefa rodar — e um horário em que o usuário está usando o PC
-    é o que garante isso.
-    """
-    _registrar_tarefa(
-        NOME_DA_TAREFA,
-        executavel=str(interpretador_sem_console()),
-        argumentos=_argumentos_do_whis("limpar", config or caminho_padrao()),
-        gatilhos=[f"Daily={hora}"],
-        executar=executar,
-    )
-    _log.info("Limpeza diária agendada às %s como '%s'", hora, NOME_DA_TAREFA)
-    return NOME_DA_TAREFA
-
-
-def desagendar_limpeza(*, executar: Executor = _rodar) -> bool:
-    """Remove a tarefa agendada. `False` se ela não existia."""
-    return _desregistrar_tarefa(NOME_DA_TAREFA, executar=executar)
-
-
-def limpeza_agendada(*, executar: Executor = _rodar) -> bool:
-    return _tarefa_agendada(NOME_DA_TAREFA, executar=executar)
-
-
 # -- o vigia ----------------------------------------------------------------
 
 
@@ -527,14 +492,12 @@ def gatilhos_do_vigia(configuracao: Configuracao) -> list[str]:
 
 
 def tarefas_vigiadas(*, executar: Executor = _rodar) -> list[str]:
-    """`Whis-Daily` sempre; `Whis-Limpeza` e `Whis-Noticias` só se existem no Agendador.
+    """`Whis-Daily` sempre; `Whis-Noticias` só se existe no Agendador.
 
     Passar um nome que não existe faria o vigia reclamar de uma tarefa que o
     usuário nunca pediu.
     """
     nomes = [NOME_DA_TAREFA_DA_DAILY]
-    if limpeza_agendada(executar=executar):
-        nomes.append(NOME_DA_TAREFA)
     if noticias_agendada(executar=executar):
         nomes.append(NOME_DA_TAREFA_DO_JORNAL)
     return nomes
@@ -578,20 +541,21 @@ class Legado:
     """O que `remover_legado` encontrou e tirou da máquina."""
 
     atalho: Path | None
-    tarefa: bool
+    tarefas: tuple[str, ...]
 
 
 def remover_legado(*, executar: Executor = _rodar) -> Legado:
-    """Apaga o atalho `Second Brain.lnk` e a tarefa `SecondBrain-Limpeza`.
+    """Apaga o atalho `Second Brain.lnk` e as tarefas de `TAREFAS_LEGADAS`.
 
-    Os dois chamam `-m second_brain`, módulo que morreu no rename: o atalho faz
-    a bandeja não subir no logon e a tarefa falha todo dia ao meio-dia — ambos
-    sem console, logo sem erro em lugar nenhum. Nenhum dos dois é recriado
-    aqui; quem cria os novos é `instalar_inicializacao` e `agendar_limpeza`.
+    Todos chamam o que não existe mais: o atalho faz a bandeja não subir no
+    logon e cada tarefa falha todo dia no horário dela — sem console, logo sem erro
+    em lugar nenhum. Nada é recriado aqui; o atalho novo é de
+    `instalar_inicializacao`. `tarefas` são as que existiam e saíram.
     """
     atalho = _remover_atalho(caminho_do_atalho_legado())
-    resultado = executar(["schtasks", "/Delete", "/TN", NOME_DA_TAREFA_LEGADA, "/F"])
-    tarefa = resultado.returncode == 0
-    if tarefa:
-        _log.info("Tarefa legada '%s' removida do Agendador.", NOME_DA_TAREFA_LEGADA)
-    return Legado(atalho=atalho, tarefa=tarefa)
+    removidas = []
+    for nome in TAREFAS_LEGADAS:
+        if executar(["schtasks", "/Delete", "/TN", nome, "/F"]).returncode == 0:
+            _log.info("Tarefa legada '%s' removida do Agendador.", nome)
+            removidas.append(nome)
+    return Legado(atalho=atalho, tarefas=tuple(removidas))

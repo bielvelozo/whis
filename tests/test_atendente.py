@@ -43,10 +43,10 @@ def mensagem(texto: str, *, canal: str = DM, usuario: str = GABRIEL, ts: str = "
 
 
 @pytest.fixture
-def configuracao(tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path):
+def configuracao(tmp_path: Path, caminho_do_vault: Path):
     habitar_vault(caminho_do_vault)
     return configuracao_da_busca(
-        tmp_path, caminho_do_vault, caminho_das_gravacoes, pastas_privadas=(PASTA_PRIVADA,)
+        tmp_path, caminho_do_vault, pastas_privadas=(PASTA_PRIVADA,)
     )
 
 

@@ -1,29 +1,20 @@
-"""A bandeja: casca fina sobre o coletor.
+"""A bandeja: o ícone que hospeda a palheta.
 
 O ícone de verdade só existe rodando no Windows, com a bandeja na tela — isso é
-smoke manual, como a spec decidiu. O que dá para provar aqui é tudo o que não
-depende de pixels na tela do usuário: que o clique chega ao coletor, que cada
-estado vira um desenho e um texto distintos, que uma falha aparece como balão
-com o comando de recuperação, e que a bandeja não conhece pipeline nenhum.
+smoke manual. O que dá para provar aqui é o menu como dados: o clique esquerdo
+abre a palheta, e sair desliga o ícone e quem o hospeda.
 
-O ícone é injetado — um dublê que só guarda o que a bandeja mandou desenhar.
+O ícone é injetado — um dublê que só guarda o que a bandeja mandou fazer.
 """
 
 from __future__ import annotations
-
-import inspect
-from pathlib import Path
 
 import pytest
 
 from whis import bandeja as _bandeja
 from whis import registro
-from whis.bandeja import Bandeja, desenhar_icone
-from whis.coletor import Coletor, Estado, Situacao
+from whis.bandeja import TAMANHO, Bandeja, desenhar_icone
 from whis.configuracao import Configuracao
-from whis.fakes import ResumoFake, STTFake
-from whis.portas import ErroDeSTT
-from test_coletor import GravadorDublê, STTQuebrado
 
 
 class IconeDublê:
@@ -56,296 +47,46 @@ def icone() -> IconeDublê:
     return IconeDublê()
 
 
-@pytest.fixture
-def montar(configuracao: Configuracao, caminho_das_gravacoes: Path, icone: IconeDublê):
-    """Uma bandeja ligada a um coletor síncrono, com o ícone dublê."""
+def test_o_clique_esquerdo_abre_a_palheta(icone: IconeDublê):
+    abertos: list[str] = []
+    bandeja = Bandeja(icone=icone, abrir_palheta=lambda: abertos.append("palheta"))
 
-    def construir(*, stt=None, resumo=None):
-        coletor = Coletor(
-            configuracao,
-            portas=lambda: (stt or STTFake(), resumo or ResumoFake()),
-            gravador=GravadorDublê(caminho_das_gravacoes),
-            em_segundo_plano=False,
-        )
-        return Bandeja(coletor, icone=icone), coletor
+    [padrao] = [item for item in bandeja.itens_do_menu() if item.padrao]
+    padrao.acao()
 
-    return construir
+    assert padrao.rotulo == "Abrir a palheta"
+    assert abertos == ["palheta"]
 
 
-# -- o clique ---------------------------------------------------------------
+def test_sem_quem_a_hospede_o_menu_so_tem_sair(icone: IconeDublê):
+    itens = Bandeja(icone=icone).itens_do_menu()
+
+    assert [item.rotulo for item in itens] == ["Sair"]
+    assert not any(item.padrao for item in itens)
 
 
-def test_o_clique_comeca_e_termina_a_gravacao(montar):
-    bandeja, coletor = montar()
-
-    bandeja.alternar()
-    assert coletor.estado is Estado.GRAVANDO
-
-    bandeja.alternar()
-    assert coletor.estado is Estado.PARADO
-    assert coletor.situacao().nota is not None
-
-
-def test_um_gesto_impossivel_vira_aviso_em_vez_de_derrubar_a_bandeja(
-    montar, icone: IconeDublê, monkeypatch: pytest.MonkeyPatch
-):
-    bandeja, coletor = montar()
-    monkeypatch.setattr(
-        coletor, "iniciar", lambda *a, **k: (_ for _ in ()).throw(ErroDeSTT("sem microfone"))
-    )
-
-    bandeja.alternar()  # não levanta
-
-    assert ("Não deu para começar", "sem microfone") in icone.notificacoes
-
-
-# -- o estado na tela -------------------------------------------------------
-
-
-def test_cada_estado_tem_um_desenho_proprio():
-    """Cor sozinha é ambígua: os quatro ícones precisam diferir como imagem."""
-    desenhos = {estado: desenhar_icone(estado).tobytes() for estado in Estado}
-
-    assert len(set(desenhos.values())) == len(Estado)
-
-
-def test_o_tooltip_diz_o_estado_em_portugues(montar, icone: IconeDublê):
-    bandeja, coletor = montar()
-    bandeja.atualizar(coletor.situacao())
-    assert "Parado" in icone.title
-
-    bandeja.alternar()
-    assert "Gravando" in icone.title
-
-    bandeja.alternar()
-    assert "Última nota" in icone.title
-
-
-def test_o_icone_e_repintado_a_cada_transicao(montar, icone: IconeDublê):
-    bandeja, _coletor = montar()
-    parado = desenhar_icone(Estado.PARADO).tobytes()
-    gravando = desenhar_icone(Estado.GRAVANDO).tobytes()
-
-    bandeja.alternar()
-    assert icone.icon.tobytes() == gravando
-
-    bandeja.alternar()
-    assert icone.icon.tobytes() == parado
-
-
-def test_o_rotulo_do_menu_acompanha_o_estado(montar):
-    bandeja, _coletor = montar()
-    assert bandeja._rotulo_do_gesto() == "Gravar reunião"
-
-    bandeja.alternar()
-
-    assert bandeja._rotulo_do_gesto() == "Parar e processar"
-
-
-# -- falhas visíveis --------------------------------------------------------
-
-
-def test_a_falha_vira_balao_com_o_comando_de_recuperacao(montar, icone: IconeDublê):
-    bandeja, _coletor = montar(stt=STTQuebrado())
-
-    bandeja.alternar()
-    bandeja.alternar()
-
-    titulo, mensagem = icone.notificacoes[-1]
-    assert titulo == "A reunião não virou nota"
-    assert "Deepgram fora do ar" in mensagem
-    assert "reprocessar" in mensagem
-
-
-def test_a_falha_pinta_o_icone_de_erro(montar, icone: IconeDublê):
-    bandeja, _coletor = montar(stt=STTQuebrado())
-
-    bandeja.alternar()
-    bandeja.alternar()
-
-    assert icone.icon.tobytes() == desenhar_icone(Estado.ERRO).tobytes()
-
-
-def test_o_sucesso_avisa_uma_vez_por_reuniao(montar, icone: IconeDublê):
-    bandeja, coletor = montar()
-
-    bandeja.alternar()
-    bandeja.alternar()
-    avisos = [n for n in icone.notificacoes if n[0] == "Reunião no vault"]
-    assert len(avisos) == 1
-
-    bandeja.atualizar(coletor.situacao())  # repintar não republica a mesma nota
-
-    assert len([n for n in icone.notificacoes if n[0] == "Reunião no vault"]) == 1
-
-
-# -- sair -------------------------------------------------------------------
-
-
-def test_sair_processa_a_reuniao_em_andamento_antes_de_fechar(
-    montar, icone: IconeDublê, caminho_do_vault: Path
-):
-    bandeja, _coletor = montar()
-    bandeja.alternar()
+def test_sair_esconde_o_icone_e_avisa_quem_hospeda(icone: IconeDublê):
+    encerrados: list[str] = []
+    bandeja = Bandeja(icone=icone, ao_sair=lambda: encerrados.append("atalho e janela"))
 
     bandeja.sair()
 
-    assert icone.parou
-    assert not icone.visible
-    assert (caminho_do_vault / "reunioes" / "2026-08-20-1430-daily-do-time.md").is_file()
+    assert icone.parou and not icone.visible
+    assert encerrados == ["atalho e janela"]
 
 
-# -- casca fina -------------------------------------------------------------
+def test_o_icone_e_um_circulo_do_tamanho_da_bandeja():
+    imagem = desenhar_icone()
 
-
-def test_a_bandeja_nao_conhece_o_pipeline():
-    """Critério da spec: nenhuma lógica de pipeline vive na bandeja.
-
-    O módulo não pode importar o pipeline, o vault, os adaptadores nem as
-    portas: quem processa é o coletor, chamando a costura única. Se um dia
-    alguém "resolver rápido" um ajuste de nota aqui dentro, este teste cai.
-    """
-    fonte = inspect.getsource(_bandeja)
-
-    for proibido in ("pipeline", "vault", "stt_deepgram", "resumo_claude", "gravacao"):
-        assert f"import {proibido}" not in fonte
-        assert f"from .{proibido}" not in fonte
+    assert imagem.size == (TAMANHO, TAMANHO)
+    assert imagem.mode == "RGBA"
+    assert imagem.getpixel((TAMANHO // 2, TAMANHO // 2))[3] == 0  # vazado no meio
 
 
 def test_o_log_da_bandeja_fica_ao_lado_da_configuracao(configuracao: Configuracao):
-    """Sem console, o log é a única forma de diagnosticar a reunião de ontem."""
+    """Sem console, o log é a única forma de diagnosticar o que aconteceu."""
     destino = _bandeja.arquivo_de_log(configuracao)
     assert destino == registro.arquivo_de_log(configuracao)  # a bandeja delega
 
     assert destino.parent == configuracao.origem.parent
     assert destino.name == "bandeja.log"
-
-
-# -- gravação saindo torta --------------------------------------------------
-
-
-def test_o_canal_mudo_vira_balao_com_o_conserto(montar, icone: IconeDublê):
-    """Avisar durante a reunião é o que dá tempo de consertar."""
-    bandeja, coletor = montar()
-    bandeja.alternar()
-
-    bandeja.atualizar(
-        Situacao(estado=Estado.GRAVANDO, aviso="só a sua voz está entrando; a dos outros, não")
-    )
-
-    titulo, mensagem = icone.notificacoes[-1]
-    assert titulo == "A gravação está saindo incompleta"
-    assert "dispositivo_sistema" in mensagem
-    assert "só a sua voz" in icone.title
-
-
-def test_o_mesmo_aviso_nao_e_repetido(montar, icone: IconeDublê):
-    bandeja, _coletor = montar()
-    situacao = Situacao(estado=Estado.GRAVANDO, aviso="só a sua voz está entrando; a dos outros, não")
-
-    bandeja.atualizar(situacao)
-    bandeja.atualizar(situacao)
-
-    incompletas = [n for n in icone.notificacoes if n[0] == "A gravação está saindo incompleta"]
-    assert len(incompletas) == 1
-
-
-# -- os limites do Windows --------------------------------------------------
-
-
-class IconeEstrito(IconeDublê):
-    """Um ícone que reclama como o Windows reclama.
-
-    O pystray escreve o tooltip em `szTip` (128 caracteres) e o balão em
-    `szInfo` (256) — estourar levanta `ValueError`. Foi o que aconteceu numa
-    execução real: a mensagem de erro da Deepgram tinha 272 caracteres, a
-    exceção derrubou a atualização no meio, e o usuário viu o ícone vermelho
-    sem nunca receber o balão que explicava o motivo.
-    """
-
-    LIMITE_TOOLTIP = 128
-    LIMITE_BALAO = 256
-
-    def __setattr__(self, nome: str, valor) -> None:
-        if nome == "title" and isinstance(valor, str) and len(valor) >= self.LIMITE_TOOLTIP:
-            raise ValueError(f"string too long ({len(valor)}, maximum length 128)")
-        super().__setattr__(nome, valor)
-
-    def notify(self, mensagem: str, titulo: str) -> None:
-        if len(mensagem) >= self.LIMITE_BALAO:
-            raise ValueError(f"string too long ({len(mensagem)}, maximum length 256)")
-        super().notify(mensagem, titulo)
-
-
-class STTVerborragico:
-    """Um erro tão longo quanto o que a Deepgram devolve de verdade."""
-
-    MENSAGEM = (
-        "A Deepgram respondeu, mas não reconheceu nenhuma fala em microfone.wav, "
-        "sistema.wav. O caso mais comum é canal mudo: confira 'dispositivo_sistema' "
-        "e 'dispositivo_microfone' na configuração e ouça os WAV da pasta da "
-        "gravação, que continua preservada."
-    )
-
-    def transcrever(self, canais):
-        raise ErroDeSTT(self.MENSAGEM)
-
-
-def test_erro_longo_nao_engole_o_balao(
-    configuracao: Configuracao, caminho_das_gravacoes: Path
-):
-    """O ícone vermelho sem explicação é pior que erro nenhum."""
-    icone = IconeEstrito()
-    coletor = Coletor(
-        configuracao,
-        portas=lambda: (STTVerborragico(), ResumoFake()),
-        gravador=GravadorDublê(caminho_das_gravacoes),
-        em_segundo_plano=False,
-    )
-    bandeja = Bandeja(coletor, icone=icone)
-
-    bandeja.alternar()
-    bandeja.alternar()
-
-    assert icone.icon.tobytes() == desenhar_icone(Estado.ERRO).tobytes()
-    titulo, mensagem = icone.notificacoes[-1]
-    assert titulo == "A reunião não virou nota"
-    assert "Deepgram" in mensagem
-    assert len(icone.title) < IconeEstrito.LIMITE_TOOLTIP
-
-
-def test_o_tooltip_cabe_no_limite_do_windows(montar, icone: IconeDublê):
-    bandeja, _coletor = montar()
-
-    bandeja.atualizar(
-        Situacao(estado=Estado.GRAVANDO, titulo="reunião com um nome " * 20)
-    )
-
-    assert len(icone.title) <= _bandeja.LIMITE_DO_TOOLTIP
-    assert icone.title.endswith("…")
-
-
-def test_icone_que_recusa_pintar_ainda_deixa_o_balao_passar(
-    configuracao: Configuracao, caminho_das_gravacoes: Path
-):
-    """Defesa em profundidade: pintar e avisar não podem cair juntos."""
-
-    class IconeQueNaoPinta(IconeDublê):
-        def __setattr__(self, nome: str, valor) -> None:
-            if nome == "icon" and valor is not None:
-                raise RuntimeError("o Windows recusou o ícone")
-            super().__setattr__(nome, valor)
-
-    icone = IconeQueNaoPinta()
-    coletor = Coletor(
-        configuracao,
-        portas=lambda: (STTQuebrado(), ResumoFake()),
-        gravador=GravadorDublê(caminho_das_gravacoes),
-        em_segundo_plano=False,
-    )
-    bandeja = Bandeja(coletor, icone=icone)
-
-    bandeja.alternar()
-    bandeja.alternar()
-
-    assert any(titulo == "A reunião não virou nota" for titulo, _ in icone.notificacoes)

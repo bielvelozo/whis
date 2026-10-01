@@ -8,13 +8,13 @@ minuto e a daily quarenta segundos.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
-`news`, `note`, `doubt`, `do`, `ask`, `open`, `record`, `settings`, `stash`,
+`news`, `note`, `doubt`, `do`, `ask`, `open`, `settings`, `stash`,
 `prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
 portas de verdade — as fontes, o roteiro, a busca — entram por
-`comandos_padrao`, e é por aí que `--fakes` da bandeja chega aqui. `record` e
-`settings` são da própria `Palheta`, porque gravar e abrir o painel são de
-quem a hospeda: a bandeja injeta `gravar`/`gravando` e `abrir_painel`.
+`comandos_padrao`, e é por aí que `--fakes` da bandeja chega aqui. `settings`
+é da própria `Palheta`, porque abrir o painel é de quem a hospeda: a bandeja
+injeta `abrir_painel`.
 
 Dois cuidados que vêm do custo: um comando custa dinheiro e minutos, então um
 despacho enquanto outro roda é **recusado** com um toast curto, e a falha de
@@ -36,6 +36,7 @@ from typing import Protocol
 
 from . import area_de_transferencia as _area
 from . import avisos as _avisos
+from . import login_do_claude as _login
 from . import prompts as _prompts
 from . import vault as _vault
 from .busca import PortaBusca, Resposta
@@ -73,15 +74,14 @@ TITULO_DO_JORNAL_PARCIAL = "O jornal saiu com falta"
 TITULO_DO_JORNAL_SEM_PAGINA = "O jornal não foi publicado"
 TITULO_DO_JORNAL_QUE_NAO_NASCEU = "O jornal não nasceu"
 
-NOME_DE_GRAVAR = "record"
 NOME_DA_DAILY = "daily"
 NOME_DO_JORNAL = "news"
 NOME_DE_CONFIGURAR = "settings"
 
-#: A ordem em que as ações aparecem na janela: as três que o usuário pediu
+#: A ordem em que as ações aparecem na janela: as que o usuário pediu
 #: primeiro, e existem mesmo com o campo vazio.
 ORDEM_DAS_ACOES = (
-    "open", "daily", NOME_DE_GRAVAR, NOME_DO_JORNAL, "prompts", "stash", "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR,
+    "open", "daily", NOME_DO_JORNAL, "prompts", "stash", "ask", "note", "doubt", "do", NOME_DE_CONFIGURAR,
 )
 
 #: Quanto da resposta cabe no toast: o resto está na nota que o botão abre.
@@ -112,9 +112,8 @@ Rodar = Callable[[str, Configuracao], "Resultado | None"]
 class Comando:
     """Uma entrada do registro: o nome digitado, o que a lista mostra e quem roda.
 
-    `rotulo` é o título da linha na janela (em inglês, como o comando) e pode
-    ser função, para "Start recording" virar "Stop recording"; `descricao` é a
-    frase curta embaixo; `icone` é um glifo em texto. `lista`, quando há, é o
+    `rotulo` é o título da linha na janela (em inglês, como o comando);
+    `descricao` é a frase curta embaixo; `icone` é um glifo em texto. `lista`, quando há, é o
     que a janela abre no lugar de despachar.
     """
 
@@ -122,7 +121,7 @@ class Comando:
     ajuda: str
     rodar: Rodar
     parametro: str = ""
-    rotulo: str | Callable[[], str] = ""
+    rotulo: str = ""
     descricao: str = ""
     icone: str = ""
     lista: Callable[[Configuracao], Lista] | None = None
@@ -131,8 +130,6 @@ class Comando:
         return f"{self.nome} <{self.parametro}>" if self.parametro else self.nome
 
     def rotulo_atual(self) -> str:
-        if callable(self.rotulo):
-            return self.rotulo()
         return self.rotulo or self.nome.capitalize()
 
 
@@ -174,9 +171,9 @@ class Palheta:
     """O despacho: lê o texto, roda o comando em segundo plano e avisa ao terminar.
 
     `configuracao` é atributo público de propósito: o painel a recarrega
-    depois de salvar, e o próximo comando já roda com a nova. `abrir_painel`,
-    `gravar` e `gravando` são preenchidos por quem hospeda a palheta (a
-    bandeja): abrir uma janela é coisa do thread do Tk, e gravar é do coletor.
+    depois de salvar, e o próximo comando já roda com a nova. `abrir_painel`
+    é preenchido por quem hospeda a palheta (a bandeja): abrir uma janela é
+    coisa do thread do Tk.
     """
 
     def __init__(
@@ -187,25 +184,13 @@ class Palheta:
         avisar: Callable[..., bool] | None = None,
         iniciar_thread: IniciarThread | None = None,
         abrir_painel: Callable[[], None] | None = None,
-        gravar: Callable[[], None] | None = None,
-        gravando: Callable[[], bool] | None = None,
     ) -> None:
         self.configuracao = configuracao
         self.abrir_painel = abrir_painel or self._painel_indisponivel
-        self.gravar = gravar or self._gravador_indisponivel
-        self.gravando = gravando or (lambda: False)
         self._avisar = avisar
         self._iniciar_thread = iniciar_thread or _em_thread
         self._ocupada = threading.Lock()
         proprios = [
-            Comando(
-                NOME_DE_GRAVAR,
-                "começa a gravar a reunião, ou para e processa",
-                self._gravar,
-                rotulo=self._rotulo_de_gravar,
-                descricao="Toggle the meeting recorder in the tray",
-                icone="●",
-            ),
             Comando(
                 NOME_DE_CONFIGURAR,
                 "abre o painel de configuração",
@@ -222,7 +207,7 @@ class Palheta:
         )
 
     def acoes(self) -> tuple[Comando, ...]:
-        """Os comandos na ordem da lista da janela: as três ações pedidas primeiro.
+        """Os comandos na ordem da lista da janela: as ações pedidas primeiro.
 
         Com `[daily].ativa` falso, `daily` sai da lista e deixa de ser
         entendido; com `[noticias].ativa` falso, o mesmo vale para `news`.
@@ -273,7 +258,10 @@ class Palheta:
             resultado = self._executar(texto)
         except Exception as erro:  # noqa: BLE001 — nenhuma exceção fica solta no thread
             _log.exception("O comando da palheta falhou: %r", _resumido(texto))
-            resultado = Resultado(TITULO_DE_FALHA, str(erro) or type(erro).__name__)
+            if _login.vencido(str(erro)):
+                resultado = Resultado(_login.TITULO, f"{_login.PEDIDO} Depois repita o comando.")
+            else:
+                resultado = Resultado(TITULO_DE_FALHA, str(erro) or type(erro).__name__)
         finally:
             self._ocupada.release()
         if resultado is not None:
@@ -291,20 +279,10 @@ class Palheta:
         self.abrir_painel()
         return None
 
-    def _gravar(self, _argumento: str, _configuracao: Configuracao) -> None:
-        self.gravar()
-        return None
-
-    def _rotulo_de_gravar(self) -> str:
-        return "Stop recording" if self.gravando() else "Start recording"
-
     @staticmethod
     def _painel_indisponivel() -> None:
         raise RuntimeError("O painel de configuração não está disponível nesta execução.")
 
-    @staticmethod
-    def _gravador_indisponivel() -> None:
-        raise RuntimeError("Gravar só funciona com a palheta hospedada na bandeja.")
 
 
 def avisar_resultado(
@@ -350,6 +328,12 @@ def texto_do_toast_da_daily(resultado: ResultadoDaDaily) -> str:
 
 def resultado_da_daily(resultado: ResultadoDaDaily) -> Resultado:
     """O toast da daily — o mesmo para `whis daily` e para a palheta."""
+    if _login.vencido(resultado.falha_do_roteiro):
+        return Resultado(
+            _login.TITULO,
+            f"{_login.PEDIDO} A daily nasceu sem roteiro e a nota viva ficou como estava.",
+            nota=_vault.CAMINHO_DA_NOTA_VIVA if resultado.nota_viva is not None else None,
+        )
     if resultado.nota_viva is None:
         return Resultado(TITULO_DA_DAILY_QUE_NAO_NASCEU, texto_do_toast_da_daily(resultado))
     return Resultado(
@@ -382,6 +366,12 @@ def resultado_do_jornal(resultado: ResultadoDoJornal) -> Resultado:
     """
     if resultado.url is None:
         caminho = caminho_da_edicao(resultado.edicao.data)
+        if _login.vencido(resultado.falha_da_publicacao):
+            return Resultado(
+                _login.TITULO,
+                f"{_login.PEDIDO} O jornal não foi publicado; a nota está no vault ({caminho}).",
+                nota=caminho,
+            )
         motivo = resultado.falha_da_publicacao or "a publicação falhou"
         return Resultado(
             TITULO_DO_JORNAL_SEM_PAGINA,
@@ -538,8 +528,8 @@ def comandos_padrao(
     """Os comandos que tocam o vault, com as portas injetadas.
 
     As fábricas recebem a configuração a cada chamada — é o que faz uma
-    configuração recarregada valer no comando seguinte. `record` e
-    `settings` são da própria `Palheta`.
+    configuração recarregada valer no comando seguinte. `settings` é da
+    própria `Palheta`.
     """
     agora = relogio or (lambda: datetime.now().astimezone())
     lancar_alvo = lancar or _lancar_no_windows

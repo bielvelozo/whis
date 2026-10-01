@@ -40,9 +40,8 @@ _log = logging.getLogger("whis.painel")
 
 TITULO = "Whis — configuração"
 
-#: Os cinco segredos, para o teste conferir que são os que a spec lista.
+#: Os quatro segredos, para o teste conferir que são os que a spec lista.
 SEGREDOS = (
-    "[deepgram].api_key",
     "[linear].api_key",
     "[slack].user_token",
     "[slack].bot_token",
@@ -51,7 +50,7 @@ SEGREDOS = (
 
 MENSAGEM_DE_SALVO = (
     "Salvo. A palheta já usa a configuração nova; reinicie a bandeja para mudanças de "
-    "áudio, atalho e caminhos valerem lá."
+    "atalho e caminhos valerem lá."
 )
 
 #: O que aparece no lugar de um segredo enquanto o campo está escondido.
@@ -88,7 +87,7 @@ def campos_do_modelo(modelo: str = MODELO_DE_CONFIGURACAO) -> tuple[Campo, ...]:
     vistas: set[Chave] = set()
     campos: list[Campo] = []
     secao = ""
-    for linha in modelo.format(vault="", gravacoes="").splitlines():
+    for linha in modelo.format(vault="").splitlines():
         cabecalho = _LINHA_DE_SECAO.match(linha)
         if cabecalho is not None:
             secao = cabecalho["secao"]
@@ -406,7 +405,7 @@ def abrir_painel(raiz, palheta, *, destino: Path | None = None) -> Painel | None
     """Abre o painel sobre o `Tk` da palheta — ou traz para frente o que já está aberto.
 
     Salvar recarrega a configuração da palheta na hora; o que a bandeja já
-    leu (áudio, atalho, caminhos) só muda ao reiniciar, e a tela diz isso.
+    leu (atalho, caminhos) só muda ao reiniciar, e a tela diz isso.
     """
     aberto = _abertos.get(id(raiz))
     if aberto is not None and aberto.aberto():

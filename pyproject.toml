@@ -1,14 +1,13 @@
 [project]
 name = "whis"
 version = "0.1.0"
-description = "Coletor de reunião sob demanda: grava, transcreve, resume e escreve no vault Obsidian."
+description = "Agente pessoal local: diário, daily, jornal e busca, com um vault Obsidian como memória durável."
 requires-python = ">=3.12,<3.13"
 dependencies = [
-    "PyAudioWPatch>=0.2.12.7",  # captura WASAPI (mic + loopback)
     "pystray>=0.19.5",          # ícone na bandeja do Windows
     "Pillow>=10.0",             # imagem do ícone da bandeja
-    "httpx>=0.27",              # chamadas HTTP (Deepgram batch)
-    "claude-agent-sdk>=0.1.0",  # resumo via conta Claude do usuário (OAuth)
+    "httpx>=0.27",              # chamadas HTTP (Linear, Slack, feeds do jornal)
+    "claude-agent-sdk>=0.1.0",  # o Claude da conta do usuário (OAuth)
     "slack_sdk>=3.27",          # a DM do agente por Socket Mode (sem porta aberta)
     "pywin32>=306",             # RegisterHotKey e o loop de mensagens do atalho da palheta
 ]
@@ -33,5 +32,5 @@ whis = ["*.ps1"]
 testpaths = ["tests"]
 addopts = "-q -m \"not rede\""
 markers = [
-    "rede: teste que fala com um serviço externo real (Deepgram/Claude); nao roda por padrao",
+    "rede: teste que fala com um serviço externo real (Claude, Linear, Slack); nao roda por padrao",
 ]

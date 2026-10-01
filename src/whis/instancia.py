@@ -1,10 +1,9 @@
-"""Trava de instância única: duas bandejas não podem disputar o microfone.
+"""Trava de instância única: duas bandejas não podem disputar o atalho da palheta.
 
-O modo de falha é banal e caro: o usuário clica no atalho de novo (ou o atalho
-de inicialização dispara com a bandeja já aberta), sobem dois ícones iguais, e o
-segundo gravador tenta abrir os mesmos dispositivos. Na melhor hipótese a
-segunda gravação nasce muda; na pior, o usuário clica no ícone errado e a
-reunião não está sendo gravada por ninguém.
+O modo de falha é banal: o usuário clica no atalho de novo (ou o atalho de
+inicialização dispara com a bandeja já aberta), sobem dois ícones iguais, e a
+segunda bandeja não consegue registrar o atalho global que a primeira já
+segura — e avisa por toast que ele está tomado.
 
 A trava é um arquivo com bloqueio de faixa do próprio Windows
 (`msvcrt.locking`), não um "arquivo existe?": bloqueio de faixa é do sistema

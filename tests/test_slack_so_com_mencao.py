@@ -152,7 +152,6 @@ def test_a_chave_do_toml_chega_ao_coletor(tmp_path, monkeypatch):
         "\n".join(
             [
                 f'vault = "{(tmp_path / "v").as_posix()}"',
-                f'gravacoes = "{(tmp_path / "g").as_posix()}"',
                 "",
                 "[slack]",
                 'user_token = "xoxp-EXEMPLO"',
@@ -174,8 +173,7 @@ def test_configuracao_sem_a_chave_continua_carregando(tmp_path):
 
     arquivo = tmp_path / "config.toml"
     arquivo.write_text(
-        f'vault = "{(tmp_path / "v").as_posix()}"\n'
-        f'gravacoes = "{(tmp_path / "g").as_posix()}"\n',
+        f'vault = "{(tmp_path / "v").as_posix()}"\n',
         encoding="utf-8",
     )
 

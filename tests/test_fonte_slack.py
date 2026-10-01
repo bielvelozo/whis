@@ -788,7 +788,6 @@ def configuracao_com_slack(
 ) -> Configuracao:
     return Configuracao(
         vault=tmp_path / "vault",
-        gravacoes=tmp_path / "gravacoes",
         slack_user_token=token,
         slack_conversas_excluidas=excluidas,
         origem=tmp_path / "config.toml",

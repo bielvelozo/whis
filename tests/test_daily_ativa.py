@@ -25,7 +25,7 @@ ATIVA = next(campo for campo in CAMPOS if campo.caminho == "[daily].ativa")
 
 def escrever(tmp_path: Path, corpo: str) -> Path:
     arquivo = tmp_path / "config.toml"
-    arquivo.write_text(f'vault = "V"\ngravacoes = "G"\n{corpo}', encoding="utf-8")
+    arquivo.write_text(f'vault = "V"\n{corpo}', encoding="utf-8")
     return arquivo
 
 
@@ -50,8 +50,8 @@ def test_o_que_nao_e_booleano_e_recusado(tmp_path: Path, valor: str):
 
 
 def test_o_painel_mostra_e_le_true_e_false():
-    ligada = Configuracao(vault=Path("V"), gravacoes=Path("G"))
-    desligada = Configuracao(vault=Path("V"), gravacoes=Path("G"), daily_ativa=False)
+    ligada = Configuracao(vault=Path("V"))
+    desligada = Configuracao(vault=Path("V"), daily_ativa=False)
 
     assert texto_do_valor(ligada, ATIVA) == "true"
     assert texto_do_valor(desligada, ATIVA) == "false"
@@ -60,7 +60,7 @@ def test_o_painel_mostra_e_le_true_e_false():
 
 
 def test_desmarcar_no_painel_vira_configuracao_desligada(tmp_path: Path):
-    textos = textos_de(Configuracao(vault=Path("V"), gravacoes=Path("G")))
+    textos = textos_de(Configuracao(vault=Path("V")))
     textos[ATIVA] = "false"
 
     nova = montar_configuracao(textos, origem=tmp_path / "config.toml")
@@ -72,12 +72,11 @@ def test_desmarcar_no_painel_vira_configuracao_desligada(tmp_path: Path):
 
 
 @pytest.fixture
-def config_da_daily(tmp_path: Path, caminho_do_vault: Path, caminho_das_gravacoes: Path, monkeypatch):
+def config_da_daily(tmp_path: Path, caminho_do_vault: Path, monkeypatch):
     def montar(*, ativa: bool) -> Path:
         arquivo = tmp_path / "config-da-daily.toml"
         arquivo.write_text(
             f'vault = "{caminho_do_vault.as_posix()}"\n'
-            f'gravacoes = "{caminho_das_gravacoes.as_posix()}"\n'
             f"[daily]\nativa = {'true' if ativa else 'false'}\n",
             encoding="utf-8",
         )

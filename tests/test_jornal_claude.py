@@ -56,7 +56,7 @@ from whis.portas import (
     PortaFormacao,
     PortaPublicacao,
 )
-from whis.resumo_claude import VARIAVEIS_DE_API_PAGA, caminho_do_cli
+from whis.claude_cli import VARIAVEIS_DE_API_PAGA, caminho_do_cli
 
 DIA = date(2026, 9, 25)
 URL = "https://claude.ai/artifact/AYhYVZDhevQdWv4YaNuoge"

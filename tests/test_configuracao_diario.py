@@ -15,7 +15,7 @@ from whis.configuracao import ConfiguracaoInvalida, carregar
 
 def escrever(tmp_path: Path, corpo: str) -> Path:
     arquivo = tmp_path / "config.toml"
-    arquivo.write_text(f'vault = "V"\ngravacoes = "G"\n{corpo}', encoding="utf-8")
+    arquivo.write_text(f'vault = "V"\n{corpo}', encoding="utf-8")
     return arquivo
 
 

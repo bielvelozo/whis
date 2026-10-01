@@ -1,8 +1,8 @@
 """Fakes das portas: implementações de verdade que devolvem dados fixos.
 
 Não são mocks — não são interrogados sobre como foram chamados. São os
-adaptadores que os testes (e o `--fakes` da CLI) injetam no lugar da Deepgram,
-do Claude, do git, do Linear e do Slack. Os testes verificam só o que aparece
+adaptadores que os testes (e o `--fakes` da CLI) injetam no lugar do Claude,
+do git, do Linear e do Slack. Os testes verificam só o que aparece
 no vault.
 
 As exceções são `ResumoDoDiaFake`, `DailyFake` e `BuscaFake`, que guardam o
@@ -27,40 +27,17 @@ from .ferramentas import Ferramentas
 from .fontes import Evento, Janela
 from .nota_viva import NotaViva, id_do_item
 from .portas import (
-    EU,
-    OUTROS,
     Aula,
-    CanaisDaGravacao,
     Candidato,
     Daily,
     Escolha,
-    Fala,
     Formacao,
     ItemEscolhido,
     ItemNovo,
     Janelas,
     Medida,
     Publicacao,
-    Resumo,
     ResumoDoDia,
-    Transcricao,
-)
-
-#: Transcrição de exemplo — pt-BR com termos em inglês, como as reuniões reais.
-TRANSCRICAO_PADRAO = Transcricao(
-    falas=(
-        Fala(EU, "Bom dia, pessoal. Vamos começar pela daily?", 0.0),
-        Fala(OUTROS, "Bom dia! Ontem terminei o deploy do pipeline novo.", 3.2),
-        Fala(EU, "Fechado. Então o rollback fica pra depois do review.", 9.8),
-        Fala(OUTROS, "Combinado, eu abro a issue ainda hoje.", 14.1),
-    ),
-)
-
-#: Resumo de exemplo, na estrutura que a nota de reunião espera.
-RESUMO_PADRAO = Resumo(
-    decisoes=("O rollback fica para depois do review.",),
-    acoes=("Abrir a issue do rollback ainda hoje.",),
-    topicos=("Deploy do pipeline novo", "Planejamento do rollback"),
 )
 
 #: O dia a que os eventos de exemplo pertencem; `FonteDeExemplo` os transporta.
@@ -149,40 +126,6 @@ DAILY_PADRAO = Daily(
     ),
     mover=(id_do_item(ITEM_ABERTO_DE_EXEMPLO),),
 )
-
-
-class STTFake:
-    """Porta de STT que devolve sempre a mesma transcrição.
-
-    `erro` faz a transcrição falhar — é a costura de que as camadas 03 e 06
-    precisam para os casos de falha; a camada 01 não os exercita.
-    """
-
-    def __init__(
-        self,
-        transcricao: Transcricao = TRANSCRICAO_PADRAO,
-        erro: Exception | None = None,
-    ) -> None:
-        self._transcricao = transcricao
-        self._erro = erro
-
-    def transcrever(self, canais: CanaisDaGravacao) -> Transcricao:
-        if self._erro is not None:
-            raise self._erro
-        return self._transcricao
-
-
-class ResumoFake:
-    """Porta de resumo que devolve sempre o mesmo resumo em português."""
-
-    def __init__(self, resumo: Resumo = RESUMO_PADRAO, erro: Exception | None = None) -> None:
-        self._resumo = resumo
-        self._erro = erro
-
-    def resumir(self, transcricao: Transcricao, titulo: str | None = None) -> Resumo:
-        if self._erro is not None:
-            raise self._erro
-        return self._resumo
 
 
 class FonteFake:
