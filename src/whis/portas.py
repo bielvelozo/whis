@@ -222,7 +222,15 @@ class Publicacao:
 
 
 class ErroDePublicacao(RuntimeError):
-    """A página não saiu; a nota da edição já existe no vault."""
+    """A página não saiu; a nota já existe no vault.
+
+    `url` é o endereço que já existe quando a falha veio depois de criá-lo: o
+    deck da daily nasce numa sessão do CLI e é preenchido na seguinte.
+    """
+
+    def __init__(self, *args: object, url: str | None = None) -> None:
+        super().__init__(*args)
+        self.url = url
 
 
 @runtime_checkable
@@ -233,4 +241,17 @@ class PortaPublicacao(Protocol):
         self, html: Path, capas: dict[str, Path], url_atual: str | None
     ) -> Publicacao:
         """`capas` é `{"img/N.jpg": caminho local}`. Levanta `ErroDePublicacao`."""
+        ...
+
+
+@runtime_checkable
+class PortaPublicacaoDoDeck(Protocol):
+    """Publica os arquivos do deck da daily no Claude Slides, sempre no mesmo endereço."""
+
+    def publicar(self, raiz: Path, arquivos: tuple[str, ...], url_atual: str | None) -> Publicacao:
+        """`arquivos` são os caminhos publicados (`project/...`) sob `raiz`, o índice incluído.
+
+        Sem `url_atual`, cria o deck pelo tipo Slides e o preenche. Levanta
+        `ErroDePublicacao`, com `url` quando o deck chegou a ser criado.
+        """
         ...

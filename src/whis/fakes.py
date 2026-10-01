@@ -390,6 +390,7 @@ MEDIDA_DA_PUBLICACAO_FAKE = Medida(
 )
 
 URL_DO_JORNAL_FAKE = "https://claude.ai/artifact/fake-jornal"
+URL_DO_DECK_FAKE = "https://claude.ai/artifact/fake-daily"
 
 
 class EditorFake:
@@ -522,3 +523,26 @@ class PublicacaoFake:
         if self._erro is not None:
             raise self._erro
         return Publicacao(url=self._url, medida=self._medida)
+
+
+class PublicacaoDoDeckFake:
+    """Publicação do deck que não publica: guarda o que recebeu e devolve uma URL fixa.
+
+    `conteudos` é lido na hora da chamada, porque a pasta de trabalho é
+    temporária. Só os testes a usam: `--fakes` na daily é simulação.
+    """
+
+    def __init__(self, url: str = URL_DO_DECK_FAKE, erro: Exception | None = None) -> None:
+        self._url = url
+        self._erro = erro
+        self.chamadas = 0
+        self.url_recebida: str | None = None
+        self.conteudos: dict[str, str] = {}
+
+    def publicar(self, raiz: Path, arquivos: tuple[str, ...], url_atual: str | None) -> Publicacao:
+        self.chamadas += 1
+        self.url_recebida = url_atual
+        self.conteudos = {caminho: (raiz / caminho).read_text(encoding="utf-8") for caminho in arquivos}
+        if self._erro is not None:
+            raise self._erro
+        return Publicacao(url=url_atual or self._url, medida=MEDIDA_DA_PUBLICACAO_FAKE)
