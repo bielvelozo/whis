@@ -113,7 +113,7 @@ def test_comando_daily_deixa_rastro_no_arquivo_de_log(configuracao_do_diario, ca
 # -- --anotar: o único gesto do agente numa seção do usuário -----------------
 
 
-def test_anotar_faz_a_nota_viva_nascer_do_modelo_com_a_linha_em_pontos(
+def test_anotar_faz_a_nota_viva_nascer_do_modelo_com_a_linha_em_falar(
     configuracao_do_diario, caminho_do_vault: Path, capsys: pytest.CaptureFixture
 ):
     configuracao_do_diario()
@@ -123,11 +123,11 @@ def test_anotar_faz_a_nota_viva_nascer_do_modelo_com_a_linha_em_pontos(
     texto = nota_viva(caminho_do_vault).read_text(encoding="utf-8")
     assert codigo == 0
     assert texto.startswith("---\ntipo: daily-atual\n---\n")
-    assert texto.endswith("## Pontos\n- quero puxar a retenção de 180 dias\n\n## Falar\n")
+    assert texto.endswith("## Falar\n- quero puxar a retenção de 180 dias\n")
     assert "Anotado em" in capsys.readouterr().out
 
 
-def test_anotar_so_acrescenta_em_pontos_e_nao_muda_nenhum_outro_byte(configuracao_do_diario, caminho_do_vault: Path):
+def test_anotar_so_acrescenta_em_falar_e_nao_muda_nenhum_outro_byte(configuracao_do_diario, caminho_do_vault: Path):
     configuracao_do_diario()
     modulo_vault.preparar(caminho_do_vault)
     original = (
@@ -146,7 +146,7 @@ def test_anotar_so_acrescenta_em_pontos_e_nao_muda_nenhum_outro_byte(configuraca
     texto = nota_viva(caminho_do_vault).read_bytes().decode("utf-8")
     assert texto.count("- ponto novo\n") == 1
     assert hashlib.sha256(texto.replace("- ponto novo\n", "", 1).encode("utf-8")).hexdigest() == hash_do_original
-    assert "## Pontos\n\n- ponto antigo\n- ponto novo\n\n## Falar\n\n- avisar da folga\n\n" in texto
+    assert "## Pontos\n\n- ponto antigo\n\n## Falar\n\n- avisar da folga\n- ponto novo\n\n" in texto
 
 
 def test_anotar_nao_publica_nem_escreve_copia(configuracao_do_diario, caminho_do_vault: Path, publicacao_do_deck):
@@ -160,16 +160,19 @@ def test_anotar_nao_publica_nem_escreve_copia(configuracao_do_diario, caminho_do
     assert publicacao_do_deck.chamadas == 0
 
 
-def test_o_ponto_anotado_fica_na_nota_e_fora_do_deck(configuracao_do_diario, caminho_do_vault: Path, publicacao_do_deck):
+def test_o_anotado_entra_em_falar_e_vai_para_o_deck(configuracao_do_diario, caminho_do_vault: Path, publicacao_do_deck):
     configuracao_do_diario()
     escrever_nota_da_daily(caminho_do_vault)
     main(["daily", "--anotar", "combinar a retenção de 180 dias"])
 
     main(["daily"])
 
-    assert "- também não vai\n- combinar a retenção de 180 dias\n" in nota_viva(caminho_do_vault).read_text(encoding="utf-8")
+    texto = nota_viva(caminho_do_vault).read_text(encoding="utf-8")
+    assert "- sexta eu saio mais cedo\n- combinar a retenção de 180 dias\n" in texto
+    assert "- também não vai\n\n" in texto
     assert publicacao_do_deck.chamadas == 1
-    assert all("combinar a retenção" not in conteudo for conteudo in publicacao_do_deck.conteudos.values())
+    assert "combinar a retenção de 180 dias" in publicacao_do_deck.conteudos["project/slides/falar.html"]
+    assert all("também não vai" not in conteudo for conteudo in publicacao_do_deck.conteudos.values())
 
 
 def test_anotar_vazio_e_recusado(configuracao_do_diario, caminho_do_vault: Path, caplog: pytest.LogCaptureFixture):

@@ -35,6 +35,7 @@ ter os dois"*.
 | Como `done` escolhe o item | **Lista na palheta**, como `prompts`; não por texto casado. |
 | Enter na lista | **Move e a janela fica aberta**; o item some da lista e o rodapé confirma. |
 | Registro | Spec em `.scratch/atalhos-da-daily/`, no padrão do repositório. |
+| `note` na daily (depois da primeira daily real, 13:55) | **`note` escreve em *Falar***; *Pontos* sai, como *O que terminei*. O `note` dele caiu em *Pontos*, que nunca ia para o deck. |
 
 ## A nota: seis seções
 

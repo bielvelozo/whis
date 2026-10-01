@@ -214,15 +214,15 @@ def test_daily_com_a_nota_vazia_avisa_com_o_botao_da_nota(montar, caminho_do_vau
 # -- note e doubt -----------------------------------------------------------
 
 
-def test_note_escreve_em_pontos_pelo_mesmo_caminho_do_subcomando(montar, caminho_do_vault: Path, aviso):
+def test_note_escreve_em_falar_pelo_mesmo_caminho_do_subcomando(montar, caminho_do_vault: Path, aviso):
     palheta = montar()
 
     palheta.despachar("note puxar a retenção de 180 dias")
 
     nota = (caminho_do_vault / "daily" / "atual.md").read_text(encoding="utf-8")
-    assert nota.endswith("## Pontos\n- puxar a retenção de 180 dias\n\n## Falar\n")
+    assert nota.endswith("## Falar\n- puxar a retenção de 180 dias\n")
     titulo, texto, botao = aviso.ultimo()
-    assert titulo == "Anotado em Pontos"
+    assert titulo == "Anotado em Falar"
     assert texto == "puxar a retenção de 180 dias"
     assert botao[1].endswith("&file=daily%2Fatual")
 
@@ -233,11 +233,11 @@ def test_doubt_escreve_em_duvidas_e_so_a_pedido(montar, caminho_do_vault: Path, 
     palheta.despachar("doubt o pix pendente expira sozinho?")
 
     nota = (caminho_do_vault / "daily" / "atual.md").read_text(encoding="utf-8")
-    assert "## Dúvidas\n- o pix pendente expira sozinho?\n\n## Pontos\n" in nota
+    assert "## Dúvidas\n- o pix pendente expira sozinho?\n\n## Falar\n" in nota
     assert aviso.ultimo()[0] == "Anotado em Dúvidas"
 
 
-def test_nota_antiga_sem_pontos_ganha_a_secao_antes_de_falar(montar, caminho_do_vault: Path):
+def test_note_acrescenta_no_fim_de_falar_sem_mudar_o_resto(montar, caminho_do_vault: Path):
     palheta = montar()
     _vault.preparar(caminho_do_vault)
     antiga = (
@@ -249,8 +249,7 @@ def test_nota_antiga_sem_pontos_ganha_a_secao_antes_de_falar(montar, caminho_do_
     palheta.despachar("note ponto novo")
 
     texto = (caminho_do_vault / "daily" / "atual.md").read_bytes().decode("utf-8")
-    assert texto.endswith("## Dúvidas\n\n- uma dúvida\n\n## Pontos\n- ponto novo\n\n## Falar\n\n- ponto antigo\n")
-    assert texto.replace("## Pontos\n- ponto novo\n\n", "", 1) == antiga
+    assert texto == antiga + "- ponto novo\n"
 
 
 def test_do_escreve_a_caixa_em_fazer_para_ele_marcar(montar, caminho_do_vault: Path, aviso):
@@ -264,6 +263,19 @@ def test_do_escreve_a_caixa_em_fazer_para_ele_marcar(montar, caminho_do_vault: P
     assert titulo == "Anotado em Fazer"
     assert texto == "responder o ribeiro"
     assert botao[1].endswith("&file=daily%2Fatual")
+
+
+def test_o_que_o_note_anota_vira_o_slide_falar_da_daily(montar, caminho_do_vault: Path, aviso):
+    """Em 2026-10-01 o `note` caiu em *Pontos*, que nunca foi para o deck, e a daily saiu sem ele."""
+    publicacao = PublicacaoDoDeckFake()
+    palheta = montar(publicacao=publicacao)
+    escrever_nota_da_daily(caminho_do_vault)
+
+    palheta.despachar("note falar que mandei msg pro lucas sobre o CRM")
+    assert aviso.ultimo()[:2] == ("Anotado em Falar", "falar que mandei msg pro lucas sobre o CRM")
+    palheta.despachar("daily")
+
+    assert "falar que mandei msg pro lucas sobre o CRM" in publicacao.conteudos["project/slides/falar.html"]
 
 
 def test_did_e_doing_escrevem_em_fiz_e_fazendo_sem_caixa(montar, caminho_do_vault: Path, aviso):

@@ -32,7 +32,6 @@ from .nota_viva import (
     SECAO_FALAR,
     SECAO_FAZENDO,
     SECAO_FIZ,
-    SECAO_PONTOS,
     NotaViva,
 )
 from .portas import ResumoDoDia, Reuniao
@@ -543,11 +542,11 @@ def escrever_nota_viva(vault: Path, nota: NotaViva) -> Path:
     return escrever(vault, CAMINHO_DA_NOTA_VIVA, nota.texto(), zonas=ZONAS_DA_DAILY, literal=True)
 
 
-def anotar_ponto(vault: Path, texto: str, secao: str = SECAO_PONTOS) -> Path:
+def anotar_ponto(vault: Path, texto: str, secao: str = SECAO_FALAR) -> Path:
     """Acrescenta uma linha no fim de uma seção da nota viva que tem comando.
 
     Só a pedido explícito (`daily --anotar`, `did`/`doing`/`note`/`doubt`/`do`
-    na palheta, `anotar` na DM). Em *Fazer* a linha nasce `- [ ] texto`, e
+    na palheta, `anotar` na DM); sem seção, vai para *Falar*. Em *Fazer* a linha nasce `- [ ] texto`, e
     quem marca é ele. É **append-only**: todo byte fora da linha nova continua
     onde estava, porque o que há ali foi digitado à mão.
     """

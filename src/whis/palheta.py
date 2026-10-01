@@ -53,7 +53,7 @@ from .jornal import (
     gerar_jornal,
 )
 from .janela_da_palheta import Efeito, Gesto, Linha, Lista
-from .nota_viva import SECAO_DUVIDAS, SECAO_FAZENDO, SECAO_FAZER, SECAO_FIZ, SECAO_PONTOS, Item, contem
+from .nota_viva import SECAO_DUVIDAS, SECAO_FALAR, SECAO_FAZENDO, SECAO_FAZER, SECAO_FIZ, Item, contem
 from .obsidian import lancar as _lancar_no_windows
 from .obsidian import uri_da_nota
 from .pergunta import responder
@@ -809,11 +809,11 @@ def comandos_padrao(
         ),
         Comando(
             "note",
-            f"acrescenta uma linha em {SECAO_PONTOS} da nota viva",
-            anotar_em(SECAO_PONTOS, "note"),
+            f"acrescenta uma linha em {SECAO_FALAR} da nota viva",
+            anotar_em(SECAO_FALAR, "note"),
             parametro="text",
             rotulo="Note",
-            descricao=f"Add a line to {SECAO_PONTOS} in daily/atual.md",
+            descricao=f"Add a line to {SECAO_FALAR} in daily/atual.md",
             icone="✎",
         ),
         Comando(

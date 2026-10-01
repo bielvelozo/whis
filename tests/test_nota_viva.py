@@ -19,7 +19,6 @@ from whis.nota_viva import (
     SECAO_FAZENDO,
     SECAO_FAZER,
     SECAO_FIZ,
-    SECAO_PONTOS,
     NotaViva,
 )
 
@@ -113,17 +112,16 @@ def test_acrescentar_numa_secao_que_nao_existe_a_cria_no_fim():
     )
 
 
-def test_anotar_e_append_only_em_pontos_que_nasce_antes_de_falar():
-    """A nota antiga não tem `## Pontos`: a seção entra antes de *Falar*, e nada mais muda."""
+def test_anotar_sem_secao_e_append_only_no_fim_de_falar():
+    """O `note`: o que ele quer levar à reunião vai para *Falar*, que vira slide."""
     nota = NotaViva.de_texto(NOTA)
 
     linha = nota.anotar("perguntar do skeleton")
 
-    texto = nota.texto()
     assert linha == "- perguntar do skeleton"
-    assert texto.replace("## Pontos\n- perguntar do skeleton\n\n", "", 1) == NOTA
-    assert trecho(texto, SECAO_PONTOS).startswith("## Pontos\n- perguntar do skeleton\n")
-    assert trecho(texto, SECAO_FALAR) == trecho(NOTA, SECAO_FALAR)
+    assert nota.texto() == NOTA.replace(
+        "- avisar que sexta eu saio mais cedo\n", "- avisar que sexta eu saio mais cedo\n- perguntar do skeleton\n", 1
+    )
 
 
 def test_anotar_em_fazer_escreve_a_caixa_e_a_secao_nasce_depois_de_fazendo():
@@ -138,14 +136,14 @@ def test_anotar_em_fazer_escreve_a_caixa_e_a_secao_nasce_depois_de_fazendo():
     assert texto.replace("## Fazer\n- [ ] responder o ribeiro\n\n", "", 1) == NOTA
 
 
-def test_anotar_em_duvidas_e_nunca_em_falar():
+def test_anotar_em_duvidas_e_nunca_numa_secao_sem_comando():
     nota = NotaViva.de_texto(NOTA)
 
     nota.anotar("o pix expira?", SECAO_DUVIDAS)
 
     assert "- o pix pendente expira sozinho?\n- o pix expira?\n" in trecho(nota.texto(), SECAO_DUVIDAS)
     with pytest.raises(ValueError):
-        nota.anotar("x", SECAO_FALAR)
+        nota.anotar("x", "Pontos")
 
 
 def test_anotar_em_fiz_e_fazendo_entra_sem_caixa_no_fim_da_secao():
@@ -184,18 +182,19 @@ def test_garantir_secao_abre_o_titulo_que_falta_no_lugar_dele_uma_vez_so():
     assert texto.index("## O que estou fazendo") < texto.index("## Fazer") < texto.index("## Dúvidas")
 
 
-def test_o_que_terminei_antiga_fica_intocada_e_nao_e_mais_secao():
-    antiga = NOTA.replace("## Dúvidas\n", "## O que terminei\n\n- entregue\n\n## Dúvidas\n", 1)
+@pytest.mark.parametrize("titulo", ["O que terminei", "Pontos"])
+def test_secao_aposentada_fica_intocada_e_nao_e_mais_secao(titulo):
+    antiga = NOTA.replace("## Dúvidas\n", f"## {titulo}\n\n- o que estava lá\n\n## Dúvidas\n", 1)
     nota = NotaViva.de_texto(antiga)
 
     assert nota.texto() == antiga
-    assert "O que terminei" not in [secao for secao, _ in nota.secoes()]
+    assert titulo not in [secao for secao, _ in nota.secoes()]
 
 
 # -- o modelo ------------------------------------------------------------------
 
 
-def test_o_modelo_tem_as_seis_secoes_na_ordem_e_nenhuma_explicacao():
+def test_o_modelo_tem_as_cinco_secoes_na_ordem_e_nenhuma_explicacao():
     """Ele sabe o que cada seção é (ticket 13): só o frontmatter e os títulos."""
     nota = NotaViva.do_modelo()
 
@@ -204,7 +203,6 @@ def test_o_modelo_tem_as_seis_secoes_na_ordem_e_nenhuma_explicacao():
         SECAO_FAZENDO,
         SECAO_FAZER,
         SECAO_DUVIDAS,
-        SECAO_PONTOS,
         SECAO_FALAR,
     ]
     assert all(linhas == () for _, linhas in nota.secoes())

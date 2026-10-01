@@ -139,7 +139,7 @@ Teste, um por vez:
 | `doing testando o fazendo` | toast "Anotado em O que estou fazendo"; a linha entra no fim de *O que estou fazendo* |
 | `did testando o fiz` | toast "Anotado em O que eu fiz"; a linha entra no fim de *O que eu fiz* |
 | `done` (ou **Mark done**) | a janela fica e mostra os itens de *O que estou fazendo*, um sub-item com `em: <pai>`; digitar filtra (sem acento nem maiúscula). Enter leva o selecionado, com o que está embaixo dele, para o fim de *O que eu fiz* (confira no Obsidian); o rodapé diz *Moved: …* e a lista segue aberta sem ele. Mova um sub-item e veja o pai copiado em *O que eu fiz*; depois mova o pai e veja que ele não se repete. **Um clique numa linha também move, sem desfazer.** Esc volta aos comandos |
-| `note testando a palheta` | toast "Anotado em Pontos"; `daily/atual.md` ganha `- testando a palheta` no fim de *Pontos* (a seção nasce antes de *Falar* se a nota ainda não a tinha) |
+| `note testando a palheta` | toast "Anotado em Falar"; `daily/atual.md` ganha `- testando a palheta` no fim de *Falar*, que vai para o deck da daily |
 | `doubt o pix expira sozinho?` | toast "Anotado em Dúvidas"; a linha entra em *Dúvidas* |
 | `do responder o ribeiro` | toast "Anotado em Fazer"; `daily/atual.md` ganha `- [ ] responder o ribeiro` no fim de *Fazer* (a seção nasce entre *O que estou fazendo* e *Dúvidas*). Marque o `[x]` no Obsidian: ninguém mexe nessa linha depois |
 | `open` (ou clique em **Open note**) | o Obsidian abre `daily/atual.md`. Teste **com o Obsidian fechado** também: o Windows deve lançá-lo e cair na nota |
@@ -188,23 +188,9 @@ para `YYYY-MM-DD`, que é o nome das notas datadas do Whis.
 
 ## Passo 9 — A prova de verdade: a daily seguinte
 
-Não rode nada. Na próxima daily do time, cinco minutos antes, `daily/atual.md`
-tem que estar atualizada e o toast tem que ter chegado. Leia a nota em voz alta
-e confira:
-
-- o que você tinha escrito em *O que estou fazendo* continua **com as suas
-  palavras** — tab, numeração, tudo;
-- o que terminou (PR mergeada, issue em Done) subiu para *O que eu fiz* como
-  estava, com os sub-itens;
-- o que é novo está agrupado por quem pediu e ancorado no sintoma, com o id da
-  issue inline;
-- *Dúvidas*, *Pontos* e *Falar* não mudaram um byte;
-- a nota do dia, `daily/YYYY-MM-DD.md`, tem `## Mudanças na nota viva` e as
-  listas cruas embaixo.
-
-Se algo não bater, o rastro está em `%APPDATA%\whis\bandeja.log` (a resposta
-crua do Claude fica lá quando ele devolve algo ilegível). **Conte o resultado
-no chat da orquestração**: é a confirmação que fecha a entrega.
+Desde 2026-09-30 a daily é um deck montado do que você escreve em
+`daily/atual.md`; a prova dela está em `docs/smoke-daily.md`. Se algo não
+bater, o rastro está em `%APPDATA%\whis\bandeja.log`.
 
 ## O que dorme e o que ficou de fora
 

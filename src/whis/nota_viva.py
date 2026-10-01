@@ -1,7 +1,7 @@
 """A nota viva `daily/atual.md`: o texto que ele escreve e de onde sai a daily.
 
 Este módulo só conhece texto. Ele lê a nota como uma sequência de linhas, acha
-as seis seções e as linhas dentro delas, e faz as escritas do agente ali, todas
+as cinco seções e as linhas dentro delas, e faz as escritas do agente ali, todas
 a pedido dele: **anotar** uma linha (`did`, `doing`, `note`, `doubt`, `do`),
 **concluir** um item de *O que estou fazendo*, que vai para *O que eu fiz*
 (`done`), e **abrir** o título de uma seção que falte. O resto da nota é dele;
@@ -26,7 +26,6 @@ SECAO_FIZ = "O que eu fiz"
 SECAO_FAZENDO = "O que estou fazendo"
 SECAO_FAZER = "Fazer"
 SECAO_DUVIDAS = "Dúvidas"
-SECAO_PONTOS = "Pontos"
 SECAO_FALAR = "Falar"
 
 SECOES = (
@@ -34,11 +33,10 @@ SECOES = (
     SECAO_FAZENDO,
     SECAO_FAZER,
     SECAO_DUVIDAS,
-    SECAO_PONTOS,
     SECAO_FALAR,
 )
 
-SECOES_ANOTAVEIS = (SECAO_FIZ, SECAO_FAZENDO, SECAO_PONTOS, SECAO_DUVIDAS, SECAO_FAZER)
+SECOES_ANOTAVEIS = (SECAO_FIZ, SECAO_FAZENDO, SECAO_FAZER, SECAO_DUVIDAS, SECAO_FALAR)
 
 SECOES_COM_CAIXA = (SECAO_FAZER,)
 
@@ -57,8 +55,6 @@ tipo: {TIPO_NOTA_VIVA}
 ## Fazer
 
 ## Dúvidas
-
-## Pontos
 
 ## Falar
 """
@@ -152,7 +148,7 @@ class NotaViva:
         self._abrir_secao(titulo)
         return True
 
-    def anotar(self, texto: str, secao: str = SECAO_PONTOS) -> str:
+    def anotar(self, texto: str, secao: str = SECAO_FALAR) -> str:
         """`- texto` no fim de uma seção que tem comando (`did`, `doing`, `note`, `doubt`, `do`), a pedido dele.
 
         Em *Fazer* o item nasce `- [ ] texto`: a caixa é dele, e marcá-la é o

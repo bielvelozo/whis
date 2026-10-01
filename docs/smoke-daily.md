@@ -11,8 +11,9 @@ Abra a palheta (`ctrl+space`), rode `open` e escreva em `daily/atual.md`, no Obs
   quando quiser;
 - em *Dúvidas* e *Falar*, o que for levar à reunião.
 
-Sem abrir o Obsidian, a palheta faz o mesmo: `doing <texto>` e `did <texto>` acrescentam uma
-linha, e `done` leva um item de *O que estou fazendo* para *O que eu fiz*.
+Sem abrir o Obsidian, a palheta faz o mesmo: `doing <texto>`, `did <texto>`, `doubt <texto>` e
+`note <texto>` (este em *Falar*) acrescentam uma linha, e `done` leva um item de *O que estou
+fazendo* para *O que eu fiz*.
 
 Se a nota ainda não tem um desses títulos, o Whis o abre vazio na primeira geração. O texto
 que você escreveu ele nunca mexe, a não ser quando você pede, pela palheta.
@@ -34,7 +35,7 @@ python -m whis daily
 
 Em cerca de um minuto chega o toast **A daily está pronta**, com o botão **Abrir slides**. O
 deck abre no link de sempre: um slide por seção com texto, na ordem da nota, com a data e a
-página no rodapé. *Pontos* e *Fazer* não aparecem.
+página no rodapé. *Fazer* não aparece.
 
 ## Passo 4 — A cópia
 
