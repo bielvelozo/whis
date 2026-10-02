@@ -13,6 +13,7 @@ para as reuniões da Granola::
     python -m whis daily [--anotar TEXTO] [--simular] [--fakes] [--agendada]
     python -m whis news [--agendada] [--fakes] [--simular]
     python -m whis meetings [--agendada] [--fakes]
+    python -m whis hunt [--simular] [--fakes] [--do-zero]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -293,6 +294,27 @@ def montar_dm(configuracao: Configuracao) -> PortaDM:
     from .dm_slack import de_configuracao
 
     return de_configuracao(configuracao)
+
+
+def montar_portas_da_cacada(configuracao: Configuracao, *, fakes: bool = False):
+    """Os cinco adaptadores do Claude na caçada (a conta do usuário), ou os fakes."""
+    if fakes:
+        from .fakes_da_cacada import portas_fake
+
+        _log.warning("Usando a caçada FAKE — nada é lido da rede nem enviado ao Claude.")
+        return portas_fake()
+
+    from .cacada import PortasDaCacada
+    from .cacada_claude import ApostasClaude, ExploradorClaude, PerfilClaude, PreparoClaude, TriagemClaude
+
+    opcoes = {"modelo": configuracao.claude_modelo or None, "cli": configuracao.claude_cli or None}
+    return PortasDaCacada(
+        perfil=PerfilClaude(**opcoes),
+        explorador=ExploradorClaude(**opcoes),
+        triagem=TriagemClaude(**opcoes),
+        apostas=ApostasClaude(**opcoes),
+        preparo=PreparoClaude(**opcoes),
+    )
 
 
 # -- diario -----------------------------------------------------------------
@@ -645,6 +667,115 @@ def _relatar_reunioes(resultado: ResultadoDasReunioes) -> None:
         print(f"  não veio: {falha}")
 
 
+# -- hunt -------------------------------------------------------------------
+
+CODIGOS_DA_CACADA = f"""\
+códigos de saída:
+  {SAIDA_COMPLETA}  a caçada terminou: o relatório em cacada/ está inteiro
+  {SAIDA_PARCIAL}  a caçada parou antes do fim (o plano do Claude, ou uma etapa falhou): o relatório
+     tem o que deu, e rodar de novo continua de onde parou
+  {SAIDA_NAO_NASCEU}  não rodou: outra caçada está correndo, ou a configuração é inválida
+  2  erro de uso (argumento inválido)
+o rastro de toda execução fica em bandeja.log, ao lado do config.toml"""
+
+
+def _comando_hunt(args: argparse.Namespace) -> int:
+    """A caçada de vagas e freelas: horas lendo, julgando e preparando; nada é enviado.
+
+    Quem chama pela palheta é um processo próprio, solto da bandeja: a
+    palheta não fica presa horas e o toast do fim é o sinal de que acabou.
+    """
+    from . import corrida as _corrida
+    from .cacada import cacar
+
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    if args.simular:
+        return _simular_coleta(configuracao)
+
+    pasta = _corrida.pasta_da_cacada()
+    if args.fakes:
+        import tempfile
+        from dataclasses import replace
+
+        temporaria = Path(tempfile.mkdtemp(prefix="whis-hunt-"))
+        configuracao = replace(configuracao, vault=temporaria / "vault")
+        pasta = temporaria / "estado"
+        print(f"Vault temporário: {configuracao.vault}")
+
+    avisar = not args.fakes
+    try:
+        with _corrida.TravaDaCacada(pasta):
+            _corrida.manter_acordado()
+            if avisar:
+                _palheta.avisar_resultado(
+                    configuracao,
+                    _palheta.Resultado(
+                        "A caçada começou",
+                        "Corre por horas e não envia nada. O relatório nasce em cacada/ e eu aviso quando acabar.",
+                    ),
+                )
+            try:
+                resultado = cacar(
+                    configuracao,
+                    montar_portas_da_cacada(configuracao, fakes=args.fakes),
+                    pasta_do_estado=pasta,
+                    do_zero=args.do_zero,
+                    ao_pausar=(
+                        (lambda aviso: _palheta.avisar_resultado(configuracao, _palheta.Resultado("A caçada pausou", aviso.capitalize() + ".")))
+                        if avisar
+                        else None
+                    ),
+                )
+            finally:
+                _corrida.liberar_sono()
+    except _corrida.CacadaEmAndamento as erro:
+        andamento = _corrida.ler_andamento(pasta) or {}
+        print(f"Não comecei: {erro} Etapa: {andamento.get('etapa', '?')} {andamento.get('detalhe', '')}".rstrip())
+        return SAIDA_NAO_NASCEU
+
+    _relatar_cacada(resultado)
+    if avisar:
+        _palheta.avisar_resultado(configuracao, _palheta.resultado_da_cacada(resultado))
+    return SAIDA_COMPLETA if resultado.completa else SAIDA_PARCIAL
+
+
+def _simular_coleta(configuracao: Configuracao) -> int:
+    """Só a coleta em Python, sem Claude e sem escrever nada além dos critérios: que fonte responde?"""
+    from .criterios_da_cacada import ler_criterios
+    from .fontes_da_cacada import coletar
+
+    criterios = ler_criterios(_vault.preparar(configuracao.vault))
+    coleta = coletar(criterios.fontes, datetime.now().astimezone(), ao_ler=lambda nome: print(f"lendo {nome}...", flush=True))
+    print()
+    for nome, lista in coleta.por_fonte.items():
+        print(f"{nome}: {len(lista)}")
+        for oportunidade in lista[:3]:
+            print(f"    {oportunidade.titulo[:90]} — {oportunidade.link}")
+    for nome, motivo in coleta.falhas.items():
+        print(f"{nome}: NÃO RESPONDEU — {motivo}")
+    web = [fonte.nome for fonte in criterios.fontes if fonte.tipo == "web"]
+    if web:
+        print(f"Fontes do explorador (só na caçada de verdade, pelo Claude): {', '.join(web)}")
+    print(f"Total: {len(coleta.todas())} oportunidade(s) únicas. Nada foi enviado ao Claude.")
+    return SAIDA_COMPLETA if coleta.por_fonte else SAIDA_NAO_NASCEU
+
+
+def _relatar_cacada(resultado) -> None:
+    print(f"Relatório: {resultado.relatorio}")
+    print(
+        f"{resultado.chances_boas} chances boas ({resultado.pacotes} com pacote) · "
+        f"{resultado.tentar_a_sorte} para tentar a sorte · {resultado.descartadas} descartadas"
+    )
+    if resultado.plano_antes is not None:
+        print(f"Plano semanal: {resultado.plano_antes}% → {resultado.plano_depois}%")
+    print(f"Equivalente a US$ {resultado.custo_usd:.2f} na tabela da API (a assinatura não cobra por token).")
+    for nome, motivo in resultado.fontes_com_falha.items():
+        print(f"Não respondeu: {nome} — {motivo}")
+    if resultado.parada:
+        print(f"Parou antes do fim: {resultado.parada}. Rode de novo para continuar.")
+
+
 # -- atender ----------------------------------------------------------------
 
 
@@ -688,6 +819,11 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
         busca=lambda atual: montar_busca(atual, fakes=fakes),
         portas_do_jornal=lambda atual: montar_portas_do_jornal(atual, fakes=fakes),
         reunioes=None if fakes else (lambda atual: montar_reunioes(atual, pode_logar=True)),
+        iniciar_cacada=(
+            (lambda _atual: _palheta.Resultado("Caçada indisponível", "Com --fakes, rode 'whis hunt --fakes' num terminal."))
+            if fakes
+            else None
+        ),
     )
     palheta = _palheta.Palheta(comandos, configuracao)
 
@@ -1124,6 +1260,32 @@ def construir_parser() -> argparse.ArgumentParser:
         help="usa uma Granola de mentira e escreve num vault temporário (sem rede, sem login)",
     )
     meetings_cmd.set_defaults(funcao=_comando_meetings)
+
+    hunt_cmd = subcomandos.add_parser(
+        "hunt",
+        help="caça vagas e freelas por horas e deixa tudo pronto em cacada/; nada é enviado",
+        description=(
+            "Lê as fontes de cacada/criterios.md (APIs de vaga, Workana, 99Freelas, a busca pública do "
+            "LinkedIn, a web pelo Claude), monta o seu perfil, faz a triagem e prepara as chances boas: "
+            "proposta pronta, preço, como enviar e, no freela web, uma amostra. Pausa quando a janela de "
+            "5 h do plano bate e para perto do teto semanal. Rodar de novo retoma de onde parou."
+        ),
+        epilog=CODIGOS_DA_CACADA,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    _acrescentar_config(hunt_cmd)
+    hunt_cmd.add_argument(
+        "--simular",
+        action="store_true",
+        help="só lê as fontes e mostra quantas oportunidades cada uma trouxe (sem Claude, sem escrever)",
+    )
+    hunt_cmd.add_argument(
+        "--fakes", action="store_true", help="a caçada inteira com portas fake num vault temporário (sem rede)"
+    )
+    hunt_cmd.add_argument(
+        "--do-zero", action="store_true", help="ignora a caçada inacabada e começa outra"
+    )
+    hunt_cmd.set_defaults(funcao=_comando_hunt)
 
     bandeja_cmd = subcomandos.add_parser(
         "bandeja",

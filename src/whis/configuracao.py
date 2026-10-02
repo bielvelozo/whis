@@ -95,6 +95,14 @@ so_com_mencao = []           # canais em que só entra o que cita você (ex.: co
 bot_token = ""               # Bot User OAuth Token xoxb da mesma app: o atendente responde na DM com ele
 app_token = ""               # App-Level Token xapp com connections:write: a conexão do Socket Mode
 
+[cacada]
+email = ""                   # o Gmail só da caçada (nunca o do trabalho): o que o Whis põe nos pacotes e, numa entrega futura, usa para criar contas
+teto_semanal = 95            # a caçada para quando o plano semanal do Claude passa disto (%); fora da véspera da virada, para em 70
+maximo_de_pacotes = 20       # quantas chances boas ganham pacote completo por caçada, das melhores para as piores
+cloudflare_token = ""        # API token do Cloudflare (Pages: Edit) para pôr as amostras no ar; vazio = amostra só no vault
+cloudflare_conta = ""        # o Account ID do Cloudflare, ao lado do token
+cloudflare_projeto = ""      # nome do projeto do Pages (vira <nome>.pages.dev); vazio = um nome neutro sorteado uma vez
+
 [obsidian]
 vault = "245833c11ad43e6e"   # o ID do vault (Copy vault ID no seletor de vaults) ou o nome da pasta; é o que o botão "Abrir no Obsidian" usa
 """
@@ -158,6 +166,12 @@ CHAVES: tuple[Chave, ...] = (
     Chave("slack", "so_com_mencao", "slack_so_com_mencao", Tipo.LISTA),
     Chave("slack", "bot_token", "slack_bot_token", Tipo.SEGREDO),
     Chave("slack", "app_token", "slack_app_token", Tipo.SEGREDO),
+    Chave("cacada", "email", "cacada_email", Tipo.TEXTO),
+    Chave("cacada", "teto_semanal", "cacada_teto_semanal", Tipo.INTEIRO),
+    Chave("cacada", "maximo_de_pacotes", "cacada_maximo_de_pacotes", Tipo.INTEIRO),
+    Chave("cacada", "cloudflare_token", "cacada_cloudflare_token", Tipo.SEGREDO),
+    Chave("cacada", "cloudflare_conta", "cacada_cloudflare_conta", Tipo.TEXTO),
+    Chave("cacada", "cloudflare_projeto", "cacada_cloudflare_projeto", Tipo.TEXTO),
     Chave("obsidian", "vault", "obsidian_vault", Tipo.TEXTO),
 )
 
@@ -203,6 +217,12 @@ class Configuracao:
     pasta de `vault`, que é o que o Obsidian usa quando o vault foi aberto
     pela pasta.
 
+    `cacada_*` é a caçada de vagas e freelas: o e-mail dedicado (nunca o do
+    trabalho), o teto do plano semanal em que ela para, quantos pacotes ela
+    prepara, e as chaves opcionais do Cloudflare Pages para pôr as amostras
+    no ar. Os critérios e as fontes não moram aqui, e sim em
+    `cacada/criterios.md` no vault.
+
     `palheta_atalho` é a combinação de teclas que abre a palheta, já validada
     (`atalho_global.analisar_atalho` a entende); o padrão é `ctrl+space`.
     """
@@ -232,6 +252,12 @@ class Configuracao:
     slack_app_token: str = ""
     obsidian_vault: str = ""
     palheta_atalho: str = ATALHO_PADRAO
+    cacada_email: str = ""
+    cacada_teto_semanal: int = 95
+    cacada_maximo_de_pacotes: int = 20
+    cacada_cloudflare_token: str = ""
+    cacada_cloudflare_conta: str = ""
+    cacada_cloudflare_projeto: str = ""
     origem: Path | None = None
 
 
@@ -299,6 +325,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
     slack = dados.get("slack") or {}
     obsidian = dados.get("obsidian") or {}
     palheta = dados.get("palheta") or {}
+    cacada = dados.get("cacada") or {}
     raiz_do_git = str(git.get("raiz", "")).strip()
     return Configuracao(
         vault=Path(dados["vault"]),
@@ -336,6 +363,14 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         slack_app_token=_token_do_slack(slack.get("app_token", ""), "app_token", "xapp-", arquivo),
         obsidian_vault=str(obsidian.get("vault", "")).strip(),
         palheta_atalho=_atalho(palheta.get("atalho", ATALHO_PADRAO), arquivo),
+        cacada_email=str(cacada.get("email", "")).strip(),
+        cacada_teto_semanal=_inteiro_entre(cacada.get("teto_semanal", 95), "[cacada].teto_semanal", 1, 100, arquivo),
+        cacada_maximo_de_pacotes=_inteiro_entre(
+            cacada.get("maximo_de_pacotes", 20), "[cacada].maximo_de_pacotes", 0, 200, arquivo
+        ),
+        cacada_cloudflare_token=str(cacada.get("cloudflare_token", "")).strip(),
+        cacada_cloudflare_conta=str(cacada.get("cloudflare_conta", "")).strip(),
+        cacada_cloudflare_projeto=_projeto_do_pages(cacada.get("cloudflare_projeto", ""), arquivo),
         origem=arquivo,
     )
 
@@ -470,6 +505,31 @@ def _absoluto(texto: str) -> bool:
     return Path(texto).is_absolute() or texto.startswith("/")
 
 
+def _inteiro_entre(valor: object, chave: str, minimo: int, maximo: int, arquivo: Path) -> int:
+    try:
+        numero = int(valor)
+    except (TypeError, ValueError):
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '{chave}' precisa ser um número inteiro, e veio {valor!r}."
+        ) from None
+    if not minimo <= numero <= maximo:
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '{chave}' precisa estar entre {minimo} e {maximo}, e veio {numero}."
+        )
+    return numero
+
+
+def _projeto_do_pages(valor: object, arquivo: Path) -> str:
+    """O nome do projeto do Cloudflare Pages vira subdomínio: só minúsculas, dígitos e hífen."""
+    nome = str(valor or "").strip()
+    if nome and not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,56}[a-z0-9]", nome):
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '[cacada].cloudflare_projeto' vira o endereço <nome>.pages.dev e "
+            f"precisa ter só letras minúsculas, dígitos e hífen (por exemplo \"conceitos-web\"), e veio {nome!r}."
+        )
+    return nome
+
+
 def _maximo_de_notas(valor: object, arquivo: Path) -> int:
     try:
         maximo = int(valor)
@@ -558,7 +618,7 @@ def escrever(configuracao: Configuracao, destino: Path, *, agora: datetime | Non
     Escreve primeiro num `.tmp` ao lado e o relê com `carregar`: se o que
     saiu não carrega, nada é trocado e o erro sobe. Só então o arquivo atual
     vira `config.toml.bak-YYYYMMDD-HHMMSS` e o novo toma o lugar. UTF-8 sem
-    BOM e `\\n`, como `init` escreve. Nenhum valor vai ao log: quatro deles são
+    BOM e `\\n`, como `init` escreve. Nenhum valor vai ao log: cinco deles são
     segredos.
     """
     destino = Path(destino)

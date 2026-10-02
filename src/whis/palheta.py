@@ -8,7 +8,7 @@ daily levam um minuto.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
-`did`, `doing`, `done`, `news`, `meetings`, `note`, `doubt`, `do`, `ask`,
+`did`, `doing`, `done`, `news`, `meetings`, `hunt`, `note`, `doubt`, `do`, `ask`,
 `open`, `settings`, `stash`, `prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
 portas de verdade — a publicação do deck, a busca — entram por
@@ -94,11 +94,16 @@ NOME_DA_DAILY = "daily"
 NOME_DO_JORNAL = "news"
 NOME_DAS_REUNIOES = "meetings"
 NOME_DE_CONFIGURAR = "settings"
+NOME_DA_CACADA = "hunt"
+TITULO_DA_CACADA = "A caçada terminou"
+TITULO_DA_CACADA_PARADA = "A caçada parou antes do fim"
+TITULO_DA_CACADA_COMECOU = "A caçada começou"
+TITULO_DA_CACADA_CORRENDO = "A caçada está correndo"
 
 #: A ordem em que as ações aparecem na janela: as que o usuário pediu
 #: primeiro, e existem mesmo com o campo vazio.
 ORDEM_DAS_ACOES = (
-    "open", "daily", "did", "doing", "done", NOME_DO_JORNAL, NOME_DAS_REUNIOES, "prompts", "stash", "ask",
+    "open", "daily", "did", "doing", "done", NOME_DO_JORNAL, NOME_DAS_REUNIOES, NOME_DA_CACADA, "prompts", "stash", "ask",
     "note", "doubt", "do", NOME_DE_CONFIGURAR,
 )
 
@@ -446,6 +451,58 @@ def resultado_das_reunioes_que_falharam(erro: ErroDaGranola) -> Resultado:
     return Resultado(TITULO_DAS_REUNIOES_QUE_NAO_VIERAM, _encurtar(str(erro)))
 
 
+def resultado_da_cacada(resultado) -> Resultado:
+    """O toast do fim da caçada — o botão abre o relatório no Obsidian."""
+    partes = [
+        _quantas(resultado.chances_boas, "chance boa", "chances boas"),
+        f"{resultado.tentar_a_sorte} para tentar a sorte",
+        f"{resultado.descartadas} descartadas",
+    ]
+    if resultado.plano_antes is not None and resultado.plano_depois is not None:
+        partes.append(f"plano semanal {resultado.plano_antes}% → {resultado.plano_depois}%")
+    texto = " · ".join(partes) + ". Nada foi enviado."
+    if resultado.parada:
+        texto = f"{resultado.parada}. " + texto
+        return Resultado(TITULO_DA_CACADA_PARADA, _encurtar(texto), nota=resultado.relatorio)
+    if resultado.fontes_com_falha:
+        texto += f" Não responderam: {', '.join(resultado.fontes_com_falha)}."
+    return Resultado(TITULO_DA_CACADA, _encurtar(texto), nota=resultado.relatorio)
+
+
+def iniciar_cacada_em_processo(configuracao: Configuracao) -> Resultado | None:
+    """Solta `whis hunt` num processo próprio, sem console e fora da bandeja.
+
+    A caçada corre horas: no thread da palheta ela recusaria todo comando até
+    acabar. Com uma caçada já correndo, devolve em que etapa ela está.
+    """
+    import subprocess
+    import sys
+
+    from . import corrida as _corrida
+
+    pasta = _corrida.pasta_da_cacada()
+    if _corrida.cacada_correndo(pasta):
+        andamento = _corrida.ler_andamento(pasta) or {}
+        detalhe = " — ".join(p for p in (andamento.get("etapa", ""), andamento.get("detalhe", "")) if p)
+        return Resultado(TITULO_DA_CACADA_CORRENDO, _encurtar(f"Agora: {detalhe or 'começando'}."))
+    comando = [sys.executable, "-m", "whis", "hunt"]
+    if configuracao.origem is not None:
+        comando += ["--config", str(configuracao.origem)]
+    bandeiras = 0
+    for nome in ("DETACHED_PROCESS", "CREATE_NEW_PROCESS_GROUP", "CREATE_NO_WINDOW"):
+        bandeiras |= getattr(subprocess, nome, 0)
+    subprocess.Popen(
+        comando,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        close_fds=True,
+        creationflags=bandeiras,
+    )
+    _log.info("Caçada solta num processo próprio: %s", " ".join(comando))
+    return None  # o toast de começo é do próprio processo
+
+
 def _quantas(numero: int, singular: str, plural: str) -> str:
     return f"{numero} {singular if numero == 1 else plural}"
 
@@ -632,6 +689,7 @@ def comandos_padrao(
     area: PortaAreaDeTransferencia | None = None,
     portas_do_jornal: Callable[[Configuracao], PortasDoJornal] | None = None,
     reunioes: Callable[[Configuracao], PortaReunioes] | None = None,
+    iniciar_cacada: Callable[[Configuracao], "Resultado | None"] | None = None,
 ) -> tuple[Comando, ...]:
     """Os comandos que tocam o vault, com as portas injetadas.
 
@@ -678,6 +736,9 @@ def comandos_padrao(
         except ErroDaGranola as erro:
             return resultado_das_reunioes_que_falharam(erro)
         return resultado_das_reunioes(resultado)
+
+    def cacar(_argumento: str, configuracao: Configuracao) -> Resultado | None:
+        return (iniciar_cacada or iniciar_cacada_em_processo)(configuracao)
 
     def anotar_em(secao: str, nome: str) -> Rodar:
         def anotar(texto: str, configuracao: Configuracao) -> Resultado:
@@ -797,6 +858,14 @@ def comandos_padrao(
             rotulo="Pull meetings",
             descricao="Granola meetings into reunioes/; the first time opens the Granola login",
             icone="◷",
+        ),
+        Comando(
+            NOME_DA_CACADA,
+            "caça vagas e freelas por horas e deixa tudo pronto em cacada/",
+            cacar,
+            rotulo="Hunt jobs & gigs",
+            descricao="Jobs and freelas into cacada/, ready to send; nothing is sent (hours)",
+            icone="⌖",
         ),
         Comando(
             "ask",
