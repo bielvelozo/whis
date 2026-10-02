@@ -24,4 +24,8 @@ empregador e não pode sair do PC nem aparecer numa candidatura.
 Lembrete da interface: o `%APPDATA%` e o vault desta sessão de agente não são os dele — quem
 confere o vault real é ele.
 
+**Decidido por ele (ticket 01)**: o que está no vault basta, e o que faltar o Whis pede. Esta
+pesquisa vira: o que o Whis tira do vault, e **a lista do que vai pedir** na primeira corrida —
+candidatar-se pede o que o vault não tem (currículo, formação, contato, pretensão, portfólio).
+
 ## Answer

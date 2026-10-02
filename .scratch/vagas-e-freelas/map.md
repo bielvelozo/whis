@@ -8,11 +8,13 @@ de código antes de uma spec aprovada por ele.
 
 ## Destination
 
-Uma **spec construível** da busca de vagas e freelas que diga, com user stories tiradas do dia
-dele: **o que ele procura** (tipo de trabalho, critérios, o que o derruba), **de onde vem** (as
-fontes e como cada uma se lê), **o que o Whis sabe dele** para julgar uma vaga, e **onde e quando
-o resultado chega**. O caminho é: o que ele quer → onde as vagas estão → o perfil → onde a busca
-vive no dia dele → spec.
+Uma **spec construível** do *buscador de mais dinheiro* — palavras dele — que diga, com user
+stories tiradas do dia dele: **onde o Whis caça** (os sites e como cada um se lê e se usa), **o que
+deixa pronto** para cada vaga ou freela, **até onde age sozinho** em nome dele, **como a corrida
+longa sobrevive** a horas de execução e aos limites da assinatura, e **o que faz no LinkedIn** com o
+aval dele. O caminho é: o que ele quer (01, feito) → os limites da autonomia (06) → os sites (02),
+o perfil (03), a corrida longa (07) e o LinkedIn (08) → onde o relatório e a aprovação vivem (04) →
+spec (05).
 
 ## Notes
 
@@ -36,10 +38,25 @@ vive no dia dele → spec.
 - **ADR 0001 vale**: tudo roda no PC dele, sem servidor. Claude pela conta dele.
 - **Discrição**: ele está empregado. O que o Whis faz não pode sinalizar busca para fora (nada de
   "open to work", nada publicado em lugar que o time veja). A página do jornal é artifact privado.
+  Com a autonomia que ele deu (ticket 01), isso vira também: não aplicar onde o empregador vê.
+- **É a primeira vez que o Whis age fora do PC em nome dele.** Até aqui ele lê (git, Linear, Slack,
+  X, Granola) e escreve no vault e no artifact dele. Criar conta, aplicar e publicar levam o nome
+  dele, saem do PC e não voltam atrás. E o agente que age vai ler texto de terceiros (a vaga, o
+  pedido do cliente) — o clássico caminho de *prompt injection*. As bordas são do ticket 06.
+- **A corrida longa é a "pesquisa noturna" que a interface previu** (Q35): o contrato *dispara e
+  some* foi desenhado para minutos e, nas palavras de então, *"provavelmente será reescrito"*.
+  Ticket 07.
+- **Recomendação do agente, a confirmar com ele**: dividir em entregas. (1) **A caçada** — a
+  corrida longa, os sites, e cada oportunidade com tudo pronto (por que casa, proposta, currículo
+  ajustado) no relatório, sem enviar nada; prova se o que ela acha presta. (2) **Agir sozinho** fora
+  do LinkedIn — contas, perfis, candidaturas. (3) **O LinkedIn** — análise do perfil, posts e
+  publicação com aval. Mandar candidatura ruim no nome dele em escala é pior do que não mandar;
+  a (1) mede a qualidade antes.
 - **Sem personalidade**: o Whis só entrega informação direta (regra da demo de 04/09).
-- **Custo é por gesto e é medido**: uma pergunta ≈ US$ 0,56 e 60 s. Julgar dezenas de vagas por
-  dia contra um perfil precisa de número antes de virar tarefa agendada.
-- Comandos da palheta são em inglês (`jobs`? `gigs`?) — o nome sai da spec.
+- **Custo**: ele decidiu (ticket 01) que a corrida gasta o que precisar, chamada à mão na véspera da
+  renovação da assinatura, com o que sobrou da semana. O que importa medir não é o preço, é não
+  comer a cota do trabalho (ticket 07).
+- Comandos da palheta são em inglês (`hunt`? `jobs`?) — o nome sai da spec.
 - Skills da casa: `/grilling` e `/domain-modeling` nos tickets de decisão, `/research` nos de
   pesquisa, `/to-spec` no último. Achados de research ficam em [research/](research/).
 
@@ -47,11 +64,18 @@ vive no dia dele → spec.
 
 <!-- uma linha por ticket fechado: gist + link -->
 
+- [O que ele procura](issues/01-o-que-ele-procura.md) — **um buscador de mais dinheiro**: vaga e
+  freela nos sites de TI mais famosos, numa corrida longa chamada à mão na véspera da renovação da
+  assinatura, que deixa tudo pronto e entrega um relatório. Perfil: o vault basta, o que faltar o
+  Whis pede. Autonomia total fora do LinkedIn (contas, perfis, candidaturas); no LinkedIn, análise,
+  posts e publicação só com o aval dele. Abriu os tickets 06 (limites da autonomia), 07 (a corrida
+  longa) e 08 (o LinkedIn).
+
 ## Not yet specified
 
-- Candidatura assistida (rascunho de proposta, carta, adaptação do currículo) — só depois de a
-  busca provar que traz coisa que presta.
-- Acompanhamento de candidaturas (vi, apliquei, entrevista, recusa).
+- Acompanhamento de candidaturas (vi, apliquei, entrevista, recusa) e respostas de cliente — com o
+  Whis aplicando sozinho, alguém vai responder; ler a caixa dele é outra capacidade.
+- Lembrar dele de rodar a caçada na véspera da renovação.
 
 ## Out of scope
 

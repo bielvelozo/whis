@@ -6,12 +6,15 @@ Blocked by: 01
 
 ## Question
 
-Para os mercados que o ticket 01 escolher, quais fontes existem e **como o Whis lê cada uma**, a
+Nos sites de TI mais famosos de vaga e freela (ticket 01: ele não conhece todos, a lista é desta
+pesquisa), quais fontes existem e **como o Whis lê cada uma**, a
 R$ 0 ou perto disso, rodando no PC dele (ADR 0001)?
 
 Para cada fonte: API oficial (e custo), RSS, página pública lida sem login, ou só navegador
 logado; o que cada leitura traz (título, empresa, faixa, remoto, data, link); volume por dia;
-risco para a conta dele e termos de uso. Candidatas conhecidas, a conferir e completar:
+risco para a conta dele e termos de uso. E, porque o Whis vai **criar conta e aplicar** por ele
+(ticket 01): o que cada site pede para abrir conta (e-mail, telefone, documento, CAPTCHA), quanto
+custa mandar uma proposta, e se a candidatura sai pelo próprio site ou manda para fora. Candidatas conhecidas, a conferir e completar:
 
 - Emprego no Brasil: LinkedIn, Gupy, Programathor, GeekHunter, Indeed.
 - Remoto internacional: LinkedIn, We Work Remotely, Remotive, RemoteOK, Himalayas, Wellfound,
