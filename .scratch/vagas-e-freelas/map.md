@@ -46,12 +46,9 @@ spec (05).
 - **A corrida longa é a "pesquisa noturna" que a interface previu** (Q35): o contrato *dispara e
   some* foi desenhado para minutos e, nas palavras de então, *"provavelmente será reescrito"*.
   Ticket 07.
-- **Rodada 3, curta, a perguntar**: *"sem freela por projeto"* contradiz o resto da resposta da
-  rodada 2 (lido como *sim*); qual é a região dele; o provedor do e-mail dedicado; a divisão em
-  entregas abaixo.
 - **Termos candidatos ao glossário**, a fixar na spec: a oportunidade com **chance boa** (vai para
   ele) e a de **tentar a sorte** (o Whis envia) — o eixo que decide quem age.
-- **Recomendação do agente, a confirmar com ele**: dividir em entregas. (1) **A caçada** — a
+- **Três entregas, decididas com ele na rodada 3**. (1) **A caçada** — a
   corrida longa, os sites, e cada oportunidade com tudo pronto (por que casa, proposta, currículo
   ajustado) no relatório, sem enviar nada; prova se o que ela acha presta. (2) **Agir sozinho** fora
   do LinkedIn — contas, perfis, e enviar as de tentar a sorte. (3) **O LinkedIn** — análise do perfil, posts e
@@ -81,7 +78,10 @@ spec (05).
   de áudio) o Whis envia, fora do LinkedIn; no LinkedIn, nada. Emprego acima de R$ 5 mil, remoto ou
   perto da região dele, qualquer regime; freela abaixo do mercado se for rápido com IA, descartado se
   for grande com prazo curto. E-mail dedicado, nunca o do trabalho. O que ele fez não se inventa; o
-  que ele consegue fazer pode esticar. Abriu o ticket 09 (a amostra para o cliente).
+  que ele consegue fazer pode esticar. Abriu o ticket 09 (a amostra para o cliente). Rodada 3:
+  freela por projeto entra; presencial só em Ribeirão Preto (uns R$ 7 mil) ou São Paulo (uns R$ 8–9
+  mil), ele mora em Matão; e-mail dedicado é Gmail; **tentar a sorte só sai sozinho onde mandar é de
+  graça e sem limite** — o Whis nunca gasta dinheiro sozinho. As três entregas estão aceitas.
 
 ## Not yet specified
 

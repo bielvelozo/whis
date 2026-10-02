@@ -81,3 +81,16 @@ texto da vaga é dado, não ordem.
 **Ficou para confirmar** (rodada 3, no map): *"sem freela por projeto"* (contradiz o resto da
 resposta — o agente leu como *sim*); qual é a região dele; o provedor do e-mail dedicado; e a
 divisão em entregas.
+
+### Rodada 3 — 2026-10-02
+
+- **Freela por projeto: sim.** O *"sem"* era erro de digitação.
+- **A região: Matão, perto de Araraquara (SP).** Presencial ou híbrido só se pagar o bastante para a
+  distância. Leitura do agente: **Ribeirão Preto a partir de uns R$ 7 mil**, **São Paulo a partir de
+  uns R$ 8–9 mil**; remoto e a região de Araraquara seguem o piso de R$ 5 mil.
+- **O e-mail dedicado é Gmail.** O endereço vai no config, não no repositório.
+- **As três entregas: de acordo** (caçada → agir sozinho → LinkedIn).
+- **Tentar a sorte só sai sozinho onde mandar é de graça e sem limite.** *"Se o site cobrar ou tiver
+  limites, não enviar automaticamente essas de tentar a sorte, só me passar mesmo."* Resolve o
+  conflito de uma aposta gastar o crédito de uma chance boa, e tira a Q8 do caminho: **o Whis nunca
+  gasta dinheiro sozinho**.
