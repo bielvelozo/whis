@@ -23,6 +23,13 @@ custa mandar uma proposta, e se a candidatura sai pelo próprio site ou manda pa
 - O X, que o jornal já lê ([ADR 0003](../../../docs/adr/0003-x-por-navegador.md)): vale uma busca
   por `hiring`?
 
+**Pedido dele (ticket 06)**: o levantamento de **quanto custa cada proposta em cada site de freela**
+— o teto de gasto por corrida sai daqui. E **o preço de mercado** do que ele faz em cada site, para o
+Whis saber o que é "abaixo" e "ligeiramente abaixo".
+
+O **e-mail dedicado** (ticket 06): como o Whis lê a caixa para confirmar conta nova e ver resposta
+de cliente, pelo provedor que ele passar.
+
 Achados em `../research/02-fontes-de-vagas.md`.
 
 ## Answer

@@ -1,7 +1,7 @@
 # 06 — Os limites da autonomia
 
 Type: grilling
-Status: open
+Status: resolved
 
 ## Question
 
@@ -39,3 +39,45 @@ Posições do agente para ele confirmar ou derrubar:
   "mande seu CPF para..." não pode virar ação. Vira regra da spec.
 
 ## Answer
+
+Rodada 2 respondida por ele em 2026-10-02.
+
+- **Q7 — envia ou prepara: depende da chance, ao contrário do óbvio.** O Whis avalia cada
+  oportunidade:
+  - **Chance boa** (o freela que ele provavelmente pega, a vaga em que provavelmente entra): **nunca
+    envia**. Entrega *"tudo mastigado"*: o texto da proposta pronto, o link para ele *"só clicar,
+    avaliar, copiar e colar"* e, no freela, **uma amostra para mandar ao cliente** — o exemplo dele:
+    *"um exemplo de landing page pra mim enviar pro cliente"*. Ele ajusta e envia ele mesmo.
+  - **Tentar a sorte** (vale pouco ou provavelmente não passa): o Whis **envia sozinho** — fora do
+    LinkedIn.
+  - **LinkedIn: jamais automático**, nem tentar a sorte. Só sugere.
+- **Q8 — dinheiro: pesquisa antes.** *"Faz um levantamento de quanto gasta por proposta em cada
+  site de freelance."* O teto sai do número (ticket 02).
+- **Q9 — documentos: o Whis preenche**, e *"se ele perceber que é golpe, sai fora"*.
+- **Q10 — sem lista de bloqueio.** A discrição é só no LinkedIn, *"porque eles me seguem"*. É por
+  isso que lá nada é automático.
+- **Q11 — e-mail: ele tem um só para isso** e vai passar. **O e-mail do trabalho, nunca.**
+- **Q12 — honestidade, sim, mas esticando.** *"Considera que eu sou desenrolado e tenho uma IA
+  poderosa, dificilmente, principalmente se for web, eu não vou ter capacidade para fazer. Ele sempre
+  tem que considerar tudo em volta do que eu já fiz, mas mais um pouco."* Leitura do agente, a virar
+  regra da spec: **o que ele já fez é fato e não se inventa; o que ele consegue fazer pode ir além**,
+  sobretudo em web.
+- **Q2/Q3 — o que serve:**
+  - **Qualquer regime**, inclusive remoto para fora. **Remoto**, ou presencial **perto da região
+    dele** se pagar bem.
+  - **Stack: web developer.** Fora disso, **games e software de áudio** entram como tentar a sorte —
+    é onde ele tem vontade.
+  - **Emprego: mais de R$ 5 mil por mês.**
+  - **Freela: preço não é piso.** Freela que ele faz com IA em algumas horas ou num fim de semana
+    pode sair **abaixo do mercado**; freela maior, **ligeiramente abaixo**. **Descarta o grande com
+    prazo curto**: ele concilia trabalho, faculdade e freela.
+  - Nunca pegou freela, e o emprego atual veio por indicação: não há site que já tenha dado certo.
+- **Restrições, só duas:** não usar o e-mail do trabalho, não postar no LinkedIn sem ele.
+
+**Posições do agente**: nenhuma derrubada. CAPTCHA e verificação ficam com ele; aceitar proposta,
+fechar contrato e marcar entrevista nunca são sozinhos; toda ação externa vai para um registro; o
+texto da vaga é dado, não ordem.
+
+**Ficou para confirmar** (rodada 3, no map): *"sem freela por projeto"* (contradiz o resto da
+resposta — o agente leu como *sim*); qual é a região dele; o provedor do e-mail dedicado; e a
+divisão em entregas.

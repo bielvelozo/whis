@@ -13,7 +13,7 @@ stories tiradas do dia dele: **onde o Whis caça** (os sites e como cada um se l
 deixa pronto** para cada vaga ou freela, **até onde age sozinho** em nome dele, **como a corrida
 longa sobrevive** a horas de execução e aos limites da assinatura, e **o que faz no LinkedIn** com o
 aval dele. O caminho é: o que ele quer (01, feito) → os limites da autonomia (06) → os sites (02),
-o perfil (03), a corrida longa (07) e o LinkedIn (08) → onde o relatório e a aprovação vivem (04) →
+o perfil (03), a corrida longa (07), o LinkedIn (08) e a amostra para o cliente (09) → onde o relatório e a aprovação vivem (04) →
 spec (05).
 
 ## Notes
@@ -46,10 +46,15 @@ spec (05).
 - **A corrida longa é a "pesquisa noturna" que a interface previu** (Q35): o contrato *dispara e
   some* foi desenhado para minutos e, nas palavras de então, *"provavelmente será reescrito"*.
   Ticket 07.
+- **Rodada 3, curta, a perguntar**: *"sem freela por projeto"* contradiz o resto da resposta da
+  rodada 2 (lido como *sim*); qual é a região dele; o provedor do e-mail dedicado; a divisão em
+  entregas abaixo.
+- **Termos candidatos ao glossário**, a fixar na spec: a oportunidade com **chance boa** (vai para
+  ele) e a de **tentar a sorte** (o Whis envia) — o eixo que decide quem age.
 - **Recomendação do agente, a confirmar com ele**: dividir em entregas. (1) **A caçada** — a
   corrida longa, os sites, e cada oportunidade com tudo pronto (por que casa, proposta, currículo
   ajustado) no relatório, sem enviar nada; prova se o que ela acha presta. (2) **Agir sozinho** fora
-  do LinkedIn — contas, perfis, candidaturas. (3) **O LinkedIn** — análise do perfil, posts e
+  do LinkedIn — contas, perfis, e enviar as de tentar a sorte. (3) **O LinkedIn** — análise do perfil, posts e
   publicação com aval. Mandar candidatura ruim no nome dele em escala é pior do que não mandar;
   a (1) mede a qualidade antes.
 - **Sem personalidade**: o Whis só entrega informação direta (regra da demo de 04/09).
@@ -70,6 +75,13 @@ spec (05).
   Whis pede. Autonomia total fora do LinkedIn (contas, perfis, candidaturas); no LinkedIn, análise,
   posts e publicação só com o aval dele. Abriu os tickets 06 (limites da autonomia), 07 (a corrida
   longa) e 08 (o LinkedIn).
+- [Os limites da autonomia](issues/06-os-limites-da-autonomia.md) — **o Whis só envia sozinho o que
+  tem pouca chance**: o que tem chance boa chega a ele *"tudo mastigado"* (proposta, link, e no
+  freela uma amostra como uma landing page) e ele envia; tentar a sorte (inclusive games e software
+  de áudio) o Whis envia, fora do LinkedIn; no LinkedIn, nada. Emprego acima de R$ 5 mil, remoto ou
+  perto da região dele, qualquer regime; freela abaixo do mercado se for rápido com IA, descartado se
+  for grande com prazo curto. E-mail dedicado, nunca o do trabalho. O que ele fez não se inventa; o
+  que ele consegue fazer pode esticar. Abriu o ticket 09 (a amostra para o cliente).
 
 ## Not yet specified
 
