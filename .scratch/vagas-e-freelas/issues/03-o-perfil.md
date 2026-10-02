@@ -1,7 +1,7 @@
 # 03 — O perfil: o que o Whis já sabe dele
 
 Type: research
-Status: open
+Status: resolved
 
 ## Question
 
@@ -29,3 +29,12 @@ pesquisa vira: o que o Whis tira do vault, e **a lista do que vai pedir** na pri
 candidatar-se pede o que o vault não tem (currículo, formação, contato, pretensão, portfólio).
 
 ## Answer
+
+[Research 03](../research/03-o-perfil.md). **O vault guarda o trabalho do dia, não o
+profissional**: dá o tipo de problema e o domínio, mal a stack, e nada de senioridade ou inglês.
+O "vault basta" dele vira **o vault mais as fontes passivas relidas**: os repositórios de
+`[git].raiz` dão linguagens (extensões), frameworks (manifestos) e anos de commit, de graça.
+O Claude Code é a melhor fonte de "como ele trabalha" e a mais perigosa (o código do empregador
+está nos transcripts): fica para depois. O que só ele sabe vai para *Sobre mim* em
+`cacada/criterios.md`, com os itens já listados; o que faltar vira pergunta no topo do relatório.
+O resumo do perfil abstrai o empregador, e é só ele que as propostas leem.

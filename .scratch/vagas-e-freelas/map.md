@@ -82,9 +82,38 @@ spec (05).
   freela por projeto entra, contínuo pequeno se pagar bem e couber, por hora fica fora; presencial só em Ribeirão Preto (uns R$ 7 mil) ou São Paulo (uns R$ 8–9
   mil), ele mora em Matão; e-mail dedicado é Gmail; **tentar a sorte só sai sozinho onde mandar é de
   graça e sem limite** — o Whis nunca gasta dinheiro sozinho. As três entregas estão aceitas.
+- [Onde as vagas e os freelas estão](issues/02-onde-as-vagas-estao.md) — remoto internacional por
+  JSON público (Himalayas, Remotive, RemoteOK, Jobicy, HN) e RSS (WWR); no Brasil a Gupy, pelo JSON do
+  portal; Workana e 99Freelas por HTTP simples; Indeed, Wellfound e Catho fora. **Nenhum site de
+  freela é grátis e sem limite**, então, pela regra dele, freela nunca sai sozinho. Gmail por IMAP
+  com senha de app, na entrega 2.
+- [O perfil](issues/03-o-perfil.md) — o vault dá o domínio, não a stack: o perfil relê o git
+  (linguagens, manifestos, anos) e o que só ele sabe vai para *Sobre mim*; o Claude Code fica para
+  depois por carregar o código do empregador.
+- [A corrida longa](issues/07-a-corrida-longa.md) — o limite é evento (`rejected`, `rate_limit`,
+  429), e a espera é do Python: pausa na janela de 5 h, para no teto semanal e antes da virada;
+  chamadas curtas, quem lê separado de quem age, estado em disco, PC acordado.
+- [O LinkedIn](issues/08-o-linkedin.md) — sem navegador logado: vagas pela busca pública (entrega
+  1); perfil pelo export de dados, posts pela skill portada, publicação pela API oficial, mudar e
+  candidatar com ele (entrega 3).
+- [A amostra para o cliente](issues/09-a-amostra-para-o-cliente.md) — Cloudflare Pages por direct
+  upload, nome neutro, 30 dias; na Workana vai como print, porque link externo suspende a proposta.
+- [Onde a busca vive](issues/04-onde-a-busca-vive.md) — decidido pelo agente com a delegação dele:
+  `hunt` num processo próprio, relatório e pacotes em `cacada/`, nada enviado nesta entrega.
+- [Decisão e spec](issues/05-spec.md) — **destino alcançado**: [spec da entrega 1](spec.md), a
+  caçada, construída e provada sem rede em 2026-10-02; a prova real é o
+  [smoke](../../docs/smoke-cacada.md) na máquina dele.
 
 ## Not yet specified
 
+- **Entrega 2 — agir sozinho fora do LinkedIn**: contas com o Gmail dedicado (CAPTCHA e documento
+  com ele), perfis nos sites, leitura da caixa por IMAP, registro de ações, e o envio das de tentar
+  a sorte onde for grátis e sem limite — hoje só vaga (Gupy, formulários de ATS), nunca freela.
+  Vira ADR: é a primeira vez que o Whis age fora do PC em nome dele.
+- **Entrega 3 — LinkedIn**: export do perfil, posts em português, publicação pela API oficial com o
+  aval dele.
+- Fontes que ficaram fora da entrega 1: Upwork (MCP oficial, pede conta), Freelancer.com, Contra,
+  Get on Board, Programathor; os transcripts do Claude Code no perfil.
 - Acompanhamento de candidaturas (vi, apliquei, entrevista, recusa) e respostas de cliente — com o
   Whis aplicando sozinho, alguém vai responder; ler a caixa dele é outra capacidade.
 - Lembrar dele de rodar a caçada na véspera da renovação.

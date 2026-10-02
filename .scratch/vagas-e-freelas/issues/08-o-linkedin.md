@@ -1,7 +1,7 @@
 # 08 — O LinkedIn
 
 Type: research
-Status: open
+Status: resolved
 
 ## Question
 
@@ -26,3 +26,15 @@ Ponto de partida, levantado em 2026-10-02:
 Achados em `../research/08-o-linkedin.md`. Se o navegador logado entrar, vira ADR.
 
 ## Answer
+
+[Research 08](../research/08-o-linkedin.md). **Navegador logado no LinkedIn não é necessário.**
+
+- **Ler vagas**: a busca pública (*guest*), sem login, nunca a conta dele — entrou na entrega 1.
+- **Analisar o perfil**: o export de dados (*Baixar seus dados*), que ele baixa e o Whis lê.
+- **Escrever posts**: portar `li-post` e `li-profile` da skill indicada para prompts em português
+  (o humanizador estraga português, medido).
+- **Publicar**: API oficial *Share on LinkedIn* (`w_member_social`), self-serve, token de 60 dias.
+- **Mudar o perfil e se candidatar**: sem API; o Whis prepara, ele cola e clica.
+- **Discrição**: nunca *Open to Work*; desligar o aviso de mudanças antes de mexer em experiência.
+
+As quatro últimas são a entrega 3.

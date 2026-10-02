@@ -1,7 +1,7 @@
 # 05 — Decisão e spec
 
 Type: task
-Status: open
+Status: resolved
 Blocked by: 04, 07, 08
 
 ## Question
@@ -12,3 +12,6 @@ virar `ready-for-agent`. As entregas 2 (agir sozinho) e 3 (LinkedIn) ficam descr
 (criar conta, aplicar, publicar) e o navegador logado no LinkedIn viram ADR.
 
 ## Answer
+
+Spec em [../spec.md](../spec.md), construída no mesmo dia (commit da caçada) e provada sem rede.
+Ele delegou as decisões restantes; as do agente estão marcadas **[agente]** na spec.

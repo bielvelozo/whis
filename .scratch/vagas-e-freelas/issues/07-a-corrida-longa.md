@@ -1,7 +1,7 @@
 # 07 — A corrida longa
 
 Type: research
-Status: open
+Status: resolved
 
 ## Question
 
@@ -22,3 +22,17 @@ reescrito"*. Levantar:
 Achados em `../research/07-a-corrida-longa.md`.
 
 ## Answer
+
+[Research 07](../research/07-a-corrida-longa.md).
+
+- **A véspera é a da virada do limite semanal**, que tem hora fixa por conta, não a da cobrança. O
+  `RateLimitEvent` traz `seven_day.resetsAt`.
+- **O limite é um evento**: `status == "rejected"` com `resets_at`, `AssistantMessage.error ==
+  "rate_limit"`, `ResultMessage` com `api_error_status == 429` e, no SDK ≥ 0.2.140, `ResultError`.
+  O SDK e o `-p` não esperam sozinhos: a espera é do Python.
+- **Estratégia adotada**: pausa na janela de 5 h; para no teto semanal e 30 min antes da virada;
+  teto menor fora da véspera.
+- **Muitas chamadas curtas conduzidas pelo Python**, com quem lê separado de quem age; estado em
+  disco por etapa e por item; o PC acordado com `SetThreadExecutionState`.
+- Simplificação do agente: a pausa dorme no próprio processo (com o PC acordado) em vez de
+  registrar uma tarefa `-WakeToRun`; reboot e logoff viram "rode `hunt` de novo", que retoma.
