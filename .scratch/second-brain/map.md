@@ -49,7 +49,7 @@ Todas as decisões arquiteturais centrais fechadas — estender-Whis-vs-separado
 
 ## Not yet specified
 
-- Busca de vagas e freelance usando o perfil acumulado — em escopo, mas só especificável depois que o observador rodar e o perfil existir.
+- Busca de vagas e freelance usando o perfil acumulado — em escopo, mas só especificável depois que o observador rodar e o perfil existir. **Levantamento aberto em 2026-10-02** em [.scratch/vagas-e-freelas/map.md](../vagas-e-freelas/map.md).
 - Lembretes e comportamento proativo do agente (avisar sem ser perguntado) — a interface reativa já foi decidida (chat + one-shot); a proativa depende de uso real. **O uso real chegou** (2026-09-09): a daily cinco minutos antes da reunião, pedida na demo de 04/09, é o primeiro caso — vai pela entrega 4.
 - Backup/versionamento do vault (git próprio? sync na nuvem?) — relevante quando o vault tiver dados que doeria perder.
 - Conforto do liga/desliga além da bandeja (atalho global de teclado).
