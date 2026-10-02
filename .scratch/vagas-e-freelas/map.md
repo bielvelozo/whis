@@ -79,7 +79,7 @@ spec (05).
   perto da região dele, qualquer regime; freela abaixo do mercado se for rápido com IA, descartado se
   for grande com prazo curto. E-mail dedicado, nunca o do trabalho. O que ele fez não se inventa; o
   que ele consegue fazer pode esticar. Abriu o ticket 09 (a amostra para o cliente). Rodada 3:
-  freela por projeto entra; presencial só em Ribeirão Preto (uns R$ 7 mil) ou São Paulo (uns R$ 8–9
+  freela por projeto entra, contínuo pequeno se pagar bem e couber, por hora fica fora; presencial só em Ribeirão Preto (uns R$ 7 mil) ou São Paulo (uns R$ 8–9
   mil), ele mora em Matão; e-mail dedicado é Gmail; **tentar a sorte só sai sozinho onde mandar é de
   graça e sem limite** — o Whis nunca gasta dinheiro sozinho. As três entregas estão aceitas.
 

@@ -94,3 +94,8 @@ divisão em entregas.
   limites, não enviar automaticamente essas de tentar a sorte, só me passar mesmo."* Resolve o
   conflito de uma aposta gastar o crédito de uma chance boa, e tira a Q8 do caminho: **o Whis nunca
   gasta dinheiro sozinho**.
+- **Formato do freela** (esclarecido depois da rodada 3, sugestão do agente aceita por ele): **por
+  projeto** (preço fechado por uma entrega) entra — é o modelo dele, onde a IA vira ganho dele;
+  **contínuo pequeno** (valor mensal recorrente) entra se pagar bem e couber nas horas dele; **por
+  hora fica fora** — a IA encurta as horas e o pagamento junto, e o Upwork registra o tempo com prints
+  da tela.
