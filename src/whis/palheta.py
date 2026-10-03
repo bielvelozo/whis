@@ -8,7 +8,7 @@ daily levam um minuto.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
-`did`, `doing`, `done`, `news`, `meetings`, `hunt`, `note`, `doubt`, `do`, `ask`,
+`did`, `doing`, `done`, `news`, `meetings`, `hunt`, `linkedin`, `posts`, `note`, `doubt`, `do`, `ask`,
 `open`, `settings`, `stash`, `prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
 portas de verdade — a publicação do deck, a busca — entram por
@@ -20,7 +20,7 @@ Dois cuidados que vêm do custo: um comando custa dinheiro e minutos, então um
 despacho enquanto outro roda é **recusado** com um toast curto, e a falha de
 um comando vira toast com a mensagem — nunca exceção solta num thread.
 
-`prompts` e `done` são as exceções ao dispara e some: não despacham, abrem
+`prompts`, `done` e `posts` são as exceções ao dispara e some: não despacham, abrem
 uma lista na própria janela (`Comando.lista`). A `ListaDePrompts` cola,
 copia, favorita, edita e guarda prompts de `prompts/` no vault; a
 `ListaDoFazendo` leva um item de *O que estou fazendo* para *O que eu fiz*.
@@ -95,6 +95,10 @@ NOME_DO_JORNAL = "news"
 NOME_DAS_REUNIOES = "meetings"
 NOME_DE_CONFIGURAR = "settings"
 NOME_DA_CACADA = "hunt"
+NOME_DO_LINKEDIN = "linkedin"
+NOME_DOS_POSTS = "posts"
+TITULO_DO_LINKEDIN = "Rascunhos do LinkedIn prontos"
+TITULO_DO_LINKEDIN_QUE_FALHOU = "O LinkedIn não saiu"
 TITULO_DA_CACADA = "A caçada terminou"
 TITULO_DA_CACADA_PARADA = "A caçada parou antes do fim"
 TITULO_DA_CACADA_COMECOU = "A caçada começou"
@@ -103,7 +107,7 @@ TITULO_DA_CACADA_CORRENDO = "A caçada está correndo"
 #: A ordem em que as ações aparecem na janela: as que o usuário pediu
 #: primeiro, e existem mesmo com o campo vazio.
 ORDEM_DAS_ACOES = (
-    "open", "daily", "did", "doing", "done", NOME_DO_JORNAL, NOME_DAS_REUNIOES, NOME_DA_CACADA, "prompts", "stash", "ask",
+    "open", "daily", "did", "doing", "done", NOME_DO_JORNAL, NOME_DAS_REUNIOES, NOME_DA_CACADA, NOME_DO_LINKEDIN, NOME_DOS_POSTS, "prompts", "stash", "ask",
     "note", "doubt", "do", NOME_DE_CONFIGURAR,
 )
 
@@ -469,6 +473,19 @@ def resultado_da_cacada(resultado) -> Resultado:
     return Resultado(TITULO_DA_CACADA, _encurtar(texto), nota=resultado.relatorio)
 
 
+def resultado_do_linkedin(resultado) -> Resultado:
+    """O toast de `linkedin`: quantos rascunhos, e o botão abre a análise ou o primeiro rascunho."""
+    if not resultado.rascunhos and not resultado.analise:
+        return Resultado(TITULO_DO_LINKEDIN_QUE_FALHOU, _encurtar("; ".join(resultado.falhas) or "nada saiu"))
+    partes = [_quantas(len(resultado.rascunhos), "rascunho de post", "rascunhos de post")]
+    if resultado.analise:
+        partes.append("a análise do perfil")
+    texto = " e ".join(partes) + ". Nada foi publicado: aprove em posts (Enter publica)."
+    if resultado.falhas:
+        texto += " Faltou: " + "; ".join(resultado.falhas)
+    return Resultado(TITULO_DO_LINKEDIN, _encurtar(texto), nota=resultado.analise or (resultado.rascunhos[0] if resultado.rascunhos else None))
+
+
 def iniciar_cacada_em_processo(configuracao: Configuracao) -> Resultado | None:
     """Solta `whis hunt` num processo próprio, sem console e fora da bandeja.
 
@@ -679,6 +696,67 @@ class ListaDoFazendo:
         return Efeito(mensagem=f"Moved: {item.texto}")
 
 
+class ListaDePosts:
+    """A lista de `posts`: os rascunhos de `linkedin/posts/`; o Enter publica — é o aval dele.
+
+    Relê a pasta a cada texto digitado: o que ele editou no Obsidian é o que
+    sai. Publicado some da lista de rascunhos e aparece marcado.
+    """
+
+    nome = "Posts"
+    placeholder = "Search LinkedIn drafts…"
+
+    def __init__(self, configuracao: Configuracao, *, api, lancar: Callable[[str], None]) -> None:
+        self._configuracao = configuracao
+        self._api = api
+        self._lancar = lancar
+        self._todos: list = []
+        self._achados: list = []
+        self.gestos = (
+            Gesto("<Return>", "↵", "Publish on LinkedIn", self._publicar),
+            Gesto("<Control-e>", "Ctrl E", "Edit", self._editar, esconde=True),
+        )
+
+    @property
+    def vazia(self) -> str:
+        if not self._todos:
+            return "No drafts yet — type: linkedin"
+        return "No draft matches"
+
+    def linhas(self, texto: str) -> list[Linha]:
+        from .linkedin import listar_posts
+
+        self._todos = listar_posts(self._configuracao.vault)
+        self._achados = [post for post in self._todos if contem(post.titulo + " " + post.texto, texto)]
+        return [
+            Linha("✎" if post.rascunho else "✓", post.titulo, post.texto.splitlines()[0][:90] if post.texto else "", "" if post.rascunho else "publicado")
+            for post in self._achados
+        ]
+
+    def detalhe(self, indice: int) -> str:
+        return self._achados[indice].texto if 0 <= indice < len(self._achados) else ""
+
+    def _publicar(self, indice: int | None, _texto: str) -> Efeito | None:
+        from .linkedin import ErroDoLinkedIn, publicar_post
+
+        if indice is None or not 0 <= indice < len(self._achados):
+            return None
+        post = self._achados[indice]
+        if not post.rascunho:
+            return Efeito(mensagem=f"Already published: {post.url}")
+        if self._api is None:
+            return Efeito(mensagem="LinkedIn is not available in this run")
+        try:
+            url = publicar_post(self._configuracao.vault, post.caminho, self._api(self._configuracao))
+        except ErroDoLinkedIn as erro:
+            return Efeito(mensagem=str(erro))
+        return Efeito(mensagem=f"Published: {url}")
+
+    def _editar(self, indice: int | None, _texto: str) -> None:
+        if indice is not None and 0 <= indice < len(self._achados):
+            self._lancar(uri_da_nota(self._configuracao, self._achados[indice].caminho))
+
+
 def comandos_padrao(
     *,
     publicacao_do_deck: Callable[[Configuracao], PortaPublicacaoDoDeck],
@@ -690,6 +768,8 @@ def comandos_padrao(
     portas_do_jornal: Callable[[Configuracao], PortasDoJornal] | None = None,
     reunioes: Callable[[Configuracao], PortaReunioes] | None = None,
     iniciar_cacada: Callable[[Configuracao], "Resultado | None"] | None = None,
+    linkedin: Callable[[Configuracao], object] | None = None,
+    linkedin_api: Callable[[Configuracao], object] | None = None,
 ) -> tuple[Comando, ...]:
     """Os comandos que tocam o vault, com as portas injetadas.
 
@@ -739,6 +819,17 @@ def comandos_padrao(
 
     def cacar(_argumento: str, configuracao: Configuracao) -> Resultado | None:
         return (iniciar_cacada or iniciar_cacada_em_processo)(configuracao)
+
+    def escrever_linkedin(_argumento: str, configuracao: Configuracao) -> Resultado:
+        if linkedin is None:
+            raise RuntimeError("O LinkedIn não está disponível nesta execução.")
+        return resultado_do_linkedin(linkedin(configuracao))
+
+    def lista_de_posts(configuracao: Configuracao) -> ListaDePosts:
+        return ListaDePosts(configuracao, api=linkedin_api, lancar=lancar_alvo)
+
+    def posts_fora_da_janela(_argumento: str, _configuracao: Configuracao) -> Resultado:
+        return Resultado("Posts", "A lista de rascunhos abre na palheta: ctrl+space e posts.")
 
     def anotar_em(secao: str, nome: str) -> Rodar:
         def anotar(texto: str, configuracao: Configuracao) -> Resultado:
@@ -866,6 +957,24 @@ def comandos_padrao(
             rotulo="Hunt jobs & gigs",
             descricao="Jobs and freelas into cacada/, ready to send; nothing is sent (hours)",
             icone="⌖",
+        ),
+        Comando(
+            NOME_DO_LINKEDIN,
+            "analisa o perfil do LinkedIn e escreve rascunhos de post em linkedin/posts/; nada é publicado",
+            escrever_linkedin,
+            rotulo="LinkedIn",
+            descricao="Profile review and post drafts in linkedin/; nothing is published (~5 min)",
+            icone="in",
+        ),
+        Comando(
+            NOME_DOS_POSTS,
+            "lista os rascunhos de post; Enter publica no LinkedIn o escolhido",
+            posts_fora_da_janela,
+            parametro="search",
+            rotulo="Publish a post",
+            descricao="Your LinkedIn drafts; Enter publishes the selected one, only then",
+            icone="✎",
+            lista=lista_de_posts,
         ),
         Comando(
             "ask",

@@ -103,6 +103,12 @@ cloudflare_token = ""        # API token do Cloudflare (Pages: Edit) para pôr a
 cloudflare_conta = ""        # o Account ID do Cloudflare, ao lado do token
 cloudflare_projeto = ""      # nome do projeto do Pages (vira <nome>.pages.dev); vazio = um nome neutro sorteado uma vez
 
+[linkedin]
+client_id = ""               # Client ID do seu app no LinkedIn Developers (produtos Share on LinkedIn e Sign In with LinkedIn using OpenID Connect)
+client_secret = ""           # Client Secret do mesmo app; o login fica cifrado no cofre do Whis
+exportacao = ""              # o .zip ou a pasta de "Baixar seus dados" do LinkedIn; vazio = sem análise do perfil
+posts_por_vez = 3            # quantos rascunhos de post o comando linkedin escreve em linkedin/posts/
+
 [obsidian]
 vault = "245833c11ad43e6e"   # o ID do vault (Copy vault ID no seletor de vaults) ou o nome da pasta; é o que o botão "Abrir no Obsidian" usa
 """
@@ -172,6 +178,10 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "cloudflare_token", "cacada_cloudflare_token", Tipo.SEGREDO),
     Chave("cacada", "cloudflare_conta", "cacada_cloudflare_conta", Tipo.TEXTO),
     Chave("cacada", "cloudflare_projeto", "cacada_cloudflare_projeto", Tipo.TEXTO),
+    Chave("linkedin", "client_id", "linkedin_client_id", Tipo.TEXTO),
+    Chave("linkedin", "client_secret", "linkedin_client_secret", Tipo.SEGREDO),
+    Chave("linkedin", "exportacao", "linkedin_exportacao", Tipo.CAMINHO),
+    Chave("linkedin", "posts_por_vez", "linkedin_posts_por_vez", Tipo.INTEIRO),
     Chave("obsidian", "vault", "obsidian_vault", Tipo.TEXTO),
 )
 
@@ -258,6 +268,10 @@ class Configuracao:
     cacada_cloudflare_token: str = ""
     cacada_cloudflare_conta: str = ""
     cacada_cloudflare_projeto: str = ""
+    linkedin_client_id: str = ""
+    linkedin_client_secret: str = ""
+    linkedin_exportacao: Path | None = None
+    linkedin_posts_por_vez: int = 3
     origem: Path | None = None
 
 
@@ -326,6 +340,8 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
     obsidian = dados.get("obsidian") or {}
     palheta = dados.get("palheta") or {}
     cacada = dados.get("cacada") or {}
+    linkedin = dados.get("linkedin") or {}
+    exportacao = str(linkedin.get("exportacao", "")).strip()
     raiz_do_git = str(git.get("raiz", "")).strip()
     return Configuracao(
         vault=Path(dados["vault"]),
@@ -371,6 +387,10 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         cacada_cloudflare_token=str(cacada.get("cloudflare_token", "")).strip(),
         cacada_cloudflare_conta=str(cacada.get("cloudflare_conta", "")).strip(),
         cacada_cloudflare_projeto=_projeto_do_pages(cacada.get("cloudflare_projeto", ""), arquivo),
+        linkedin_client_id=str(linkedin.get("client_id", "")).strip(),
+        linkedin_client_secret=str(linkedin.get("client_secret", "")).strip(),
+        linkedin_exportacao=Path(exportacao) if exportacao else None,
+        linkedin_posts_por_vez=_inteiro_entre(linkedin.get("posts_por_vez", 3), "[linkedin].posts_por_vez", 1, 10, arquivo),
         origem=arquivo,
     )
 
@@ -618,7 +638,7 @@ def escrever(configuracao: Configuracao, destino: Path, *, agora: datetime | Non
     Escreve primeiro num `.tmp` ao lado e o relê com `carregar`: se o que
     saiu não carrega, nada é trocado e o erro sobe. Só então o arquivo atual
     vira `config.toml.bak-YYYYMMDD-HHMMSS` e o novo toma o lugar. UTF-8 sem
-    BOM e `\\n`, como `init` escreve. Nenhum valor vai ao log: cinco deles são
+    BOM e `\\n`, como `init` escreve. Nenhum valor vai ao log: seis deles são
     segredos.
     """
     destino = Path(destino)

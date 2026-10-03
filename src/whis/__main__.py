@@ -14,6 +14,7 @@ para as reuniões da Granola::
     python -m whis news [--agendada] [--fakes] [--simular]
     python -m whis meetings [--agendada] [--fakes]
     python -m whis hunt [--simular] [--fakes] [--do-zero]
+    python -m whis linkedin [--fakes] | linkedin-login | linkedin-publicar <nota>
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -314,6 +315,47 @@ def montar_portas_da_cacada(configuracao: Configuracao, *, fakes: bool = False):
         triagem=TriagemClaude(**opcoes),
         apostas=ApostasClaude(**opcoes),
         preparo=PreparoClaude(**opcoes),
+    )
+
+
+def montar_linkedin_api(configuracao: Configuracao):
+    """A API oficial do LinkedIn com o login guardado no cofre, ao lado do config."""
+    from .cofre import cofre_padrao
+    from .linkedin import LinkedInAPI
+
+    return LinkedInAPI(configuracao.linkedin_client_id, configuracao.linkedin_client_secret, cofre_padrao(configuracao))
+
+
+def preparar_linkedin_de(configuracao: Configuracao, *, fakes: bool = False):
+    """`linkedin`: a análise do perfil (se há export) e os rascunhos de post. Nada é publicado."""
+    from .cacada import CAMINHO_DO_PERFIL
+    from .criterios_da_cacada import ler_criterios
+    from .evidencias import montar_evidencias
+    from .linkedin import preparar_linkedin
+
+    raiz = _vault.preparar(configuracao.vault)
+    criterios = ler_criterios(raiz)
+    perfil = raiz / CAMINHO_DO_PERFIL
+    if fakes:
+        from .fakes_da_cacada import AnaliseDoPerfilFake, PostsFake
+
+        analise, posts, evidencias = AnaliseDoPerfilFake(), PostsFake(), "(evidências de exemplo)"
+    else:
+        from .linkedin import AnaliseDoPerfilClaude, PostsClaude
+
+        opcoes = {"modelo": configuracao.claude_modelo or None, "cli": configuracao.claude_cli or None}
+        analise, posts, evidencias = AnaliseDoPerfilClaude(**opcoes), PostsClaude(**opcoes), montar_evidencias(configuracao)
+    return preparar_linkedin(
+        raiz,
+        exportacao=configuracao.linkedin_exportacao,
+        analise=analise,
+        posts=posts,
+        quantos=configuracao.linkedin_posts_por_vez,
+        evidencias=evidencias,
+        perfil_do_whis=perfil.read_text(encoding="utf-8") if perfil.is_file() else "",
+        procuro=criterios.procuro,
+        sobre_mim=criterios.sobre_mim,
+        hoje=date.today(),
     )
 
 
@@ -776,6 +818,75 @@ def _relatar_cacada(resultado) -> None:
         print(f"Parou antes do fim: {resultado.parada}. Rode de novo para continuar.")
 
 
+# -- linkedin ---------------------------------------------------------------
+
+
+def _comando_linkedin(args: argparse.Namespace) -> int:
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    if args.fakes:
+        import tempfile
+        from dataclasses import replace
+
+        configuracao = replace(configuracao, vault=Path(tempfile.mkdtemp(prefix="whis-linkedin-")))
+        print(f"Vault temporário: {configuracao.vault}")
+    resultado = preparar_linkedin_de(configuracao, fakes=args.fakes)
+    if resultado.analise:
+        print(f"Análise do perfil: {resultado.analise}")
+    for caminho in resultado.rascunhos:
+        print(f"Rascunho: {caminho}")
+    for falha in resultado.falhas:
+        print(f"Faltou: {falha}")
+    print("Nada foi publicado. Para publicar um rascunho: posts na palheta (Enter) ou 'whis linkedin-publicar <nota>'.")
+    if not args.fakes:
+        _palheta.avisar_resultado(configuracao, _palheta.resultado_do_linkedin(resultado))
+    return SAIDA_COMPLETA if resultado.rascunhos and not resultado.falhas else (SAIDA_PARCIAL if resultado.rascunhos or resultado.analise else SAIDA_NAO_NASCEU)
+
+
+def _comando_linkedin_login(args: argparse.Namespace) -> int:
+    from .linkedin import RETORNO, ErroDoLinkedIn
+
+    configuracao = _configuracao(args)
+    api = montar_linkedin_api(configuracao)
+    print(f"Abrindo o LinkedIn no navegador. Autorize o app; a página volta para {RETORNO}.")
+    try:
+        api.login()
+    except ErroDoLinkedIn as erro:
+        print(f"Login não concluído: {erro}")
+        return SAIDA_NAO_NASCEU
+    print(f"Login guardado no cofre; vale por {api.dias_restantes()} dias.")
+    return SAIDA_COMPLETA
+
+
+def _comando_linkedin_publicar(args: argparse.Namespace) -> int:
+    """Publica um rascunho de `linkedin/posts/` — sempre perguntando antes: é o aval dele."""
+    from .linkedin import ErroDoLinkedIn, ler_post, publicar_post
+
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    raiz = Path(configuracao.vault)
+    caminho = args.nota.replace("\\", "/")
+    if Path(caminho).is_absolute():
+        caminho = Path(caminho).resolve().relative_to(raiz.resolve()).as_posix()
+    post = ler_post(raiz, caminho)
+    if post is None:
+        print(f"{caminho} não é um post do Whis em linkedin/posts/.")
+        return SAIDA_NAO_NASCEU
+    print(post.texto)
+    print()
+    resposta = input("Publicar este post no seu LinkedIn agora? [s/N] ").strip().casefold()
+    if resposta not in ("s", "sim", "y", "yes"):
+        print("Nada publicado.")
+        return SAIDA_COMPLETA
+    try:
+        url = publicar_post(raiz, caminho, montar_linkedin_api(configuracao))
+    except ErroDoLinkedIn as erro:
+        print(f"Não publicado: {erro}")
+        return SAIDA_NAO_NASCEU
+    print(f"Publicado: {url}")
+    return SAIDA_COMPLETA
+
+
 # -- atender ----------------------------------------------------------------
 
 
@@ -819,6 +930,8 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
         busca=lambda atual: montar_busca(atual, fakes=fakes),
         portas_do_jornal=lambda atual: montar_portas_do_jornal(atual, fakes=fakes),
         reunioes=None if fakes else (lambda atual: montar_reunioes(atual, pode_logar=True)),
+        linkedin=lambda atual: preparar_linkedin_de(atual, fakes=fakes),
+        linkedin_api=None if fakes else (lambda atual: montar_linkedin_api(atual)),
         iniciar_cacada=(
             (lambda _atual: _palheta.Resultado("Caçada indisponível", "Com --fakes, rode 'whis hunt --fakes' num terminal."))
             if fakes
@@ -1286,6 +1399,27 @@ def construir_parser() -> argparse.ArgumentParser:
         "--do-zero", action="store_true", help="ignora a caçada inacabada e começa outra"
     )
     hunt_cmd.set_defaults(funcao=_comando_hunt)
+
+    linkedin_cmd = subcomandos.add_parser(
+        "linkedin",
+        help="analisa o perfil do LinkedIn (pelo export de dados) e escreve rascunhos de post; nada é publicado",
+    )
+    _acrescentar_config(linkedin_cmd)
+    linkedin_cmd.add_argument("--fakes", action="store_true", help="sem Claude, num vault temporário")
+    linkedin_cmd.set_defaults(funcao=_comando_linkedin)
+
+    linkedin_login_cmd = subcomandos.add_parser(
+        "linkedin-login", help="entra no LinkedIn pela API oficial (OAuth) para o Whis poder publicar o que você aprovar"
+    )
+    _acrescentar_config(linkedin_login_cmd)
+    linkedin_login_cmd.set_defaults(funcao=_comando_linkedin_login)
+
+    linkedin_publicar_cmd = subcomandos.add_parser(
+        "linkedin-publicar", help="publica um rascunho de linkedin/posts/ no seu perfil, depois de você confirmar"
+    )
+    _acrescentar_config(linkedin_publicar_cmd)
+    linkedin_publicar_cmd.add_argument("nota", help="o caminho da nota, relativo ao vault (linkedin/posts/...md)")
+    linkedin_publicar_cmd.set_defaults(funcao=_comando_linkedin_publicar)
 
     bandeja_cmd = subcomandos.add_parser(
         "bandeja",

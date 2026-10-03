@@ -86,14 +86,14 @@ def test_campos_cobrem_toda_chave_do_modelo_e_nenhuma_a_mais():
     do_modelo |= {"[daily].ativa", "[daily].horarios"}
 
     assert {campo.caminho for campo in CAMPOS} == do_modelo
-    assert len(CAMPOS) == 31
+    assert len(CAMPOS) == 35
 
 
-def test_os_cinco_segredos_os_dois_caminhos_e_as_listas_tem_o_tipo_certo():
+def test_os_seis_segredos_os_tres_caminhos_e_as_listas_tem_o_tipo_certo():
     por_tipo = {tipo: {campo.caminho for campo in CAMPOS if campo.tipo is tipo} for tipo in Tipo}
 
     assert por_tipo[Tipo.SEGREDO] == set(SEGREDOS)
-    assert por_tipo[Tipo.CAMINHO] == {"vault", "[git].raiz"}
+    assert por_tipo[Tipo.CAMINHO] == {"vault", "[git].raiz", "[linkedin].exportacao"}
     assert por_tipo[Tipo.LISTA] == {
         "[privacidade].excluir", "[privacidade].pastas_privadas",
         "[git].excluir", "[git].autores", "[slack].conversas_excluidas", "[slack].so_com_mencao",
@@ -102,6 +102,7 @@ def test_os_cinco_segredos_os_dois_caminhos_e_as_listas_tem_o_tipo_certo():
     assert por_tipo[Tipo.BOOLEANO] == {"[daily].ativa", "[noticias].ativa"}
     assert por_tipo[Tipo.INTEIRO] == {
         "[busca].maximo_de_notas", "[git].profundidade", "[cacada].teto_semanal", "[cacada].maximo_de_pacotes",
+        "[linkedin].posts_por_vez",
     }
     assert por_tipo[Tipo.HORA] == {
         "[diario].inicio_do_dia", "[diario].hora_da_tarefa", "[noticias].horario", "[granola].horario",

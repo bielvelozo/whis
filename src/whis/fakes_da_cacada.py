@@ -168,3 +168,27 @@ def portas_fake(**opcoes_da_triagem) -> PortasDaCacada:
         evidencias=lambda _configuracao: "(evidências de exemplo)",
         amostras=False,
     )
+
+
+class AnaliseDoPerfilFake(_Fake):
+    def analisar(self, exportacao, perfil_do_whis, procuro, sobre_mim) -> dict:
+        self._contar()
+        return {
+            "nota": 55,
+            "diagnostico": "Título genérico e Sobre vazio (exemplo).",
+            "titulo": "Desenvolvedor Web Full Stack | React, Node.js e TypeScript",
+            "sobre": "Construo sistemas web de ponta a ponta (exemplo).",
+            "experiencias": [{"cargo": "Desenvolvedor", "empresa": "Empresa", "texto": "- Entreguei X (exemplo)."}],
+            "competencias": ["React", "Node.js", "TypeScript"],
+            "antes_de_mexer": ["Desligue o compartilhamento de atualizações do perfil."],
+            "ajustes": ["URL personalizada."],
+        }
+
+
+class PostsFake(_Fake):
+    def escrever(self, quantos, evidencias, perfil_do_whis, publicados) -> list[dict[str, str]]:
+        self._contar()
+        return [
+            {"titulo": f"Post de exemplo {numero}", "texto": f"Gancho do post {numero}.\n\nCorpo (com parênteses).", "por_que": "exemplo"}
+            for numero in range(1, quantos + 1)
+        ]
