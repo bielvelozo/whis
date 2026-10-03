@@ -113,16 +113,22 @@ spec (05).
   CAPTCHA e documento; na caçada, `[cacada].enviar_sozinho` (nasce `false`) manda as de tentar a sorte
   em Gupy e ATS pela regra em código. O classificador de segurança da sessão bloqueou a construção
   uma vez; ele pediu de novo e ela seguiu.
+- **Última camada** (2026-10-03, *"bora pra última camada"*): o que restava no mapa.
+  Get on Board e Freelancer.com pelas APIs públicas (projeto por hora fora), Programathor e Contra
+  pelo explorador; o Claude Code no perfil só em contagens de 30 dias (sem texto nem nome de
+  projeto); **acompanhamento** em `cacada/candidaturas.md` — o `status:` do pacote, que ele muda, o
+  que o Whis enviou e as respostas do Gmail; **lembrete da véspera** (`whis lembrete`, tarefa
+  `Whis-Lembrete-Cacada` por `whis windows --hunt`), que só lembra.
 - **Teto da caçada em 100%** (2026-10-03, pedido dele: *"sempre vou soltar perto na madrugada antes
   do limite resetar"*); a parada antes da virada caiu de 30 para 5 min.
 
 ## Not yet specified
 
-- Fontes que ficaram fora da entrega 1: Upwork (MCP oficial, pede conta), Freelancer.com, Contra,
-  Get on Board, Programathor; os transcripts do Claude Code no perfil.
-- Acompanhamento de candidaturas (vi, apliquei, entrevista, recusa) e respostas de cliente — com o
-  Whis aplicando sozinho, alguém vai responder; ler a caixa dele é outra capacidade.
-- Lembrar dele de rodar a caçada na véspera da renovação.
+- **Upwork**: só pelo MCP oficial (`mcp.upwork.com`), que pede a conta dele e OAuth — depois que
+  `whis contas` criar a conta e o Upwork aprovar o perfil.
+- **Camada 0 de tudo**: nenhum leitor, agente ou API foi provado contra o site real (a rede da
+  sessão de agente bloqueia); os smokes `docs/smoke-cacada.md`, `smoke-contas.md` e
+  `smoke-linkedin.md` são a prova.
 
 ## Out of scope
 

@@ -51,6 +51,10 @@ _Avoid_: lead, job, anúncio
 Tudo mastigado para uma chance boa, em `cacada/<corrida>/`: o que pedem, por que casa, o que estica, alertas, preço ou pretensão, prazo, a proposta pronta, o plano, perguntas ao cliente, como enviar e, no freela de página web, a **amostra** — uma página de conceito sem nome nem contato dele, com print para anexar e, se configurado, um link no Cloudflare Pages que sai do ar em 30 dias. Ele lê, ajusta e envia.
 _Avoid_: dossiê, kit
 
+**Candidaturas**:
+`cacada/candidaturas.md`, regenerada no fim de cada **Caçada** (ou por `whis candidaturas`): as chances boas pelo `status:` do **Pacote** — `preparada`, `enviada`, `entrevista`, `proposta`, `recusada`, `fechado`, que só ele muda, no Obsidian —, as que o Whis enviou sozinho (do **Registro de ações**) e os e-mails do Gmail dedicado que parecem resposta da empresa.
+_Avoid_: pipeline, CRM, funil
+
 **Registro de ações**:
 `%LOCALAPPDATA%\whis\cacada\acoes.jsonl`: tudo o que o Whis fez fora do PC em nome dele — conta criada, e-mail confirmado, perfil completado, candidatura enviada. Só acrescenta; cada ação nasce como intenção, gravada antes de agir, e ganha o desfecho depois. Intenção sem desfecho nunca é refeita sozinha, e nada é feito duas vezes (ADR 0004).
 _Avoid_: log de ações, histórico

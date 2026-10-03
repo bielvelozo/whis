@@ -141,3 +141,23 @@ estava pronto. Para começar outra do zero: `python -m whis hunt --do-zero`.
 - O relatório da primeira caçada: quantas chances boas, se as descartadas
   fazem sentido, se as propostas soam como você.
 - O `bandeja.log` (`%APPDATA%\whis\`), se algo falhou.
+
+## Passo 7 — O acompanhamento
+
+Depois de enviar uma chance boa, abra o pacote e troque `status: preparada` por `enviada` (e
+depois `entrevista`, `proposta`, `recusada` ou `fechado`). No fim de cada caçada — ou na hora, com
+`python -m whis candidaturas` — `cacada/candidaturas.md` junta os seus pacotes, o que o Whis enviou
+sozinho e, com o Gmail configurado, os e-mails que parecem ser resposta da empresa.
+
+## Passo 8 — O lembrete da véspera
+
+```
+python -m whis windows --hunt
+```
+
+**Sucesso:** "Lembrete da caçada agendado como 'Whis-Lembrete-Cacada'". Todo dia em
+`[cacada].hora_do_lembrete` (20:00) ele olha se a semana do plano vira nas próximas 30 h e, se
+vira, mostra **um** toast por semana: *Véspera da virada do plano*. Antes da primeira caçada ele
+ainda não sabe a hora da virada e faz uma sonda de um turno do Haiku para descobrir. Ele só
+lembra: soltar a caçada continua com você. Para conferir agora: `python -m whis lembrete`.
+
