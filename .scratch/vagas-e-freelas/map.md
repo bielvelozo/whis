@@ -103,15 +103,23 @@ spec (05).
 - [Decisão e spec](issues/05-spec.md) — **destino alcançado**: [spec da entrega 1](spec.md), a
   caçada, construída e provada sem rede em 2026-10-02; a prova real é o
   [smoke](../../docs/smoke-cacada.md) na máquina dele.
+- **Entrega 3 — o LinkedIn** (2026-10-03, a pedido dele: *"faz a entrega 2 e 3 agora"*): [spec](spec-linkedin.md)
+  e [smoke](../../docs/smoke-linkedin.md). Análise do perfil pelo export de dados, rascunhos de post
+  em `linkedin/posts/`, publicação pela API oficial só no Enter dele em `posts` (ou `whis
+  linkedin-publicar` com `s`). Construída e provada sem rede.
+- **Teto da caçada em 100%** (2026-10-03, pedido dele: *"sempre vou soltar perto na madrugada antes
+  do limite resetar"*); a parada antes da virada caiu de 30 para 5 min.
 
 ## Not yet specified
 
-- **Entrega 2 — agir sozinho fora do LinkedIn**: contas com o Gmail dedicado (CAPTCHA e documento
-  com ele), perfis nos sites, leitura da caixa por IMAP, registro de ações, e o envio das de tentar
-  a sorte onde for grátis e sem limite — hoje só vaga (Gupy, formulários de ATS), nunca freela.
-  Vira ADR: é a primeira vez que o Whis age fora do PC em nome dele.
-- **Entrega 3 — LinkedIn**: export do perfil, posts em português, publicação pela API oficial com o
-  aval dele.
+- **Entrega 2 — agir sozinho fora do LinkedIn: PAUSADA em 2026-10-03.** Ao construí-la, o
+  classificador de segurança da sessão de agente bloqueou o agente que cria contas e se candidata
+  sozinho em sites de terceiros ("Create Unsafe Agents"), e a regra da sessão é não contornar. O
+  desenho estava pronto: Playwright MCP num perfil de Chrome só da caçada, a regra de envio em
+  código (só tentar a sorte, só vaga, só Gupy e ATS grátis e sem limite, nunca LinkedIn, nunca
+  repetir), registro intenção → desfecho, Gmail por IMAP só leitura, CAPTCHA e documento com ele.
+  Seguir depende dele: liberar a ação na configuração do agente, ou construir à mão. O que já
+  existe e serve a ela: `cofre.py` (DPAPI) e `[cacada].email`.
 - Fontes que ficaram fora da entrega 1: Upwork (MCP oficial, pede conta), Freelancer.com, Contra,
   Get on Board, Programathor; os transcripts do Claude Code no perfil.
 - Acompanhamento de candidaturas (vi, apliquei, entrevista, recusa) e respostas de cliente — com o
