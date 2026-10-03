@@ -88,7 +88,8 @@ O resultado é o **relatório** `cacada/AAAA-MM-DD-HHMM.md` e um pacote por chan
   `%LOCALAPPDATA%\whis\cacada\`, fora do vault.
 - **[agente] O plano manda no ritmo** (research 07): janela de 5 h rejeitada → pausa até
   `resets_at` + 2 min, no máximo 5 h 15, três vezes por chamada; semanal rejeitada ou acima de
-  `[cacada].teto_semanal` (95) → para; a menos de 30 min da virada semanal → para; **fora da
+  `[cacada].teto_semanal` (100, pedido dele em 2026-10-03: ele sempre solta na madrugada antes da
+  virada) → para; a menos de 5 min da virada semanal → para; **fora da
   véspera** (virada a mais de 36 h) o teto cai para 70. O limite é reconhecido pelo evento
   (`RateLimitEvent.status == "rejected"`, `AssistantMessage.error == "rate_limit"`,
   `api_error_status == 429`), nunca pelo texto. O piso do SDK subiu para 0.2.140.
@@ -133,7 +134,7 @@ O resultado é o **relatório** `cacada/AAAA-MM-DD-HHMM.md` e um pacote por chan
 
 ### Configuração `[cacada]`
 
-`email`, `teto_semanal` (1–100, padrão 95), `maximo_de_pacotes` (0–200, padrão 20),
+`email`, `teto_semanal` (1–100, padrão 100), `maximo_de_pacotes` (0–200, padrão 20),
 `cloudflare_token` (segredo), `cloudflare_conta`, `cloudflare_projeto` (vira `<nome>.pages.dev`).
 
 ### Códigos de saída de `whis hunt`

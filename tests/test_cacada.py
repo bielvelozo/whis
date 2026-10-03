@@ -355,7 +355,7 @@ def test_a_guarda_para_acima_do_teto_e_perto_da_virada():
     guarda.plano = Plano(sete_dias=96, vira_sete_dias=AGORA + timedelta(hours=10))
     with pytest.raises(Parada):
         guarda.conferir()
-    guarda.plano = Plano(sete_dias=10, vira_sete_dias=AGORA + timedelta(minutes=10))
+    guarda.plano = Plano(sete_dias=10, vira_sete_dias=AGORA + timedelta(minutes=4))
     with pytest.raises(Parada):
         guarda.conferir()
 
@@ -512,7 +512,7 @@ def test_cacada_no_config_tem_padrao_e_valida(tmp_path: Path):
     arquivo = tmp_path / "config.toml"
     arquivo.write_text('vault = "/v"\n', encoding="utf-8")
     padrao = carregar(arquivo)
-    assert (padrao.cacada_teto_semanal, padrao.cacada_maximo_de_pacotes, padrao.cacada_email) == (95, 20, "")
+    assert (padrao.cacada_teto_semanal, padrao.cacada_maximo_de_pacotes, padrao.cacada_email) == (100, 20, "")
 
     arquivo.write_text('vault = "/v"\n[cacada]\nteto_semanal = 120\n', encoding="utf-8")
     with pytest.raises(ConfiguracaoInvalida, match="entre 1 e 100"):

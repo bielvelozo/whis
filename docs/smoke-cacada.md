@@ -23,8 +23,10 @@ Rode tudo de dentro de `C:\Users\gabri\development\whis`. Nos exemplos,
   listagem pública, sem conta, três páginas por corrida. O LinkedIn é lido só
   pela busca pública, **nunca pela sua conta**.
 - **O plano do Claude.** A caçada gasta o que sobrou da semana. Ela para
-  sozinha em 95% do plano semanal, ou em 70% se a semana ainda estiver longe
-  de virar, e sempre 30 min antes da virada. A leitura do plano depende do
+  sozinha quando o plano semanal chega a 100% (`[cacada].teto_semanal`), e
+  sempre 5 min antes da virada, para não comer a semana nova. Se você rodar
+  com a virada a mais de 36 h, ela para em 70%: a rede de segurança para a
+  cota do trabalho. A leitura do plano depende do
   `claude.exe` do npm (≥ 2.1.274), o mesmo que o jornal já usa.
 
 ## Passo 0 — Atualizar

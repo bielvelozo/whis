@@ -29,5 +29,5 @@ daqui"*):
 - **A aprovação é ele enviando**: nada sai nesta entrega, então não há fila de aval. O registro de
   ações externas nasce com a entrega 2.
 - **O que já apareceu não volta**: os links dos relatórios anteriores contam como vistos.
-- **Custo**: o que sobrou da semana; teto de 95% (70% fora da véspera) e parada 30 min antes da
+- **Custo**: o que sobrou da semana; teto de 100% (pedido dele em 2026-10-03; 70% fora da véspera) e parada 5 min antes da
   virada.

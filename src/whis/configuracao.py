@@ -97,7 +97,7 @@ app_token = ""               # App-Level Token xapp com connections:write: a con
 
 [cacada]
 email = ""                   # o Gmail só da caçada (nunca o do trabalho): o que o Whis põe nos pacotes e, numa entrega futura, usa para criar contas
-teto_semanal = 95            # a caçada para quando o plano semanal do Claude passa disto (%); fora da véspera da virada, para em 70
+teto_semanal = 100           # a caçada usa o plano semanal do Claude até aqui (%) e para; fora da véspera da virada, para em 70
 maximo_de_pacotes = 20       # quantas chances boas ganham pacote completo por caçada, das melhores para as piores
 cloudflare_token = ""        # API token do Cloudflare (Pages: Edit) para pôr as amostras no ar; vazio = amostra só no vault
 cloudflare_conta = ""        # o Account ID do Cloudflare, ao lado do token
@@ -253,7 +253,7 @@ class Configuracao:
     obsidian_vault: str = ""
     palheta_atalho: str = ATALHO_PADRAO
     cacada_email: str = ""
-    cacada_teto_semanal: int = 95
+    cacada_teto_semanal: int = 100
     cacada_maximo_de_pacotes: int = 20
     cacada_cloudflare_token: str = ""
     cacada_cloudflare_conta: str = ""
@@ -364,7 +364,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         obsidian_vault=str(obsidian.get("vault", "")).strip(),
         palheta_atalho=_atalho(palheta.get("atalho", ATALHO_PADRAO), arquivo),
         cacada_email=str(cacada.get("email", "")).strip(),
-        cacada_teto_semanal=_inteiro_entre(cacada.get("teto_semanal", 95), "[cacada].teto_semanal", 1, 100, arquivo),
+        cacada_teto_semanal=_inteiro_entre(cacada.get("teto_semanal", 100), "[cacada].teto_semanal", 1, 100, arquivo),
         cacada_maximo_de_pacotes=_inteiro_entre(
             cacada.get("maximo_de_pacotes", 20), "[cacada].maximo_de_pacotes", 0, 200, arquivo
         ),

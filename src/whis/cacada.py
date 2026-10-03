@@ -19,7 +19,7 @@ relatório é reescrito ao fim de cada uma — se a corrida parar, o que já
 existe está no vault, e a próxima chamada retoma de onde parou.
 
 O plano manda no ritmo: a janela de 5 h que bate **pausa** a corrida até ela
-abrir (com o PC acordado); a semanal acima do teto, ou a menos de 30 min de
+abrir (com o PC acordado); a semanal no teto (100%, o padrão), ou a menos de 5 min de
 virar, **encerra** — a semana nova é a do trabalho dele.
 """
 
@@ -65,7 +65,7 @@ MAXIMO_DE_APOSTAS = 60
 #: Fora da véspera (a semana vira em mais de 36 h), a corrida para mais cedo: a cota é do trabalho.
 TETO_FORA_DA_VESPERA = 70
 VESPERA = timedelta(hours=36)
-MARGEM_DA_VIRADA = timedelta(minutes=30)
+MARGEM_DA_VIRADA = timedelta(minutes=5)
 MAXIMO_DA_PAUSA = timedelta(hours=5, minutes=15)
 PAUSA_SEM_HORA = timedelta(minutes=30)
 FOLGA_DEPOIS_DA_VIRADA = timedelta(minutes=2)
