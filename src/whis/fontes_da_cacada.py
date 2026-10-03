@@ -52,7 +52,10 @@ TETO_DO_HN = 120
 
 #: Os tipos que esta coleta lê; `web` é do explorador.
 TIPOS_LIDOS_AQUI = frozenset(
-    {"himalayas", "remotive", "remoteok", "jobicy", "rss", "github", "hn", "gupy", "workana", "99freelas", "linkedin"}
+    {
+        "himalayas", "remotive", "remoteok", "jobicy", "rss", "github", "hn", "gupy", "workana", "99freelas", "linkedin",
+        "getonbrd", "freelancer",
+    }
 )
 
 
@@ -359,6 +362,73 @@ def ler_gupy(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[Oportunidade,
     return tuple(saida)
 
 
+def ler_getonbrd(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[Oportunidade, ...]:
+    """A API pública do Get on Board (vagas tech na América Latina, faixa em USD quase sempre)."""
+    url = "https://www.getonbrd.com/api/v0/search/jobs?" + urlencode(
+        {"query": fonte.argumento or "developer", "per_page": 50, "expand": '["company"]'}
+    )
+    saida = []
+    for item in _lista(_json(cliente, url), "data"):
+        atributos = item.get("attributes") if isinstance(item.get("attributes"), dict) else {}
+        titulo = _primeiro(atributos, "title")
+        link = _primeiro(item.get("links") or {}, "public_url") or (
+            f"https://www.getonbrd.com/jobs/{item.get('id')}" if item.get("id") else ""
+        )
+        if not titulo or not link:
+            continue
+        empresa = ((atributos.get("company") or {}).get("data") or {}).get("attributes") or {}
+        paises = ", ".join(map(str, atributos.get("countries") or []))
+        remoto = atributos.get("remote") or atributos.get("remote_modality") in ("fully_remote", "remote_local")
+        saida.append(
+            Oportunidade.nova(
+                tipo=VAGA,
+                fonte=fonte.nome,
+                titulo=titulo,
+                link=link,
+                empresa=_primeiro(empresa, "name") if isinstance(empresa, dict) else "",
+                local=("Remoto" if remoto else "Presencial") + (f" ({paises})" if paises else ""),
+                regime=_primeiro(atributos, "modality") if isinstance(atributos.get("modality"), str) else "",
+                faixa=_faixa(atributos.get("min_salary") or atributos.get("salary_min"), atributos.get("max_salary") or atributos.get("salary_max"), "USD", "mês"),
+                publicada=_data(atributos.get("published_at")),
+                descricao=_primeiro(atributos, "description", "projects", "functions"),
+                detalhes=_primeiro(atributos, "seniority") if isinstance(atributos.get("seniority"), str) else "",
+            )
+        )
+    return tuple(saida)
+
+
+def ler_freelancer(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[Oportunidade, ...]:
+    """A API pública de projetos ativos do Freelancer.com; projeto por hora fica de fora (regra dele)."""
+    url = "https://www.freelancer.com/api/projects/0.1/projects/active/?" + urlencode(
+        {"query": fonte.argumento or "website", "limit": 50, "full_description": "true", "sort_field": "time_updated"}
+    )
+    dados = _json(cliente, url)
+    projetos = _lista((dados.get("result") or {}) if isinstance(dados, dict) else {}, "projects")
+    saida = []
+    for item in projetos:
+        if str(item.get("type", "")).lower() == "hourly":
+            continue
+        titulo, slug = _primeiro(item, "title"), _primeiro(item, "seo_url")
+        if not titulo or not slug:
+            continue
+        orcamento = item.get("budget") if isinstance(item.get("budget"), dict) else {}
+        moeda = ((item.get("currency") or {}) if isinstance(item.get("currency"), dict) else {}).get("code") or "USD"
+        lances = ((item.get("bid_stats") or {}) if isinstance(item.get("bid_stats"), dict) else {}).get("bid_count")
+        saida.append(
+            Oportunidade.nova(
+                tipo=FREELA,
+                fonte=fonte.nome,
+                titulo=titulo,
+                link=f"https://www.freelancer.com/projects/{slug}",
+                faixa=_faixa(orcamento.get("minimum"), orcamento.get("maximum"), str(moeda), "projeto"),
+                publicada=_data(item.get("time_submitted")),
+                descricao=_primeiro(item, "description", "preview_description"),
+                detalhes=f"Propostas: {lances}" if lances is not None else "",
+            )
+        )
+    return tuple(saida)
+
+
 # -- listagens públicas de freela ------------------------------------------------------
 
 
@@ -597,6 +667,8 @@ _LEITORES: dict[str, Callable[..., tuple[Oportunidade, ...]]] = {
     "workana": ler_workana,
     "99freelas": ler_99freelas,
     "linkedin": ler_linkedin,
+    "getonbrd": ler_getonbrd,
+    "freelancer": ler_freelancer,
 }
 _PAGINADOS = frozenset({"workana", "99freelas", "linkedin"})
 

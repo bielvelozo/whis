@@ -625,8 +625,58 @@ def test_as_evidencias_leem_linguagens_dependencias_e_o_diario(tmp_path: Path):
     (vault / "diario" / "2026-10-01.md").write_text("---\ntipo: diario\n---\n# Dia\nMigrei o checkout.", encoding="utf-8")
     from whis.evidencias import montar_evidencias
 
-    texto = montar_evidencias(Configuracao(vault=vault, git_raiz=tmp_path / "dev"))
+    texto = montar_evidencias(Configuracao(vault=vault, git_raiz=tmp_path / "dev"), claude_code=tmp_path / "sem-claude")
 
     assert "TypeScript (React) 100%" in texto
     assert "react, next" in texto and "1 commit(s) dele" in texto
     assert "Migrei o checkout." in texto and "tipo: diario" not in texto
+
+
+def test_do_claude_code_saem_so_contagens(tmp_path: Path):
+    from whis.evidencias import _do_claude_code
+
+    projeto = tmp_path / "C--Users-gabri-development-empresa-secreta"
+    projeto.mkdir()
+    linhas = [
+        {"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Edit", "input": {"file_path": "C:/empresa/src/Checkout.tsx", "old_string": "segredo"}},
+            {"type": "tool_use", "name": "Skill", "input": {"skill": "anthropic-skills:code-review"}},
+            {"type": "tool_use", "name": "mcp__linear__get_issue", "input": {"id": "FN-1"}},
+        ]}},
+        {"type": "user", "message": {"content": "o código do cliente X"}},
+    ]
+    (projeto / "sessao.jsonl").write_text("\n".join(json.dumps(l) for l in linhas), encoding="utf-8")
+
+    texto = _do_claude_code(tmp_path)
+
+    assert "1 sessão(ões) em 1 projeto(s)" in texto and ".tsx 1" in texto and "code-review 1" in texto and "MCP 1" in texto
+    assert "empresa" not in texto and "segredo" not in texto and "cliente" not in texto and "Checkout" not in texto
+
+
+def test_get_on_board_e_freelancer_pelas_apis_publicas():
+    rede = _rede(
+        {
+            "getonbrd.com": httpx.Response(200, json={"data": [
+                {"id": "dev-react-acme", "type": "job", "attributes": {
+                    "title": "React Developer", "remote": True, "countries": ["Brasil"], "min_salary": 2500, "max_salary": 3500,
+                    "published_at": int((AGORA - timedelta(days=2)).timestamp()), "description": "<p>React</p>",
+                    "company": {"data": {"attributes": {"name": "Acme LatAm"}}}},
+                 "links": {"public_url": "https://www.getonbrd.com/jobs/programming/dev-react-acme"}},
+            ]}),
+            "freelancer.com": httpx.Response(200, json={"result": {"projects": [
+                {"title": "Landing page", "seo_url": "website-design/landing-page-1", "type": "fixed",
+                 "budget": {"minimum": 100, "maximum": 300}, "currency": {"code": "USD"}, "bid_stats": {"bid_count": 12},
+                 "time_submitted": int((AGORA - timedelta(hours=5)).timestamp()), "preview_description": "Landing"},
+                {"title": "Suporte por hora", "seo_url": "x/hora", "type": "hourly"},
+            ]}}),
+        }
+    )
+    fontes = (FonteDaCacada("GoB", "getonbrd", "react"), FonteDaCacada("Freelancer", "freelancer", "website"))
+
+    coleta = coletar(fontes, AGORA, rede=rede)
+
+    vaga = coleta.por_fonte["GoB"][0]
+    assert (vaga.empresa, vaga.local, vaga.faixa) == ("Acme LatAm", "Remoto (Brasil)", "USD 2.500 – 3.500 por mês")
+    [projeto] = coleta.por_fonte["Freelancer"]
+    assert projeto.link == "https://www.freelancer.com/projects/website-design/landing-page-1"
+    assert projeto.faixa == "USD 100 – 300 por projeto" and projeto.detalhes == "Propostas: 12"

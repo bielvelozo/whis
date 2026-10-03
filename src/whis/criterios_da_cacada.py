@@ -43,6 +43,8 @@ TIPOS_DE_FONTE = {
     "workana": "a listagem pública da Workana; argumento: a categoria",
     "99freelas": "a listagem pública da 99Freelas; argumento: a categoria",
     "linkedin": "a busca pública do LinkedIn, sem login; argumento: termos | local | remoto ou presencial",
+    "getonbrd": "a API pública do Get on Board (tech na América Latina); argumento: termo de busca",
+    "freelancer": "a API pública de projetos do Freelancer.com (só preço fechado); argumento: termo de busca",
     "web": "o Claude busca na web aberta; argumento: o que procurar",
 }
 
@@ -105,6 +107,11 @@ Uma fonte por linha: `- Nome: tipo argumento`. Apague a linha para desligar a fo
 - LinkedIn · full stack remoto: linkedin full stack developer | Brasil | remoto
 - LinkedIn · Ribeirão Preto: linkedin desenvolvedor | Ribeirão Preto, São Paulo | presencial
 - LinkedIn · games: linkedin game developer | Brasil | remoto
+- Get on Board · full stack: getonbrd full stack
+- Get on Board · front-end: getonbrd frontend
+- Freelancer.com · sites: freelancer website
+- Freelancer.com · React: freelancer react
+- Web · Programathor e Contra: web vagas no programathor.com.br e freelas por projeto no contra.com de desenvolvimento web que aceitem brasileiro, publicados nos últimos 14 dias
 - Web · freelas e vagas fora das listas: web vagas remotas de desenvolvedor web que aceitem brasileiros, e freelas de sites e sistemas web por projeto, publicados nos últimos 7 dias, fora dos sites já listados acima
 - Web · games e áudio: web vagas ou freelas de desenvolvimento de games ou de software de áudio (plugins, DAW, web audio) que aceitem brasileiro remoto, publicados nos últimos 14 dias
 

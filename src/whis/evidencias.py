@@ -41,9 +41,9 @@ LINGUAGENS = {
 MANIFESTOS = ("package.json", "pyproject.toml", "requirements.txt", "composer.json", "go.mod", "Cargo.toml", "Gemfile")
 
 
-def montar_evidencias(configuracao: Configuracao) -> str:
+def montar_evidencias(configuracao: Configuracao, *, claude_code: Path | None = None) -> str:
     """O texto inteiro das evidências, cortado no teto. Nunca levanta: o que falhar vira uma linha."""
-    partes = [_do_git(configuracao), _do_vault(Path(configuracao.vault))]
+    partes = [_do_git(configuracao), _do_claude_code(claude_code), _do_vault(Path(configuracao.vault))]
     texto = "\n\n".join(parte for parte in partes if parte.strip())
     return texto[:TETO_DE_CARACTERES] or "(nenhuma evidência: git desligado e vault vazio)"
 
@@ -153,6 +153,68 @@ def _git(repositorio: Path, *argumentos: str) -> str:
     except (OSError, subprocess.TimeoutExpired):
         return ""
     return concluido.stdout or "" if concluido.returncode == 0 else ""
+
+
+# -- Claude Code ----------------------------------------------------------------------------
+
+DIAS_DO_CLAUDE_CODE = 30
+
+
+def _do_claude_code(pasta: Path | None = None, *, agora: float | None = None) -> str:
+    """Como ele trabalha com IA, só em contagens (research 03): nada de texto, código ou nome de projeto.
+
+    Os transcripts (`~/.claude/projects/<projeto>/<sessão>.jsonl`) carregam o
+    código do empregador; daqui só saem números — sessões, projetos, as
+    ferramentas mais usadas, as extensões dos arquivos editados e as skills.
+    """
+    import time
+
+    pasta = pasta or Path.home() / ".claude" / "projects"
+    if not pasta.is_dir():
+        return ""
+    limite = (agora or time.time()) - DIAS_DO_CLAUDE_CODE * 86_400
+    sessoes, projetos = 0, set()
+    ferramentas: Counter[str] = Counter()
+    extensoes: Counter[str] = Counter()
+    skills: Counter[str] = Counter()
+    for arquivo in pasta.glob("*/*.jsonl"):
+        try:
+            if arquivo.stat().st_mtime < limite:
+                continue
+            linhas = arquivo.read_text(encoding="utf-8", errors="replace").splitlines()
+        except OSError:
+            continue
+        sessoes += 1
+        projetos.add(arquivo.parent.name)
+        for linha in linhas:
+            if '"tool_use"' not in linha:
+                continue
+            try:
+                registro = json.loads(linha)
+            except ValueError:
+                continue
+            conteudo = ((registro.get("message") or {}).get("content")) if isinstance(registro, dict) else None
+            for bloco in conteudo if isinstance(conteudo, list) else ():
+                if not isinstance(bloco, dict) or bloco.get("type") != "tool_use":
+                    continue
+                nome = str(bloco.get("name", ""))
+                entrada = bloco.get("input") if isinstance(bloco.get("input"), dict) else {}
+                ferramentas["MCP" if nome.startswith("mcp__") else nome] += 1
+                caminho = str(entrada.get("file_path") or "")
+                if nome in ("Edit", "Write", "MultiEdit", "NotebookEdit") and caminho:
+                    extensoes[Path(caminho).suffix.lower() or "(sem extensão)"] += 1
+                if nome == "Skill" and entrada.get("skill"):
+                    skills[str(entrada["skill"]).split(":")[-1]] += 1
+    if not sessoes:
+        return ""
+    def top(contador: Counter[str], n: int) -> str:
+        return ", ".join(f"{nome} {quantos}" for nome, quantos in contador.most_common(n)) or "—"
+
+    return (
+        f"CLAUDE CODE (últimos {DIAS_DO_CLAUDE_CODE} dias, só contagens): {sessoes} sessão(ões) em "
+        f"{len(projetos)} projeto(s). Ferramentas: {top(ferramentas, 10)}. Extensões editadas: "
+        f"{top(extensoes, 10)}. Skills: {top(skills, 8)}."
+    )
 
 
 # -- vault ----------------------------------------------------------------------------------
