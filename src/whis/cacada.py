@@ -132,9 +132,13 @@ class PortasDaCacada:
     ler_detalhe: Callable[[Oportunidade], str] | None = None
     evidencias: Callable[[Configuracao], str] | None = None
     amostras: bool = True
+    navegador: Any | None = None
+    registro: Any | None = None
+    ler_caixa: Callable[[], Sequence[Any]] | None = None
 
     def todas(self) -> tuple[Any, ...]:
-        return (self.perfil, self.explorador, self.triagem, self.apostas, self.preparo)
+        portas = (self.perfil, self.explorador, self.triagem, self.apostas, self.preparo)
+        return portas + ((self.navegador,) if self.navegador is not None else ())
 
 
 @dataclass
@@ -154,6 +158,8 @@ class ResultadoDaCacada:
     duracao_s: float = 0.0
     plano_antes: int | None = None
     plano_depois: int | None = None
+    enviadas: int = 0
+    precisam_de_voce: int = 0
 
     @property
     def completa(self) -> bool:
@@ -275,6 +281,8 @@ def cacar(
         _etapa_do_preparo(estado, portas, guarda)
         _escrever_relatorio(estado, guarda, parada="", em_andamento="escrevendo as mensagens de tentar a sorte")
         _etapa_das_apostas(estado, portas, guarda)
+        _etapa_do_envio(estado, portas, guarda)
+        _etapa_da_caixa(estado, portas)
     except Parada as motivo:
         parada = str(motivo)
         _log.warning("A caçada parou antes do fim: %s.", parada)
@@ -298,6 +306,8 @@ def cacar(
         perguntas=estado.perguntas(),
         custo_usd=custo,
         duracao_s=round(time.monotonic() - inicio_monotonico, 1),
+        enviadas=sum(1 for e in (checkpoint.get("envios") or {}).values() if e.get("status") == "feito"),
+        precisam_de_voce=sum(1 for e in (checkpoint.get("envios") or {}).values() if e.get("status") == "precisa_de_voce"),
         plano_antes=guarda.primeiro.sete_dias if guarda.primeiro else None,
         plano_depois=guarda.plano.sete_dias if guarda.plano else None,
     )
@@ -518,6 +528,72 @@ def _etapa_das_apostas(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDo
         estado.checkpoint.guardar(apostas=todas, apostas_tentadas=sorted(tentadas))
 
 
+def _etapa_do_envio(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano) -> None:
+    """Entrega 2: as de tentar a sorte que a política deixa, uma por uma, com o registro antes e depois.
+
+    Quem decide se pode é `politica.pode_enviar_sozinho`, em código. Desligado
+    (`[cacada].enviar_sozinho = false`, o padrão), esta etapa não faz nada.
+    """
+    configuracao = estado.configuracao
+    if not configuracao.cacada_enviar_sozinho or portas.navegador is None or portas.registro is None:
+        return
+    from .acoes import CANDIDATURA, FALHOU
+    from .contas import dados_dele
+    from .politica import pode_enviar_sozinho
+
+    dados = dados_dele(configuracao, estado.criterios)
+    oportunidades = estado.oportunidades()
+    vereditos = estado.vereditos()
+    apostas = estado.apostas()
+    envios: dict[str, dict[str, str]] = dict(estado.checkpoint.get("envios") or {})
+    feitos = sum(1 for e in envios.values() if e.get("status") == "feito")
+    for oportunidade, veredito in _ordenadas(oportunidades, vereditos, TENTAR_A_SORTE):
+        if feitos >= configuracao.cacada_maximo_de_envios:
+            break
+        if oportunidade.id in envios or oportunidade.id not in apostas:
+            continue
+        pode, motivo = pode_enviar_sozinho(oportunidade, veredito, portas.registro, ligado=True)
+        if not pode:
+            continue
+        estado.andamento("envio", f"candidatando: {oportunidade.titulo[:60]}")
+        mensagem = apostas[oportunidade.id].mensagem
+        id_ = portas.registro.intencao(CANDIDATURA, oportunidade.link, texto=mensagem, detalhe=oportunidade.titulo)
+        try:
+            desfecho = guarda.chamar(
+                portas.navegador, lambda: portas.navegador.candidatar(oportunidade.link, oportunidade.titulo, mensagem, dados)
+            )
+        except ErroDaCacada as erro:
+            portas.registro.concluir(id_, FALHOU, str(erro)[:200])
+            envios[oportunidade.id] = {"status": "falhou", "motivo": str(erro)[:200]}
+            estado.checkpoint.guardar(envios=envios)
+            continue
+        except Parada:
+            portas.registro.concluir(id_, FALHOU, "a caçada parou no meio da candidatura: confira no site")
+            raise
+        status = desfecho.status if desfecho.status in ("feito", "precisa_de_voce") else "falhou"
+        portas.registro.concluir(id_, status, desfecho.motivo)
+        envios[oportunidade.id] = {"status": status, "motivo": desfecho.motivo, "falta": desfecho.o_que_falta}
+        feitos += status == "feito"
+        estado.checkpoint.guardar(envios=envios)
+
+
+def _etapa_da_caixa(estado: _Estado, portas: PortasDaCacada) -> None:
+    """O que chegou no Gmail dedicado: só a lista, para ele ler. Nada é respondido."""
+    if portas.ler_caixa is None or estado.checkpoint.get("caixa") is not None:
+        return
+    estado.andamento("caixa", "lendo o Gmail dedicado")
+    try:
+        mensagens = portas.ler_caixa()
+    except Exception as erro:  # noqa: BLE001 — a caixa não derruba a caçada
+        estado.checkpoint.guardar(caixa={"falha": str(erro)[:200]})
+        return
+    lista = [
+        {"remetente": m.remetente, "assunto": m.assunto, "quando": m.quando}
+        for m in sorted(mensagens, key=lambda m: m.quando, reverse=True)[:40]
+    ]
+    estado.checkpoint.guardar(caixa={"mensagens": lista})
+
+
 def _ordenadas(
     oportunidades: dict[str, Oportunidade], vereditos: dict[str, Veredito], classe: str
 ) -> list[tuple[Oportunidade, Veredito]]:
@@ -684,7 +760,7 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         "",
         f"**{len(chances)} chances boas · {len(sorte)} para tentar a sorte · {len(descartadas)} descartadas**{plano}",
         "",
-        "Nada foi enviado a ninguém: tudo aqui espera você ler, ajustar e mandar.",
+        _frase_do_envio(estado),
         "",
     ]
     if parada:
@@ -738,6 +814,12 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         linhas += [f"### {oportunidade.titulo}{empresa}", "", _linha_da_oportunidade(oportunidade, veredito)]
         if veredito.motivo:
             linhas += ["", veredito.motivo]
+        envio = (estado.checkpoint.get("envios") or {}).get(oportunidade.id)
+        if envio:
+            rotulo = {"feito": "**Enviada pelo Whis.**", "precisa_de_voce": "**O Whis começou e precisa de você:**"}.get(
+                envio.get("status", ""), "**O Whis tentou enviar e não conseguiu:**"
+            )
+            linhas += ["", f"{rotulo} {envio.get('falta') or envio.get('motivo', '')}".rstrip()]
         aposta = apostas.get(oportunidade.id)
         if aposta is not None:
             linhas += ["", "> [!quote]- Mensagem pronta (clique para abrir)"]
@@ -757,6 +839,19 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         linhas.append("_Nenhuma._")
     linhas.append("")
 
+    caixa = estado.checkpoint.get("caixa")
+    if isinstance(caixa, dict):
+        linhas += ["## Caixa do Gmail dedicado", ""]
+        if caixa.get("falha"):
+            linhas.append(f"_Não deu para ler: {caixa['falha']}_")
+        elif caixa.get("mensagens"):
+            linhas.append("Só a lista, para você abrir e responder; o Whis não responde ninguém.")
+            linhas.append("")
+            linhas += [f"- {m['quando'][:16].replace('T', ' ')} — {m['remetente']} — {m['assunto']}" for m in caixa["mensagens"]]
+        else:
+            linhas.append("_Nada nos últimos 14 dias._")
+        linhas.append("")
+
     linhas += ["## Fontes", ""]
     lidas: dict[str, int] = estado.checkpoint.get("lidas") or {}
     falhas: dict[str, str] = estado.checkpoint.get("falhas") or {}
@@ -774,6 +869,17 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         linhas.append(f"- Aviso: {aviso}")
     linhas += ["", "O perfil usado está em [[cacada/perfil]]; os critérios, em [[cacada/criterios]].", ""]
     return "\n".join(linha for linha in linhas if linha is not None)
+
+
+def _frase_do_envio(estado: _Estado) -> str:
+    envios = (estado.checkpoint.get("envios") or {}).values()
+    feitos = sum(1 for e in envios if e.get("status") == "feito")
+    if not feitos:
+        return "Nada foi enviado a ninguém: tudo aqui espera você ler, ajustar e mandar."
+    return (
+        f"O Whis enviou sozinho {feitos} candidatura(s) de tentar a sorte (marcadas abaixo, e no registro de ações); "
+        "as chances boas e o resto esperam você."
+    )
 
 
 def _linha_da_oportunidade(oportunidade: Oportunidade, veredito: Veredito) -> str:

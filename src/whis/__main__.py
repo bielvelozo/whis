@@ -15,6 +15,7 @@ para as reuniões da Granola::
     python -m whis meetings [--agendada] [--fakes]
     python -m whis hunt [--simular] [--fakes] [--do-zero]
     python -m whis linkedin [--fakes] | linkedin-login | linkedin-publicar <nota>
+    python -m whis contas [--so SITE] [--senha SITE] | navegador [url]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -308,14 +309,34 @@ def montar_portas_da_cacada(configuracao: Configuracao, *, fakes: bool = False):
     from .cacada import PortasDaCacada
     from .cacada_claude import ApostasClaude, ExploradorClaude, PerfilClaude, PreparoClaude, TriagemClaude
 
+    from .acoes import Registro
+    from .corrida import pasta_da_cacada
+
     opcoes = {"modelo": configuracao.claude_modelo or None, "cli": configuracao.claude_cli or None}
+    navegador = None
+    if configuracao.cacada_enviar_sozinho:
+        from .navegador_agente import AgenteDoNavegador
+
+        navegador = AgenteDoNavegador(**opcoes)
     return PortasDaCacada(
         perfil=PerfilClaude(**opcoes),
         explorador=ExploradorClaude(**opcoes),
         triagem=TriagemClaude(**opcoes),
         apostas=ApostasClaude(**opcoes),
         preparo=PreparoClaude(**opcoes),
+        navegador=navegador,
+        registro=Registro(pasta_da_cacada()),
+        ler_caixa=montar_leitura_da_caixa(configuracao),
     )
+
+
+def montar_leitura_da_caixa(configuracao: Configuracao):
+    """A leitura do Gmail dedicado, só leitura; `None` sem e-mail ou sem senha de app."""
+    if not (configuracao.cacada_email and configuracao.cacada_senha_de_app):
+        return None
+    from .caixa import ler_caixa
+
+    return lambda: ler_caixa(configuracao.cacada_email, configuracao.cacada_senha_de_app)
 
 
 def montar_linkedin_api(configuracao: Configuracao):
@@ -818,6 +839,103 @@ def _relatar_cacada(resultado) -> None:
         print(f"Parou antes do fim: {resultado.parada}. Rode de novo para continuar.")
 
 
+# -- contas -----------------------------------------------------------------
+
+
+def _comando_contas(args: argparse.Namespace) -> int:
+    """Cria as contas de `cacada/criterios.md` com o Gmail dedicado, confirma e completa os perfis.
+
+    Feito para rodar com ele no PC: CAPTCHA, telefone e documento são dele, e o
+    Chrome da caçada fica na tela.
+    """
+    from . import corrida as _corrida
+    from .acoes import Registro
+    from .cacada import CAMINHO_DO_PERFIL
+    from .cofre import cofre_padrao
+    from .contas import chave_no_cofre, cuidar_das_contas, escrever_nota
+    from .criterios_da_cacada import ler_criterios
+    from .navegador_agente import AgenteDoNavegador
+
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    cofre = cofre_padrao(configuracao)
+    if args.senha:
+        guardada = cofre.obter(chave_no_cofre(args.senha))
+        if not guardada:
+            print(f"Não há conta de '{args.senha}' no cofre.")
+            return SAIDA_NAO_NASCEU
+        print(f"{guardada.get('site')}: {guardada.get('email')} / {guardada.get('senha')}")
+        return SAIDA_COMPLETA
+
+    raiz = _vault.preparar(configuracao.vault)
+    criterios = ler_criterios(raiz)
+    if not criterios.contas:
+        print("Nenhum site em '## Contas' de cacada/criterios.md.")
+        return SAIDA_NAO_NASCEU
+    perfil = raiz / CAMINHO_DO_PERFIL
+    perfil_texto = perfil.read_text(encoding="utf-8") if perfil.is_file() else criterios.sobre_mim
+    pasta = _corrida.pasta_da_cacada()
+    try:
+        with _corrida.TravaDaCacada(pasta):
+            _corrida.manter_acordado()
+            try:
+                resultado = cuidar_das_contas(
+                    configuracao,
+                    criterios,
+                    agente=AgenteDoNavegador(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None),
+                    cofre=cofre,
+                    registro=Registro(pasta),
+                    perfil_texto=perfil_texto,
+                    ler_caixa=montar_leitura_da_caixa(configuracao),
+                    so=args.so or "",
+                )
+            finally:
+                _corrida.liberar_sono()
+    except _corrida.CacadaEmAndamento as erro:
+        print(f"Não comecei: {erro} (contas e caçada usam o mesmo Chrome; espere uma acabar).")
+        return SAIDA_NAO_NASCEU
+    except ValueError as erro:
+        print(f"Não comecei: {erro}.")
+        return SAIDA_NAO_NASCEU
+    nota = escrever_nota(raiz, resultado, configuracao.cacada_email, datetime.now().astimezone())
+    for situacao in resultado.situacoes:
+        marcas = " ".join(
+            f"{nome} {'✓' if feito else '—'}"
+            for nome, feito in (("conta", situacao.conta_feita), ("e-mail", situacao.confirmada), ("perfil", situacao.perfil_feito))
+        )
+        print(f"{situacao.conta.nome}: {marcas}{f' — falta: {situacao.pendente}' if situacao.pendente else ''}")
+    for falha in resultado.falhas:
+        print(f"Falha: {falha}")
+    print(f"Resumo em {nota}. As senhas ficam no cofre: 'whis contas --senha <site>'.")
+    _palheta.avisar_resultado(
+        configuracao,
+        _palheta.Resultado(
+            "Contas: o Whis terminou a rodada",
+            f"{len(resultado.pendentes)} site(s) precisam de você." if resultado.pendentes else "Tudo feito.",
+            nota=nota,
+        ),
+    )
+    return SAIDA_PARCIAL if resultado.pendentes or resultado.falhas else SAIDA_COMPLETA
+
+
+def _comando_navegador(args: argparse.Namespace) -> int:
+    """Abre um Chrome comum no perfil da caçada, para ele entrar à mão nos sites (Google incluso)."""
+    import subprocess
+
+    from .fonte_x import caminho_do_chrome
+    from .navegador_agente import pasta_do_perfil
+
+    chrome = caminho_do_chrome()
+    if chrome is None:
+        print("O Chrome não foi encontrado.")
+        return SAIDA_NAO_NASCEU
+    perfil = pasta_do_perfil()
+    perfil.mkdir(parents=True, exist_ok=True)
+    print(f"Abrindo o Chrome da caçada ({perfil}). Entre nos sites que quiser e feche a janela quando terminar.")
+    subprocess.Popen([str(chrome), f"--user-data-dir={perfil}", "--no-first-run", "--no-default-browser-check", args.url])
+    return SAIDA_COMPLETA
+
+
 # -- linkedin ---------------------------------------------------------------
 
 
@@ -934,6 +1052,11 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
         linkedin_api=None if fakes else (lambda atual: montar_linkedin_api(atual)),
         iniciar_cacada=(
             (lambda _atual: _palheta.Resultado("Caçada indisponível", "Com --fakes, rode 'whis hunt --fakes' num terminal."))
+            if fakes
+            else None
+        ),
+        iniciar_contas=(
+            (lambda _atual: _palheta.Resultado("Contas indisponíveis", "Com --fakes, as contas não são criadas."))
             if fakes
             else None
         ),
@@ -1399,6 +1522,21 @@ def construir_parser() -> argparse.ArgumentParser:
         "--do-zero", action="store_true", help="ignora a caçada inacabada e começa outra"
     )
     hunt_cmd.set_defaults(funcao=_comando_hunt)
+
+    contas_cmd = subcomandos.add_parser(
+        "contas",
+        help="cria as contas de cacada/criterios.md com o Gmail dedicado, confirma e completa os perfis (com você no PC)",
+    )
+    _acrescentar_config(contas_cmd)
+    contas_cmd.add_argument("--so", metavar="SITE", default=None, help="só o site cujo nome começa com isto")
+    contas_cmd.add_argument("--senha", metavar="SITE", default=None, help="mostra o e-mail e a senha guardados de um site e sai")
+    contas_cmd.set_defaults(funcao=_comando_contas)
+
+    navegador_cmd = subcomandos.add_parser(
+        "navegador", help="abre o Chrome da caçada para você entrar à mão num site (Gupy, Workana...)"
+    )
+    navegador_cmd.add_argument("url", nargs="?", default="https://portal.gupy.io", help="onde abrir")
+    navegador_cmd.set_defaults(funcao=_comando_navegador)
 
     linkedin_cmd = subcomandos.add_parser(
         "linkedin",

@@ -53,7 +53,7 @@ MOMENTO = datetime(2026, 9, 12, 14, 3, tzinfo=FUSO)
 PERGUNTA = "o que ficou decidido sobre a retenção de 180 dias?"
 NOTA_DA_RESPOSTA = "respostas/2026-09-12-1403-o-que-ficou-decidido-sobre-a-retencao-de-180-dias.md"
 COMANDOS = (
-    "daily", "did", "doing", "done", "news", "meetings", "hunt", "linkedin", "posts", "note", "doubt", "do", "ask", "open", "settings", "prompts",
+    "daily", "did", "doing", "done", "news", "meetings", "hunt", "accounts", "linkedin", "posts", "note", "doubt", "do", "ask", "open", "settings", "prompts",
     "stash",
 )
 
@@ -554,7 +554,7 @@ def test_texto_vazio_nao_faz_nada_e_comando_desconhecido_diz_o_que_existe(montar
     assert "'vagas'" in texto and "ask <question>" in texto
 
 
-def test_sao_os_dezessete_comandos_e_nenhum_futuro_nem_ajuda(montar):
+def test_sao_os_dezoito_comandos_e_nenhum_futuro_nem_ajuda(montar):
     palheta = montar()
 
     assert {comando.nome for comando in palheta.comandos} == set(COMANDOS)
@@ -645,6 +645,7 @@ ACOES = (
     Acao("news", "📰", "Generate news"),
     Acao("meetings", "◷", "Pull meetings"),
     Acao("hunt", "⌖", "Hunt jobs & gigs"),
+    Acao("accounts", "⚿", "Site accounts"),
     Acao("linkedin", "in", "LinkedIn"),
     Acao("posts", "✎", "Publish a post", aceita_argumento=True),
     Acao("prompts", "❝", "Search prompts", aceita_argumento=True),
@@ -712,10 +713,10 @@ def test_tab_completa_o_comando_e_deixa_o_espaco_quando_ha_argumento():
     assert completar(ACOES[1]) == "daily"
     assert completar(ACOES[4]) == "done "
     assert completar(ACOES[7]) == "hunt"
-    assert completar(ACOES[12]) == "ask "
-    assert completar(ACOES[13]) == "note "
-    assert completar(ACOES[15]) == "do "
-    assert completar(ACOES[16]) == "settings"
+    assert completar(ACOES[13]) == "ask "
+    assert completar(ACOES[14]) == "note "
+    assert completar(ACOES[16]) == "do "
+    assert completar(ACOES[17]) == "settings"
 
 
 def test_o_rotulo_de_uma_acao_pode_ser_funcao():

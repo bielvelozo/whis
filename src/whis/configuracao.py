@@ -102,6 +102,14 @@ maximo_de_pacotes = 20       # quantas chances boas ganham pacote completo por c
 cloudflare_token = ""        # API token do Cloudflare (Pages: Edit) para pôr as amostras no ar; vazio = amostra só no vault
 cloudflare_conta = ""        # o Account ID do Cloudflare, ao lado do token
 cloudflare_projeto = ""      # nome do projeto do Pages (vira <nome>.pages.dev); vazio = um nome neutro sorteado uma vez
+enviar_sozinho = false       # true = na caçada, o Whis se candidata sozinho às vagas de tentar a sorte em formulário grátis e sem limite (Gupy, ATS); nunca freela, nunca LinkedIn
+maximo_de_envios = 10        # quantas candidaturas sozinho por caçada, no máximo
+senha_de_app = ""            # senha de app do Google do Gmail dedicado: o Whis lê a caixa (só leitura) para confirmar contas e listar respostas
+nome = ""                    # seu nome completo, como vai nos cadastros e candidaturas
+telefone = ""                # telefone com DDD, para os formulários que exigem
+cidade = ""                  # cidade e estado, como vai nos formulários (ex.: Matão - SP)
+cpf = ""                     # CPF, só para os formulários que exigem (Gupy); fica fora do vault
+nascimento = ""              # data de nascimento (DD/MM/AAAA), só para os formulários que exigem
 
 [linkedin]
 client_id = ""               # Client ID do seu app no LinkedIn Developers (produtos Share on LinkedIn e Sign In with LinkedIn using OpenID Connect)
@@ -178,6 +186,14 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "cloudflare_token", "cacada_cloudflare_token", Tipo.SEGREDO),
     Chave("cacada", "cloudflare_conta", "cacada_cloudflare_conta", Tipo.TEXTO),
     Chave("cacada", "cloudflare_projeto", "cacada_cloudflare_projeto", Tipo.TEXTO),
+    Chave("cacada", "enviar_sozinho", "cacada_enviar_sozinho", Tipo.BOOLEANO),
+    Chave("cacada", "maximo_de_envios", "cacada_maximo_de_envios", Tipo.INTEIRO),
+    Chave("cacada", "senha_de_app", "cacada_senha_de_app", Tipo.SEGREDO),
+    Chave("cacada", "nome", "cacada_nome", Tipo.TEXTO),
+    Chave("cacada", "telefone", "cacada_telefone", Tipo.TEXTO),
+    Chave("cacada", "cidade", "cacada_cidade", Tipo.TEXTO),
+    Chave("cacada", "cpf", "cacada_cpf", Tipo.SEGREDO),
+    Chave("cacada", "nascimento", "cacada_nascimento", Tipo.TEXTO),
     Chave("linkedin", "client_id", "linkedin_client_id", Tipo.TEXTO),
     Chave("linkedin", "client_secret", "linkedin_client_secret", Tipo.SEGREDO),
     Chave("linkedin", "exportacao", "linkedin_exportacao", Tipo.CAMINHO),
@@ -268,6 +284,14 @@ class Configuracao:
     cacada_cloudflare_token: str = ""
     cacada_cloudflare_conta: str = ""
     cacada_cloudflare_projeto: str = ""
+    cacada_enviar_sozinho: bool = False
+    cacada_maximo_de_envios: int = 10
+    cacada_senha_de_app: str = ""
+    cacada_nome: str = ""
+    cacada_telefone: str = ""
+    cacada_cidade: str = ""
+    cacada_cpf: str = ""
+    cacada_nascimento: str = ""
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
     linkedin_exportacao: Path | None = None
@@ -387,6 +411,14 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         cacada_cloudflare_token=str(cacada.get("cloudflare_token", "")).strip(),
         cacada_cloudflare_conta=str(cacada.get("cloudflare_conta", "")).strip(),
         cacada_cloudflare_projeto=_projeto_do_pages(cacada.get("cloudflare_projeto", ""), arquivo),
+        cacada_enviar_sozinho=_booleano(cacada.get("enviar_sozinho", False), "[cacada].enviar_sozinho", arquivo),
+        cacada_maximo_de_envios=_inteiro_entre(cacada.get("maximo_de_envios", 10), "[cacada].maximo_de_envios", 0, 100, arquivo),
+        cacada_senha_de_app=str(cacada.get("senha_de_app", "")).replace(" ", "").strip(),
+        cacada_nome=str(cacada.get("nome", "")).strip(),
+        cacada_telefone=str(cacada.get("telefone", "")).strip(),
+        cacada_cidade=str(cacada.get("cidade", "")).strip(),
+        cacada_cpf=str(cacada.get("cpf", "")).strip(),
+        cacada_nascimento=str(cacada.get("nascimento", "")).strip(),
         linkedin_client_id=str(linkedin.get("client_id", "")).strip(),
         linkedin_client_secret=str(linkedin.get("client_secret", "")).strip(),
         linkedin_exportacao=Path(exportacao) if exportacao else None,
@@ -638,7 +670,7 @@ def escrever(configuracao: Configuracao, destino: Path, *, agora: datetime | Non
     Escreve primeiro num `.tmp` ao lado e o relê com `carregar`: se o que
     saiu não carrega, nada é trocado e o erro sobe. Só então o arquivo atual
     vira `config.toml.bak-YYYYMMDD-HHMMSS` e o novo toma o lugar. UTF-8 sem
-    BOM e `\\n`, como `init` escreve. Nenhum valor vai ao log: seis deles são
+    BOM e `\\n`, como `init` escreve. Nenhum valor vai ao log: oito deles são
     segredos.
     """
     destino = Path(destino)

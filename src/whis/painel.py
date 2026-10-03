@@ -1,4 +1,4 @@
-"""O painel de configuração: as 35 chaves do `config.toml`, segredos inclusive.
+"""O painel de configuração: as 43 chaves do `config.toml`, segredos inclusive.
 
 Não fere a regra da entrega 3: o valor de um segredo vai do teclado do
 usuário para o arquivo, sem passar por modelo nenhum — e nunca por log. O
@@ -40,13 +40,15 @@ _log = logging.getLogger("whis.painel")
 
 TITULO = "Whis — configuração"
 
-#: Os seis segredos, para o teste conferir que são os que a spec lista.
+#: Os oito segredos, para o teste conferir que são os que a spec lista.
 SEGREDOS = (
     "[linear].api_key",
     "[slack].user_token",
     "[slack].bot_token",
     "[slack].app_token",
     "[cacada].cloudflare_token",
+    "[cacada].senha_de_app",
+    "[cacada].cpf",
     "[linkedin].client_secret",
 )
 

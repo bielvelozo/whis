@@ -8,7 +8,7 @@ daily levam um minuto.
 
 Este módulo é costura pura: não conhece Tk, bandeja nem teclado. O registro de
 comandos é dados (`Comando`, em inglês desde a prova do usuário: `daily`,
-`did`, `doing`, `done`, `news`, `meetings`, `hunt`, `linkedin`, `posts`, `note`, `doubt`, `do`, `ask`,
+`did`, `doing`, `done`, `news`, `meetings`, `hunt`, `accounts`, `linkedin`, `posts`, `note`, `doubt`, `do`, `ask`,
 `open`, `settings`, `stash`, `prompts`), `interpretar` lê o
 texto digitado, `Palheta` despacha e transforma `Resultado` em toast. As
 portas de verdade — a publicação do deck, a busca — entram por
@@ -96,6 +96,7 @@ NOME_DAS_REUNIOES = "meetings"
 NOME_DE_CONFIGURAR = "settings"
 NOME_DA_CACADA = "hunt"
 NOME_DO_LINKEDIN = "linkedin"
+NOME_DAS_CONTAS = "accounts"
 NOME_DOS_POSTS = "posts"
 TITULO_DO_LINKEDIN = "Rascunhos do LinkedIn prontos"
 TITULO_DO_LINKEDIN_QUE_FALHOU = "O LinkedIn não saiu"
@@ -107,7 +108,7 @@ TITULO_DA_CACADA_CORRENDO = "A caçada está correndo"
 #: A ordem em que as ações aparecem na janela: as que o usuário pediu
 #: primeiro, e existem mesmo com o campo vazio.
 ORDEM_DAS_ACOES = (
-    "open", "daily", "did", "doing", "done", NOME_DO_JORNAL, NOME_DAS_REUNIOES, NOME_DA_CACADA, NOME_DO_LINKEDIN, NOME_DOS_POSTS, "prompts", "stash", "ask",
+    "open", "daily", "did", "doing", "done", NOME_DO_JORNAL, NOME_DAS_REUNIOES, NOME_DA_CACADA, NOME_DAS_CONTAS, NOME_DO_LINKEDIN, NOME_DOS_POSTS, "prompts", "stash", "ask",
     "note", "doubt", "do", NOME_DE_CONFIGURAR,
 )
 
@@ -464,7 +465,8 @@ def resultado_da_cacada(resultado) -> Resultado:
     ]
     if resultado.plano_antes is not None and resultado.plano_depois is not None:
         partes.append(f"plano semanal {resultado.plano_antes}% → {resultado.plano_depois}%")
-    texto = " · ".join(partes) + ". Nada foi enviado."
+    enviadas = getattr(resultado, "enviadas", 0)
+    texto = " · ".join(partes) + (f". O Whis enviou {enviadas} sozinho." if enviadas else ". Nada foi enviado.")
     if resultado.parada:
         texto = f"{resultado.parada}. " + texto
         return Resultado(TITULO_DA_CACADA_PARADA, _encurtar(texto), nota=resultado.relatorio)
@@ -486,7 +488,12 @@ def resultado_do_linkedin(resultado) -> Resultado:
     return Resultado(TITULO_DO_LINKEDIN, _encurtar(texto), nota=resultado.analise or (resultado.rascunhos[0] if resultado.rascunhos else None))
 
 
-def iniciar_cacada_em_processo(configuracao: Configuracao) -> Resultado | None:
+def iniciar_contas_em_processo(configuracao: Configuracao) -> Resultado | None:
+    """Solta `whis contas` num processo próprio; o Chrome da caçada aparece na tela."""
+    return iniciar_cacada_em_processo(configuracao, subcomando="contas")
+
+
+def iniciar_cacada_em_processo(configuracao: Configuracao, *, subcomando: str = "hunt") -> Resultado | None:
     """Solta `whis hunt` num processo próprio, sem console e fora da bandeja.
 
     A caçada corre horas: no thread da palheta ela recusaria todo comando até
@@ -502,7 +509,7 @@ def iniciar_cacada_em_processo(configuracao: Configuracao) -> Resultado | None:
         andamento = _corrida.ler_andamento(pasta) or {}
         detalhe = " — ".join(p for p in (andamento.get("etapa", ""), andamento.get("detalhe", "")) if p)
         return Resultado(TITULO_DA_CACADA_CORRENDO, _encurtar(f"Agora: {detalhe or 'começando'}."))
-    comando = [sys.executable, "-m", "whis", "hunt"]
+    comando = [sys.executable, "-m", "whis", subcomando]
     if configuracao.origem is not None:
         comando += ["--config", str(configuracao.origem)]
     bandeiras = 0
@@ -768,6 +775,7 @@ def comandos_padrao(
     portas_do_jornal: Callable[[Configuracao], PortasDoJornal] | None = None,
     reunioes: Callable[[Configuracao], PortaReunioes] | None = None,
     iniciar_cacada: Callable[[Configuracao], "Resultado | None"] | None = None,
+    iniciar_contas: Callable[[Configuracao], "Resultado | None"] | None = None,
     linkedin: Callable[[Configuracao], object] | None = None,
     linkedin_api: Callable[[Configuracao], object] | None = None,
 ) -> tuple[Comando, ...]:
@@ -819,6 +827,9 @@ def comandos_padrao(
 
     def cacar(_argumento: str, configuracao: Configuracao) -> Resultado | None:
         return (iniciar_cacada or iniciar_cacada_em_processo)(configuracao)
+
+    def cuidar_das_contas(_argumento: str, configuracao: Configuracao) -> Resultado | None:
+        return (iniciar_contas or iniciar_contas_em_processo)(configuracao)
 
     def escrever_linkedin(_argumento: str, configuracao: Configuracao) -> Resultado:
         if linkedin is None:
@@ -957,6 +968,14 @@ def comandos_padrao(
             rotulo="Hunt jobs & gigs",
             descricao="Jobs and freelas into cacada/, ready to send; nothing is sent (hours)",
             icone="⌖",
+        ),
+        Comando(
+            NOME_DAS_CONTAS,
+            "cria as contas dos sites com o Gmail dedicado e completa os perfis; com você no PC",
+            cuidar_das_contas,
+            rotulo="Site accounts",
+            descricao="Create and fill your accounts on job and gig sites; you solve CAPTCHAs",
+            icone="⚿",
         ),
         Comando(
             NOME_DO_LINKEDIN,

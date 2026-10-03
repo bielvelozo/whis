@@ -28,6 +28,7 @@ CAMINHO_DOS_CRITERIOS = f"{PASTA_CACADA}/criterios.md"
 SECAO_PROCURO = "O que eu procuro"
 SECAO_SOBRE_MIM = "Sobre mim"
 SECAO_FONTES = "Fontes"
+SECAO_CONTAS = "Contas"
 
 #: O que cada tipo de fonte lê, e o argumento que aceita.
 TIPOS_DE_FONTE = {
@@ -106,6 +107,20 @@ Uma fonte por linha: `- Nome: tipo argumento`. Apague a linha para desligar a fo
 - LinkedIn · games: linkedin game developer | Brasil | remoto
 - Web · freelas e vagas fora das listas: web vagas remotas de desenvolvedor web que aceitem brasileiros, e freelas de sites e sistemas web por projeto, publicados nos últimos 7 dias, fora dos sites já listados acima
 - Web · games e áudio: web vagas ou freelas de desenvolvimento de games ou de software de áudio (plugins, DAW, web audio) que aceitem brasileiro remoto, publicados nos últimos 14 dias
+
+## Contas
+
+Os sites onde o Whis cria conta para você com o Gmail dedicado (`whis contas`, com você no PC), uma linha por site: `- Nome: endereço`. CAPTCHA, telefone e documento ficam com você.
+
+- Workana: https://www.workana.com
+- 99Freelas: https://www.99freelas.com.br
+- Gupy (candidato): https://portal.gupy.io
+- Freelancer.com: https://www.freelancer.com
+- Contra: https://contra.com
+- Get on Board: https://www.getonbrd.com
+- GeekHunter: https://www.geekhunter.com.br
+- Programathor: https://programathor.com.br
+- Upwork: https://www.upwork.com
 """
 
 
@@ -119,6 +134,14 @@ class FonteDaCacada:
 
 
 @dataclass(frozen=True)
+class Conta:
+    """Uma linha de *Contas*: o site e o endereço onde começar."""
+
+    nome: str
+    endereco: str
+
+
+@dataclass(frozen=True)
 class Criterios:
     """A nota lida: o texto das regras, o de *Sobre mim*, as fontes e os avisos de leitura."""
 
@@ -126,6 +149,15 @@ class Criterios:
     sobre_mim: str
     fontes: tuple[FonteDaCacada, ...]
     avisos: tuple[str, ...] = field(default_factory=tuple)
+    contas: tuple[Conta, ...] = field(default_factory=tuple)
+
+    def em_sobre_mim(self, comeco: str) -> str:
+        """A resposta de um item de *Sobre mim* que começa com `comeco` (sem diferenciar maiúsculas)."""
+        for linha in self.sobre_mim.splitlines():
+            casou = re.match(r"^\s*-\s*(?P<pergunta>[^:]+):\s*(?P<resposta>.*)$", linha)
+            if casou and casou["pergunta"].strip().casefold().startswith(comeco.casefold()):
+                return casou["resposta"].strip()
+        return ""
 
     def respostas_em_branco(self) -> tuple[str, ...]:
         """Os itens de *Sobre mim* que ele ainda não respondeu (`- Pergunta:` sem nada depois)."""
@@ -171,7 +203,14 @@ def interpretar_criterios(texto: str) -> Criterios:
         vistos.add(nome.casefold())
         fontes.append(FonteDaCacada(nome, casou["tipo"].casefold(), casou["argumento"].strip().strip("`")))
 
+    contas: list[Conta] = []
+    for linha in secoes.get(SECAO_CONTAS.casefold(), []):
+        casou = re.match(r"^-\s*(?P<nome>[^:]+?):\s*(?P<endereco>https?://\S+)\s*$", linha.strip())
+        if casou:
+            contas.append(Conta(casou["nome"].strip(), casou["endereco"].strip()))
+
     return Criterios(
+        contas=tuple(contas),
         procuro=_texto(secoes.get(SECAO_PROCURO.casefold(), [])),
         sobre_mim=_texto(secoes.get(SECAO_SOBRE_MIM.casefold(), [])),
         fontes=tuple(fontes),
