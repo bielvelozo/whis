@@ -292,6 +292,7 @@ def cacar(
         checkpoint.terminar()
     escrever_andamento(pasta_do_estado, "terminada" if not parada else "parada", parada)
     caminho = _escrever_relatorio(estado, guarda, parada=parada)
+    _depois_da_corrida(estado, portas, guarda)
     custo = sum(float(getattr(porta, "custo_usd", 0.0) or 0.0) for porta in portas.todas())
     vereditos = estado.vereditos()
     return ResultadoDaCacada(
@@ -594,6 +595,21 @@ def _etapa_da_caixa(estado: _Estado, portas: PortasDaCacada) -> None:
     estado.checkpoint.guardar(caixa={"mensagens": lista})
 
 
+def _depois_da_corrida(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano) -> None:
+    """O acompanhamento das candidaturas e a hora da virada semanal, para o lembrete da véspera."""
+    from . import acompanhamento
+    from .corrida import guardar_virada
+
+    caixa = estado.checkpoint.get("caixa")
+    mensagens = caixa.get("mensagens") or [] if isinstance(caixa, dict) else []
+    try:
+        acompanhamento.atualizar(estado.raiz, registro=portas.registro, mensagens=mensagens)
+    except Exception as erro:  # noqa: BLE001 — o acompanhamento não derruba a caçada
+        _log.warning("O acompanhamento das candidaturas não saiu: %s", erro)
+    if guarda.plano is not None and guarda.plano.vira_sete_dias is not None:
+        guardar_virada(estado.pasta, guarda.plano.vira_sete_dias)
+
+
 def _ordenadas(
     oportunidades: dict[str, Oportunidade], vereditos: dict[str, Veredito], classe: str
 ) -> list[tuple[Oportunidade, Veredito]]:
@@ -685,9 +701,15 @@ def montar_pacote(oportunidade: Oportunidade, veredito: Veredito, pacote: Pacote
     linhas = [
         "---",
         "tipo: pacote",
+        "status: preparada",
+        f"titulo: {_vault._texto_yaml(oportunidade.titulo)}",
+        f"empresa: {_vault._texto_yaml(oportunidade.empresa)}",
         f'link: "{oportunidade.link}"',
         f"encaixe: {veredito.encaixe}",
         "---",
+        "",
+        "> Quando enviar, troque `status: preparada` acima por `enviada` (e depois `entrevista`, `proposta`, "
+        "`recusada` ou `fechado`): é o que [[cacada/candidaturas]] acompanha.",
         "",
         f"# {oportunidade.titulo}{empresa}",
         "",

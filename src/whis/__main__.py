@@ -16,6 +16,7 @@ para as reuniões da Granola::
     python -m whis hunt [--simular] [--fakes] [--do-zero]
     python -m whis linkedin [--fakes] | linkedin-login | linkedin-publicar <nota>
     python -m whis contas [--so SITE] [--senha SITE] | navegador [url]
+    python -m whis lembrete [--agendada] | candidaturas
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -839,6 +840,65 @@ def _relatar_cacada(resultado) -> None:
         print(f"Parou antes do fim: {resultado.parada}. Rode de novo para continuar.")
 
 
+# -- lembrete e candidaturas -------------------------------------------------
+
+
+def _comando_lembrete(args: argparse.Namespace) -> int:
+    """O toast da véspera: a semana do plano vira nas próximas 30 h? Só lembra, nunca solta a caçada."""
+    from . import corrida as _corrida
+    from .lembrete import ja_lembrado, marcar_lembrado, proxima_virada, texto_do_lembrete
+
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    pasta = _corrida.pasta_da_cacada()
+    conhecida = _corrida.ler_virada(pasta)
+    if conhecida is None:
+        from .cacada_claude import SondaDoPlano
+
+        try:
+            plano = SondaDoPlano(cli=configuracao.claude_cli or None).ler()
+        except Exception as erro:  # noqa: BLE001
+            _log.warning("A sonda do plano falhou: %s", erro)
+            plano = None
+        if plano is None or plano.vira_sete_dias is None:
+            print("Ainda não sei quando a semana do plano vira (o CLI do Claude não mostrou a janela semanal).")
+            return SAIDA_NAO_NASCEU
+        conhecida = plano.vira_sete_dias
+        _corrida.guardar_virada(pasta, conhecida)
+    agora = datetime.now().astimezone()
+    virada = proxima_virada(conhecida, agora)
+    print(f"A próxima virada da semana do plano: {virada.astimezone():%d/%m %H:%M}.")
+    texto = texto_do_lembrete(virada, agora)
+    if texto is None:
+        print("Longe ainda: nada a lembrar hoje.")
+        return SAIDA_COMPLETA
+    if args.agendada and ja_lembrado(pasta, virada):
+        return SAIDA_COMPLETA
+    print(texto)
+    _palheta.avisar_resultado(configuracao, _palheta.Resultado("Véspera da virada do plano", texto))
+    marcar_lembrado(pasta, virada)
+    return SAIDA_COMPLETA
+
+
+def _comando_candidaturas(args: argparse.Namespace) -> int:
+    """Regenera `cacada/candidaturas.md` agora (a caçada já faz isso no fim de cada corrida)."""
+    from . import acompanhamento
+    from .acoes import Registro
+    from .corrida import pasta_da_cacada
+
+    configuracao = _configuracao(args)
+    mensagens: list[dict[str, str]] = []
+    leitura = montar_leitura_da_caixa(configuracao)
+    if leitura is not None:
+        try:
+            mensagens = [{"remetente": m.remetente, "assunto": m.assunto, "quando": m.quando} for m in leitura()]
+        except Exception as erro:  # noqa: BLE001
+            print(f"O Gmail não abriu: {erro}")
+    caminho = acompanhamento.atualizar(_vault.preparar(configuracao.vault), registro=Registro(pasta_da_cacada()), mensagens=mensagens)
+    print(f"Candidaturas: {caminho}")
+    return SAIDA_COMPLETA
+
+
 # -- contas -----------------------------------------------------------------
 
 
@@ -1138,13 +1198,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
     from . import automacao
 
     precisa_da_configuracao = bool(args.config) or (
-        (args.daily or args.news or args.meetings) and not args.remover
+        (args.daily or args.news or args.meetings or args.hunt) and not args.remover
     )
     configuracao = _configuracao(args) if precisa_da_configuracao else None
     origem = (configuracao.origem if configuracao else None) or caminho_padrao()
     feitos: list[str] = []
     so_remover_legado = args.remover_legado and not (
-        args.atendente or args.daily or args.news or args.meetings
+        args.atendente or args.daily or args.news or args.meetings or args.hunt
     )
 
     if args.daily and not args.remover and not configuracao.daily_horarios:
@@ -1210,6 +1270,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
                         f"Vigia reagendado como '{automacao.NOME_DA_TAREFA_DO_VIGIA}': "
                         f"agora vigia {', '.join(vigiadas)}."
                     )
+            if args.hunt:
+                removida = automacao.desagendar_lembrete()
+                feitos.append(
+                    f"Tarefa '{automacao.NOME_DA_TAREFA_DO_LEMBRETE}' removida do Agendador."
+                    if removida
+                    else "Não havia lembrete da caçada agendado."
+                )
             if args.meetings:
                 removida = automacao.desagendar_reunioes()
                 feitos.append(
@@ -1258,6 +1325,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
                         f"'{automacao.NOME_DA_TAREFA_DO_VIGIA}' não está agendado: rode "
                         f"'whis windows --daily' para ele olhar também pelo jornal."
                     )
+            if args.hunt:
+                automacao.agendar_lembrete(configuracao)
+                feitos.append(
+                    f"Lembrete da caçada agendado como '{automacao.NOME_DA_TAREFA_DO_LEMBRETE}': todo dia às "
+                    f"{configuracao.cacada_hora_do_lembrete} ele olha se a semana do plano vira nas próximas 30 h "
+                    f"e avisa por toast, uma vez por virada. A caçada continua só quando você chama."
+                )
             if args.meetings:
                 automacao.agendar_reunioes(configuracao)
                 feitos.append(
@@ -1532,6 +1606,21 @@ def construir_parser() -> argparse.ArgumentParser:
     contas_cmd.add_argument("--senha", metavar="SITE", default=None, help="mostra o e-mail e a senha guardados de um site e sai")
     contas_cmd.set_defaults(funcao=_comando_contas)
 
+    lembrete_cmd = subcomandos.add_parser(
+        "lembrete", help="avisa por toast quando a semana do plano do Claude vira nas próximas 30 h (véspera da caçada)"
+    )
+    _acrescentar_config(lembrete_cmd)
+    lembrete_cmd.add_argument(
+        "--agendada", action="store_true", help="é como a tarefa Whis-Lembrete-Cacada chama: um toast só por virada"
+    )
+    lembrete_cmd.set_defaults(funcao=_comando_lembrete)
+
+    candidaturas_cmd = subcomandos.add_parser(
+        "candidaturas", help="atualiza cacada/candidaturas.md: pacotes, o que o Whis enviou e as respostas no Gmail"
+    )
+    _acrescentar_config(candidaturas_cmd)
+    candidaturas_cmd.set_defaults(funcao=_comando_candidaturas)
+
     navegador_cmd = subcomandos.add_parser(
         "navegador", help="abre o Chrome da caçada para você entrar à mão num site (Gupy, Workana...)"
     )
@@ -1620,6 +1709,14 @@ def construir_parser() -> argparse.ArgumentParser:
         help=(
             "também agenda a puxada das reuniões da Granola todo dia em [granola].horario "
             "(tarefa Whis-Reunioes) e reagenda o vigia, se existe, para olhar por ela"
+        ),
+    )
+    windows_cmd.add_argument(
+        "--hunt",
+        action="store_true",
+        help=(
+            "também agenda o lembrete da véspera da caçada todo dia em [cacada].hora_do_lembrete "
+            "(tarefa Whis-Lembrete-Cacada); a caçada em si continua só quando você chama"
         ),
     )
     windows_cmd.add_argument(

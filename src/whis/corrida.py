@@ -204,3 +204,24 @@ def _gravar_json(arquivo: Path, dados: dict[str, Any]) -> None:
     temporario = arquivo.with_name(arquivo.name + ".tmp")
     temporario.write_text(json.dumps(dados, ensure_ascii=False, indent=1), encoding="utf-8")
     os.replace(temporario, arquivo)
+
+
+# -- a virada semanal do plano ---------------------------------------------------------
+
+NOME_DA_VIRADA = "virada.json"
+
+
+def guardar_virada(pasta: Path, quando: datetime) -> None:
+    """A última hora de virada semanal lida do plano: ela se repete toda semana na mesma hora."""
+    try:
+        _gravar_json(Path(pasta) / NOME_DA_VIRADA, {"vira_sete_dias": quando.isoformat()})
+    except OSError as erro:
+        _log.debug("A virada do plano não foi gravada: %s", erro)
+
+
+def ler_virada(pasta: Path) -> datetime | None:
+    try:
+        dados = json.loads((Path(pasta) / NOME_DA_VIRADA).read_text(encoding="utf-8"))
+        return datetime.fromisoformat(str(dados["vira_sete_dias"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None

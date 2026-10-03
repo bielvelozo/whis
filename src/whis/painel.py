@@ -1,4 +1,4 @@
-"""O painel de configuração: as 43 chaves do `config.toml`, segredos inclusive.
+"""O painel de configuração: as 44 chaves do `config.toml`, segredos inclusive.
 
 Não fere a regra da entrega 3: o valor de um segredo vai do teclado do
 usuário para o arquivo, sem passar por modelo nenhum — e nunca por log. O

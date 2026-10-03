@@ -86,7 +86,7 @@ def test_campos_cobrem_toda_chave_do_modelo_e_nenhuma_a_mais():
     do_modelo |= {"[daily].ativa", "[daily].horarios"}
 
     assert {campo.caminho for campo in CAMPOS} == do_modelo
-    assert len(CAMPOS) == 43
+    assert len(CAMPOS) == 44
 
 
 def test_os_oito_segredos_os_tres_caminhos_e_as_listas_tem_o_tipo_certo():
@@ -105,7 +105,7 @@ def test_os_oito_segredos_os_tres_caminhos_e_as_listas_tem_o_tipo_certo():
         "[linkedin].posts_por_vez", "[cacada].maximo_de_envios",
     }
     assert por_tipo[Tipo.HORA] == {
-        "[diario].inicio_do_dia", "[diario].hora_da_tarefa", "[noticias].horario", "[granola].horario",
+        "[diario].inicio_do_dia", "[diario].hora_da_tarefa", "[noticias].horario", "[granola].horario", "[cacada].hora_do_lembrete",
     }
 
 

@@ -42,6 +42,7 @@ class Acao:
     quando: str
     detalhe: str = ""
     texto: str = ""
+    rotulo: str = ""
 
     @property
     def sem_desfecho(self) -> bool:
@@ -84,6 +85,7 @@ class Registro:
                 quando=str(primeiras[id_].get("quando", "")),
                 detalhe=str(ultima.get("detalhe", "")),
                 texto=str(primeiras[id_].get("texto", "")),
+                rotulo=str(primeiras[id_].get("detalhe", "")),
             )
             for id_, ultima in ultimas.items()
         ]

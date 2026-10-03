@@ -60,6 +60,7 @@ NOME_DA_TAREFA_DA_DAILY = "Whis-Daily"
 NOME_DA_TAREFA_DO_VIGIA = "Whis-Vigia"
 NOME_DA_TAREFA_DO_JORNAL = "Whis-Noticias"
 NOME_DA_TAREFA_DAS_REUNIOES = "Whis-Reunioes"
+NOME_DA_TAREFA_DO_LEMBRETE = "Whis-Lembrete-Cacada"
 
 #: O script que registra uma tarefa pelo módulo `ScheduledTasks`, com os
 #: gatilhos como `Dia=HH:MM` (dia em inglês, ou `Daily`) separados por vírgula.
@@ -502,6 +503,25 @@ def reunioes_agendada(*, executar: Executor = _rodar) -> bool:
 
 
 # -- o vigia ----------------------------------------------------------------
+
+
+def agendar_lembrete(configuracao: Configuracao, *, executar: Executor = _rodar) -> str:
+    """Registra `Whis-Lembrete-Cacada`: todo dia em `[cacada].hora_do_lembrete`, um toast se a semana vira logo.
+
+    Só lembra: a caçada continua sendo só quando ele chama.
+    """
+    _registrar_tarefa(
+        NOME_DA_TAREFA_DO_LEMBRETE,
+        executavel=str(interpretador_sem_console()),
+        argumentos=_argumentos_do_whis("lembrete --agendada", configuracao.origem or caminho_padrao()),
+        gatilhos=[f"Daily={configuracao.cacada_hora_do_lembrete}"],
+        executar=executar,
+    )
+    return NOME_DA_TAREFA_DO_LEMBRETE
+
+
+def desagendar_lembrete(*, executar: Executor = _rodar) -> bool:
+    return _desregistrar_tarefa(NOME_DA_TAREFA_DO_LEMBRETE, executar=executar)
 
 
 def _depois(hora: str, atraso: timedelta) -> str:

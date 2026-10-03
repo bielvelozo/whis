@@ -757,3 +757,26 @@ __all__ = [
     "CHANCE_BOA",
     "TENTAR_A_SORTE",
 ]
+
+
+# -- a sonda do plano -------------------------------------------------------------------------------
+
+
+class SondaDoPlano(_ChamadaDoClaude):
+    """Um turno do Haiku, sem ferramenta, só para ler as janelas do plano e a hora da virada semanal.
+
+    É o que o lembrete da véspera usa quando ainda não há caçada que tenha
+    guardado a virada: custa quase nada e roda uma vez.
+    """
+
+    etapa = "sonda do plano"
+
+    def __init__(self, **opcoes: Any) -> None:
+        opcoes.setdefault("timeout_s", 120.0)
+        opcoes["modelo"] = opcoes.get("modelo") or "haiku"
+        super().__init__(**opcoes)
+
+    def ler(self) -> Plano | None:
+        esquema = {"type": "object", "properties": {"ok": {"type": "boolean"}}, "required": ["ok"], "additionalProperties": False}
+        self._chamar('Responda {"ok": true}.', self._opcoes(sistema="Responda só o JSON pedido.", esquema=esquema))
+        return self.ultimo_plano
