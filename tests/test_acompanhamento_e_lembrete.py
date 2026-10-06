@@ -28,7 +28,7 @@ def test_a_cacada_deixa_pacotes_preparados_a_virada_e_as_candidaturas(configurac
     for porta in portas.todas():
         porta.ultimo_plano = Plano(sete_dias=40, vira_sete_dias=VIRADA)
 
-    resultado = cacar(configuracao, portas, pasta_do_estado=tmp_path / "estado")
+    resultado = cacar(configuracao, portas, pasta_do_estado=tmp_path / "estado", relogio=lambda: VIRADA - timedelta(hours=20))
 
     raiz = Path(configuracao.vault)
     pacote = next((raiz / "cacada" / resultado.corrida).glob("*.md")).read_text(encoding="utf-8")
