@@ -165,3 +165,68 @@ passo X4 de novo.
 
 **Sucesso:** a seção diz "O login do X venceu: rode python -m whis x-login" e
 o resto do jornal sai. Refaça o passo X2 para voltar.
+
+
+## A formação — figura, check e quiz
+
+Desde 2026-10-06 (ADR 0005): toda aula tem uma figura (foto da fonte ou esquema), cada aula na
+página tem o botão **Li esta aula**, a área só ganha aula nova depois que a anterior foi marcada,
+e no sábado vem o **Quiz da semana** no lugar das aulas novas. As aulas viram notas em
+`noticias/aulas/`, os quizzes em `noticias/quiz/`.
+
+### Passo F1 — A edição simulada
+
+```powershell
+.\.venv\Scripts\python.exe -m whis news --simular
+```
+
+Abra o `jornal.html` que ele imprime. **Sucesso:** cada aula abre com uma foto ou um esquema, e o
+botão "Li esta aula" aparece apagado com *"Para marcar, abra logado no claude.ai."* (fora do
+claude.ai é assim mesmo). Nada novo em `noticias/aulas/`.
+
+### Passo F2 — O check no celular (a prova que só você faz)
+
+Na edição das 08:20, abra o favorito no celular, logado no claude.ai. Toque **Li esta aula** na
+aula de negócios e em **uma** das de carro. Se o claude.ai pedir permissão para a página guardar
+dados, aceite.
+
+**Sucesso:** o botão vira **Lida ✓** e continua assim ao recarregar a página. **Falha:** o botão
+continua apagado logado no claude.ai, ou some o ✓ ao recarregar — anote o que a página mostrou.
+
+### Passo F3 — A edição seguinte
+
+No dia seguinte, abra a página de novo.
+
+**Sucesso:** *Aprender hoje* traz uma aula **nova** de negócios; em *Para aprender*, a aula de carro
+que você não marcou volta com **"Pendente desde dd/mm"** e vem uma nova. No vault, as duas notas
+que você marcou em `noticias/aulas/` estão com `status: lida`.
+
+### Passo F4 — Marcar pelo Obsidian
+
+Abra uma nota pendente em `noticias/aulas/` e troque `status: pendente` por `status: lida`.
+
+**Sucesso:** na edição seguinte a área dela avança, como se você tivesse tocado no botão.
+
+### Passo F5 — O sábado sem esperar o sábado
+
+```powershell
+.\.venv\Scripts\python.exe -m whis news --simular --sabado
+```
+
+**Sucesso:** a página abre com o **Quiz da semana**: uma pergunta por aula que você marcou desde o
+último quiz, mais as que você errou antes. Tocar numa alternativa pinta de verde ou vermelho e
+abre a explicação. Sem nada lido, uma linha diz que o quiz volta no próximo sábado.
+`--sabado` sozinho (sem `--simular`) é recusado.
+
+### Passo F6 — O sábado de verdade
+
+No sábado, responda o quiz no celular e **erre uma de propósito**.
+
+**Sucesso:** no domingo, `noticias/quiz/AAAA-MM-DD.md` mostra `Resultado: certa`, `errada` ou
+`sem resposta` em cada pergunta; no sábado seguinte, a que você errou volta no quiz.
+
+### Quanto pesa a mais
+
+A leitura das marcações é um Haiku de uns 10 s e US$ 0,01 a 0,04 por manhã, e só roda quando há
+aula esperando marca. O esquema da aula soma uns US$ 0,10 a 0,15 por edição. No sábado a formação
+não roda; o quiz costuma custar menos.

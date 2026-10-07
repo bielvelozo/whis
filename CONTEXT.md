@@ -68,11 +68,19 @@ A janela de comandos do Whis, aberta por atalho global de teclado no PC (`ctrl+s
 _Avoid_: launcher, painel com abas, chat
 
 **Jornal**:
-A edição diária de notícias do Whis: a nota `noticias/YYYY-MM-DD.md` (o dado) e a página publicada a partir dela como artifact privado da conta do usuário, sempre no mesmo endereço (a renderização, que ele lê no celular). Sai às 08:20 pela tarefa `Whis-Noticias`, ou por `news` na palheta; os feeds, os nomes que ele acompanha e o time vivem em `noticias/fontes.md`, que ele edita no Obsidian. Só existe no jornal o que veio de uma fonte com link; seção sem nada nas últimas 24 h diz isso em uma linha. Não é coletor (não observa o trabalho dele) nem fonte passiva. `[noticias].ativa = false` desliga a tarefa e esconde `news` da palheta.
+A edição diária de notícias do Whis: a nota `noticias/YYYY-MM-DD.md` (o dado) e a página publicada a partir dela como artifact privado da conta do usuário, sempre no mesmo endereço (a renderização, que ele lê no celular). Sai às 08:20 pela tarefa `Whis-Noticias`, ou por `news` na palheta; os feeds, os nomes que ele acompanha e o time vivem em `noticias/fontes.md`, que ele edita no Obsidian. Só existe no jornal o que veio de uma fonte com link; seção sem nada nas últimas 24 h diz isso em uma linha. Não é coletor (não observa o trabalho dele) nem fonte passiva. `[noticias].ativa = false` desliga a tarefa e esconde `news` da palheta. A página guarda o que ele marca nela (cada **Aula** lida, as respostas do **Quiz da semana**) no banco do artifact, e a edição seguinte copia isso para o vault antes de escrever (ADR 0005).
 _Avoid_: report, newsletter, feed
 
+**Aula**:
+Um texto da formação do **Jornal**, de negócios (*Aprender hoje*) ou de carros (*Para aprender*), sempre com uma figura: a de carro, a foto da página da Wikipédia do assunto; a de negócios, um esquema que o Claude desenha. Vira a nota `noticias/aulas/<id>.md`, zona do agente, com `status: pendente` até ele marcar **Li esta aula** na página ou trocar para `status: lida` no Obsidian. Aula pendente volta na edição seguinte com "Pendente desde dd/mm", e a área dela não ganha aula nova até ser lida.
+_Avoid_: lição, post, conteúdo
+
+**Quiz da semana**:
+A primeira seção do **Jornal** no sábado, no lugar das aulas novas: uma pergunta de múltipla escolha por **Aula** lida desde o último quiz, mais as que ele errou ou deixou sem resposta antes, até acertar. Fica em `noticias/quiz/AAAA-MM-DD.md`, com o resultado de cada pergunta escrito de volta.
+_Avoid_: prova, teste, revisão
+
 **Trilha**:
-`noticias/trilha.md`, zona do agente: o que a formação do **Jornal** (*Aprender hoje* e *Para aprender*) já ensinou, uma linha por assunto por dia. A formação lê a trilha para progredir sem repetir e só acrescenta ao fim; nunca é reescrita.
+`noticias/trilha.md`, zona do agente: o que a formação do **Jornal** (*Aprender hoje* e *Para aprender*) já ensinou, uma linha por assunto por dia. A formação lê a trilha para progredir sem repetir e só acrescenta ao fim; nunca é reescrita. Uma área só ganha linha nova depois de a **Aula** anterior dela ser lida, e a formação roda uma vez por dia.
 _Avoid_: histórico, currículo
 
 **Prompt**:
