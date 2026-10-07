@@ -36,6 +36,7 @@ ter os dois"*.
 | Enter na lista | **Move e a janela fica aberta**; o item some da lista e o rodapé confirma. |
 | Registro | Spec em `.scratch/atalhos-da-daily/`, no padrão do repositório. |
 | `note` na daily (depois da primeira daily real, 13:55) | **`note` escreve em *Falar***; *Pontos* sai, como *O que terminei*. O `note` dele caiu em *Pontos*, que nunca ia para o deck. |
+| `note` de novo (2026-10-07) | **`note` escreve em *Pontos***, e *Pontos* vai para o deck **no lugar de *Falar***; `daily --anotar` e o `anotar` da DM vão junto. *Falar* fica na nota como texto dele, fora do deck. |
 
 ## A nota: seis seções
 

@@ -10,7 +10,7 @@ The product surface (palette descriptions, notes, config comments, docs) is in P
 
 **Palette.** `Ctrl+Space` opens a Raycast-style window from any application: a text field and a list of actions. Commands fire and the window disappears; results arrive as notes in the vault and a Windows toast. `ask` answers a question from the vault (with citations), `open` jumps to a note in Obsidian, `prompts` and `stash` keep a library of reusable prompts in `prompts/`, and `settings` edits every key of the config file in a form.
 
-**Daily.** The owner writes the stand-up in one note, `daily/atual.md` (sections *O que eu fiz*, *O que estou fazendo*, *Fazer*, *Dúvidas*, *Falar*). Palette shortcuts `did`, `doing`, `done`, `note`, `doubt` and `do` append or move lines in that note. At the scheduled time Whis renders the note as a slide deck, republished at the same URL, and keeps a dated copy in `daily/`.
+**Daily.** The owner writes the stand-up in one note, `daily/atual.md` (sections *O que eu fiz*, *O que estou fazendo*, *Fazer*, *Dúvidas*, *Pontos*). Palette shortcuts `did`, `doing`, `done`, `note`, `doubt` and `do` append or move lines in that note. At the scheduled time Whis renders the note as a slide deck, republished at the same URL, and keeps a dated copy in `daily/`.
 
 **Journal.** A daily news edition built from RSS/Atom feeds, an ESPN scoreboard, a Wikipedia "on this day" item and a *Dev with AI* section read from X through the owner's own logged-in Chrome (Playwright, no API). Sources live in `noticias/fontes.md`, which the owner edits. The edition is written as a note and published as a private page.
 

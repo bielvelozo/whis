@@ -31,10 +31,10 @@ def arquivos_de(texto_da_nota: str) -> dict[str, str]:
 
 
 def test_um_arquivo_por_slide_com_um_section_de_id_igual_ao_nome():
-    arquivos = arquivos_de("## O que eu fiz\n\n- a\n\n## Falar\n\n- b\n")
+    arquivos = arquivos_de("## O que eu fiz\n\n- a\n\n## Pontos\n\n- b\n")
 
-    assert sorted(arquivos) == ["project/deck.json", "project/slides/falar.html", "project/slides/fiz.html"]
-    for id_ in ("fiz", "falar"):
+    assert sorted(arquivos) == ["project/deck.json", "project/slides/fiz.html", "project/slides/pontos.html"]
+    for id_ in ("fiz", "pontos"):
         conteudo = arquivos[f"project/slides/{id_}.html"]
         assert conteudo.startswith(f'<section id="{id_}" ')
         assert conteudo.count("<section") == 1
@@ -90,24 +90,24 @@ def test_sub_item_e_uma_lista_irma_mais_recuada_e_menor():
 
 
 def test_rodape_com_a_data_por_extenso_e_a_pagina():
-    arquivos = arquivos_de("## O que eu fiz\n\n- a\n\n## Falar\n\n- b\n")
+    arquivos = arquivos_de("## O que eu fiz\n\n- a\n\n## Pontos\n\n- b\n")
 
     assert "Daily · 30 de setembro de 2026 (quarta-feira) · 1/2" in arquivos["project/slides/fiz.html"]
-    assert "· 2/2" in arquivos["project/slides/falar.html"]
+    assert "· 2/2" in arquivos["project/slides/pontos.html"]
 
 
 def test_o_indice_segue_o_formato_do_tipo():
     linhas = "\n".join(f"- item {n}" for n in range(12))
-    arquivos = arquivos_de(f"## O que eu fiz\n\n{linhas}\n\n## Falar\n\n- b\n")
+    arquivos = arquivos_de(f"## O que eu fiz\n\n{linhas}\n\n## Pontos\n\n- b\n")
 
     indice = json.loads(arquivos[CAMINHO_DO_INDICE])
     assert indice["v"] == 4 and indice["lists"] == "css" and indice["title"] == "Daily"
     assert indice["createdOnFiles"] == {"v": 1, "at": "2026-09-30T16:55:00Z"}
-    assert indice["order"] == ["fiz", "fiz-2", "falar"]
+    assert indice["order"] == ["fiz", "fiz-2", "pontos"]
     assert indice["cover"] == "fiz"
     assert indice["sections"] == {
         "fiz": {"description": "O que eu fiz", "start": "fiz"},
-        "falar": {"description": "Falar", "start": "falar"},
+        "pontos": {"description": "Pontos", "start": "pontos"},
     }
     assert indice["designSystems"] == []
     [face] = indice["faces"].values()

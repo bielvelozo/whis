@@ -26,11 +26,11 @@ NOTA_DA_DAILY = (
     "\n"
     "- quem revisa o PR do frete?\n"
     "\n"
-    "## Pontos\n"
+    "## Falar\n"
     "\n"
     "- também não vai\n"
     "\n"
-    "## Falar\n"
+    "## Pontos\n"
     "\n"
     "- sexta eu saio mais cedo\n"
 )

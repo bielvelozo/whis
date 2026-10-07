@@ -3,7 +3,7 @@
 A DM entra pela porta como `DMFake`, entregando mensagens de fixture e
 guardando o que saiu. O que se prova aqui é o que o usuário vê na DM — a
 reação, a resposta com as fontes, a mensagem de erro em português — e o que
-sobra depois: o fio em `conversas.json`, a linha em *Falar* de `daily/atual.md`,
+sobra depois: o fio em `conversas.json`, a linha em *Pontos* de `daily/atual.md`,
 e o processo ainda de pé.
 """
 
@@ -261,15 +261,15 @@ def test_nao_achei_diz_isso_sem_inventar(atender):
     "pedido",
     ["anotar preciso do acesso ao Sentry", "Anotar: preciso do acesso ao Sentry", "anotar — preciso do acesso ao Sentry"],
 )
-def test_anotar_escreve_a_linha_em_falar_da_nota_viva_sem_passar_pelo_modelo(
+def test_anotar_escreve_a_linha_em_pontos_da_nota_viva_sem_passar_pelo_modelo(
     atender, busca: BuscaFake, configuracao, pedido: str
 ):
     dm = atender([mensagem(pedido)])
 
     nota = (configuracao.vault / "daily" / "atual.md").read_text(encoding="utf-8")
-    assert nota.endswith("## Falar\n- preciso do acesso ao Sentry\n")
+    assert nota.endswith("## Pontos\n- preciso do acesso ao Sentry\n")
     assert busca.perguntas_recebidas == []
-    assert "Anotado em `daily/atual.md`, em *Falar*" in dm.respostas[0][1]
+    assert "Anotado em `daily/atual.md`, em *Pontos*" in dm.respostas[0][1]
 
 
 def test_anotar_sem_texto_pede_o_texto(atender, configuracao):

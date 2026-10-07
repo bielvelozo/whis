@@ -19,9 +19,9 @@ from dataclasses import dataclass
 
 from .nota_viva import (
     SECAO_DUVIDAS,
-    SECAO_FALAR,
     SECAO_FAZENDO,
     SECAO_FIZ,
+    SECAO_PONTOS,
     NotaViva,
     texto_e_profundidade,
 )
@@ -30,7 +30,7 @@ SECOES_DO_DECK = (
     (SECAO_FIZ, "fiz"),
     (SECAO_FAZENDO, "fazendo"),
     (SECAO_DUVIDAS, "duvidas"),
-    (SECAO_FALAR, "falar"),
+    (SECAO_PONTOS, "pontos"),
 )
 
 LARGURA_UTIL = 1664

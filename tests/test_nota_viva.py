@@ -15,10 +15,10 @@ import pytest
 from whis.nota_viva import (
     MODELO_DA_NOTA_VIVA,
     SECAO_DUVIDAS,
-    SECAO_FALAR,
     SECAO_FAZENDO,
     SECAO_FAZER,
     SECAO_FIZ,
+    SECAO_PONTOS,
     NotaViva,
 )
 
@@ -48,7 +48,7 @@ NOTA = (
     "\n"
     "- o pix pendente expira sozinho?\n"
     "\n"
-    "## Falar\n"
+    "## Pontos\n"
     "\n"
     "- avisar que sexta eu saio mais cedo\n"
 )
@@ -105,15 +105,15 @@ def test_acrescentar_sem_pai_entra_no_fim_da_secao_antes_das_linhas_em_branco():
 def test_acrescentar_numa_secao_que_nao_existe_a_cria_no_fim():
     nota = NotaViva.de_texto("---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n")
 
-    nota.acrescentar(SECAO_FALAR, "lembrar do deploy")
+    nota.acrescentar(SECAO_PONTOS, "lembrar do deploy")
 
     assert nota.texto() == (
-        "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## Falar\n- lembrar do deploy\n"
+        "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## Pontos\n- lembrar do deploy\n"
     )
 
 
-def test_anotar_sem_secao_e_append_only_no_fim_de_falar():
-    """O `note`: o que ele quer levar à reunião vai para *Falar*, que vira slide."""
+def test_anotar_sem_secao_e_append_only_no_fim_de_pontos():
+    """O `note`: o que ele anota vai para *Pontos*, que vira slide."""
     nota = NotaViva.de_texto(NOTA)
 
     linha = nota.anotar("perguntar do skeleton")
@@ -121,6 +121,21 @@ def test_anotar_sem_secao_e_append_only_no_fim_de_falar():
     assert linha == "- perguntar do skeleton"
     assert nota.texto() == NOTA.replace(
         "- avisar que sexta eu saio mais cedo\n", "- avisar que sexta eu saio mais cedo\n- perguntar do skeleton\n", 1
+    )
+
+
+def test_note_na_nota_real_dele_entra_em_pontos_e_falar_fica_como_estava():
+    """Em 2026-10-07 a nota dele tinha `## Pontos` com um `- ` sozinho e linhas em branco, e *Falar* depois."""
+    real = (
+        "## Dúvidas\n- \n\n\n\n## Pontos\n- \n\n\n\n## O que eu fiz\n\n- fiz\n\n"
+        "## Falar\n- Falar sobre o Daniel que me passou a página \n"
+    )
+    nota = NotaViva.de_texto(real)
+
+    nota.anotar("validar os fluxos que o lucas subiu")
+
+    assert nota.texto() == real.replace(
+        "## Pontos\n- \n", "## Pontos\n- \n- validar os fluxos que o lucas subiu\n", 1
     )
 
 
@@ -143,7 +158,7 @@ def test_anotar_em_duvidas_e_nunca_numa_secao_sem_comando():
 
     assert "- o pix pendente expira sozinho?\n- o pix expira?\n" in trecho(nota.texto(), SECAO_DUVIDAS)
     with pytest.raises(ValueError):
-        nota.anotar("x", "Pontos")
+        nota.anotar("x", "Falar")
 
 
 def test_anotar_em_fiz_e_fazendo_entra_sem_caixa_no_fim_da_secao():
@@ -158,12 +173,12 @@ def test_anotar_em_fiz_e_fazendo_entra_sem_caixa_no_fim_da_secao():
 
 
 def test_a_secao_nova_entra_na_ordem_das_cinco_mesmo_sem_a_seguinte_imediata():
-    nota = NotaViva.de_texto("---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## Falar\n- x\n")
+    nota = NotaViva.de_texto("---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## Pontos\n- x\n")
 
     nota.anotar("dúvida", SECAO_DUVIDAS)
 
     assert nota.texto() == (
-        "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## Dúvidas\n- dúvida\n\n## Falar\n- x\n"
+        "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## Dúvidas\n- dúvida\n\n## Pontos\n- x\n"
     )
 
 
@@ -182,7 +197,7 @@ def test_garantir_secao_abre_o_titulo_que_falta_no_lugar_dele_uma_vez_so():
     assert texto.index("## O que estou fazendo") < texto.index("## Fazer") < texto.index("## Dúvidas")
 
 
-@pytest.mark.parametrize("titulo", ["O que terminei", "Pontos"])
+@pytest.mark.parametrize("titulo", ["O que terminei", "Falar"])
 def test_secao_aposentada_fica_intocada_e_nao_e_mais_secao(titulo):
     antiga = NOTA.replace("## Dúvidas\n", f"## {titulo}\n\n- o que estava lá\n\n## Dúvidas\n", 1)
     nota = NotaViva.de_texto(antiga)
@@ -203,7 +218,7 @@ def test_o_modelo_tem_as_cinco_secoes_na_ordem_e_nenhuma_explicacao():
         SECAO_FAZENDO,
         SECAO_FAZER,
         SECAO_DUVIDAS,
-        SECAO_FALAR,
+        SECAO_PONTOS,
     ]
     assert all(linhas == () for _, linhas in nota.secoes())
     assert MODELO_DA_NOTA_VIVA.startswith("---\ntipo: daily-atual\n---\n")

@@ -215,15 +215,15 @@ def test_daily_com_a_nota_vazia_avisa_com_o_botao_da_nota(montar, caminho_do_vau
 # -- note e doubt -----------------------------------------------------------
 
 
-def test_note_escreve_em_falar_pelo_mesmo_caminho_do_subcomando(montar, caminho_do_vault: Path, aviso):
+def test_note_escreve_em_pontos_pelo_mesmo_caminho_do_subcomando(montar, caminho_do_vault: Path, aviso):
     palheta = montar()
 
     palheta.despachar("note puxar a retenção de 180 dias")
 
     nota = (caminho_do_vault / "daily" / "atual.md").read_text(encoding="utf-8")
-    assert nota.endswith("## Falar\n- puxar a retenção de 180 dias\n")
+    assert nota.endswith("## Pontos\n- puxar a retenção de 180 dias\n")
     titulo, texto, botao = aviso.ultimo()
-    assert titulo == "Anotado em Falar"
+    assert titulo == "Anotado em Pontos"
     assert texto == "puxar a retenção de 180 dias"
     assert botao[1].endswith("&file=daily%2Fatual")
 
@@ -234,16 +234,16 @@ def test_doubt_escreve_em_duvidas_e_so_a_pedido(montar, caminho_do_vault: Path, 
     palheta.despachar("doubt o pix pendente expira sozinho?")
 
     nota = (caminho_do_vault / "daily" / "atual.md").read_text(encoding="utf-8")
-    assert "## Dúvidas\n- o pix pendente expira sozinho?\n\n## Falar\n" in nota
+    assert "## Dúvidas\n- o pix pendente expira sozinho?\n\n## Pontos\n" in nota
     assert aviso.ultimo()[0] == "Anotado em Dúvidas"
 
 
-def test_note_acrescenta_no_fim_de_falar_sem_mudar_o_resto(montar, caminho_do_vault: Path):
+def test_note_acrescenta_no_fim_de_pontos_sem_mudar_o_resto(montar, caminho_do_vault: Path):
     palheta = montar()
     _vault.preparar(caminho_do_vault)
     antiga = (
         "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n- feito\n\n## O que estou fazendo\n\n"
-        "## Dúvidas\n\n- uma dúvida\n\n## Falar\n\n- ponto antigo\n"
+        "## Dúvidas\n\n- uma dúvida\n\n## Falar\n\n- escrito à mão\n\n## Pontos\n\n- ponto antigo\n"
     )
     (caminho_do_vault / "daily" / "atual.md").write_bytes(antiga.encode("utf-8"))
 
@@ -266,17 +266,18 @@ def test_do_escreve_a_caixa_em_fazer_para_ele_marcar(montar, caminho_do_vault: P
     assert botao[1].endswith("&file=daily%2Fatual")
 
 
-def test_o_que_o_note_anota_vira_o_slide_falar_da_daily(montar, caminho_do_vault: Path, aviso):
-    """Em 2026-10-01 o `note` caiu em *Pontos*, que nunca foi para o deck, e a daily saiu sem ele."""
+def test_o_que_o_note_anota_vira_o_slide_pontos_da_daily(montar, caminho_do_vault: Path, aviso):
+    """Desde 2026-10-07 o `note` escreve em *Pontos*, que vai para o deck no lugar de *Falar*."""
     publicacao = PublicacaoDoDeckFake()
     palheta = montar(publicacao=publicacao)
     escrever_nota_da_daily(caminho_do_vault)
 
     palheta.despachar("note falar que mandei msg pro lucas sobre o CRM")
-    assert aviso.ultimo()[:2] == ("Anotado em Falar", "falar que mandei msg pro lucas sobre o CRM")
+    assert aviso.ultimo()[:2] == ("Anotado em Pontos", "falar que mandei msg pro lucas sobre o CRM")
     palheta.despachar("daily")
 
-    assert "falar que mandei msg pro lucas sobre o CRM" in publicacao.conteudos["project/slides/falar.html"]
+    assert "falar que mandei msg pro lucas sobre o CRM" in publicacao.conteudos["project/slides/pontos.html"]
+    assert all("também não vai" not in conteudo for conteudo in publicacao.conteudos.values())
 
 
 def test_did_e_doing_escrevem_em_fiz_e_fazendo_sem_caixa(montar, caminho_do_vault: Path, aviso):
@@ -325,7 +326,7 @@ NOTA_DO_DONE = (
     "- Revisão do checkout\n"
     "\t- botão do pix\n"
     "- Ajustes do flywheel\n"
-    "\n## Falar\n\n- sexta saio cedo\n"
+    "\n## Pontos\n\n- sexta saio cedo\n"
 )
 
 

@@ -26,17 +26,17 @@ SECAO_FIZ = "O que eu fiz"
 SECAO_FAZENDO = "O que estou fazendo"
 SECAO_FAZER = "Fazer"
 SECAO_DUVIDAS = "Dúvidas"
-SECAO_FALAR = "Falar"
+SECAO_PONTOS = "Pontos"
 
 SECOES = (
     SECAO_FIZ,
     SECAO_FAZENDO,
     SECAO_FAZER,
     SECAO_DUVIDAS,
-    SECAO_FALAR,
+    SECAO_PONTOS,
 )
 
-SECOES_ANOTAVEIS = (SECAO_FIZ, SECAO_FAZENDO, SECAO_FAZER, SECAO_DUVIDAS, SECAO_FALAR)
+SECOES_ANOTAVEIS = (SECAO_FIZ, SECAO_FAZENDO, SECAO_FAZER, SECAO_DUVIDAS, SECAO_PONTOS)
 
 SECOES_COM_CAIXA = (SECAO_FAZER,)
 
@@ -56,7 +56,7 @@ tipo: {TIPO_NOTA_VIVA}
 
 ## Dúvidas
 
-## Falar
+## Pontos
 """
 
 _ITEM = re.compile(r"^(?P<indentacao>[ \t]*)(?P<marcador>[-*+]|\d+[.)])[ \t]+(?P<texto>.*)$")
@@ -148,7 +148,7 @@ class NotaViva:
         self._abrir_secao(titulo)
         return True
 
-    def anotar(self, texto: str, secao: str = SECAO_FALAR) -> str:
+    def anotar(self, texto: str, secao: str = SECAO_PONTOS) -> str:
         """`- texto` no fim de uma seção que tem comando (`did`, `doing`, `note`, `doubt`, `do`), a pedido dele.
 
         Em *Fazer* o item nasce `- [ ] texto`: a caixa é dele, e marcá-la é o

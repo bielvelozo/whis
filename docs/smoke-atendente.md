@@ -273,8 +273,8 @@ verdade.
 
 Na DM: *"anotar preciso do acesso ao Sentry"*.
 
-**Sucesso:** *"Anotado em `daily/atual.md`, em *Falar*..."*, e a linha
-`- preciso do acesso ao Sentry` aparece no fim de `## Falar` da nota viva, sem
+**Sucesso:** *"Anotado em `daily/atual.md`, em *Pontos*..."*, e a linha
+`- preciso do acesso ao Sentry` aparece no fim de `## Pontos` da nota viva, sem
 que nenhum outro byte dela mude. Nenhuma outra mensagem escreve no vault: é o
 único caminho, e ele não passa pelo Claude.
 

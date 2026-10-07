@@ -139,7 +139,7 @@ Teste, um por vez:
 | `doing testando o fazendo` | toast "Anotado em O que estou fazendo"; a linha entra no fim de *O que estou fazendo* |
 | `did testando o fiz` | toast "Anotado em O que eu fiz"; a linha entra no fim de *O que eu fiz* |
 | `done` (ou **Mark done**) | a janela fica e mostra os itens de *O que estou fazendo*, um sub-item com `em: <pai>`; digitar filtra (sem acento nem maiúscula). Enter leva o selecionado, com o que está embaixo dele, para o fim de *O que eu fiz* (confira no Obsidian); o rodapé diz *Moved: …* e a lista segue aberta sem ele. Mova um sub-item e veja o pai copiado em *O que eu fiz*; depois mova o pai e veja que ele não se repete. **Um clique numa linha também move, sem desfazer.** Esc volta aos comandos |
-| `note testando a palheta` | toast "Anotado em Falar"; `daily/atual.md` ganha `- testando a palheta` no fim de *Falar*, que vai para o deck da daily |
+| `note testando a palheta` | toast "Anotado em Pontos"; `daily/atual.md` ganha `- testando a palheta` no fim de *Pontos*, que vai para o deck da daily; *Falar* não muda |
 | `doubt o pix expira sozinho?` | toast "Anotado em Dúvidas"; a linha entra em *Dúvidas* |
 | `do responder o ribeiro` | toast "Anotado em Fazer"; `daily/atual.md` ganha `- [ ] responder o ribeiro` no fim de *Fazer* (a seção nasce entre *O que estou fazendo* e *Dúvidas*). Marque o `[x]` no Obsidian: ninguém mexe nessa linha depois |
 | `open` (ou clique em **Open note**) | o Obsidian abre `daily/atual.md`. Teste **com o Obsidian fechado** também: o Windows deve lançá-lo e cair na nota |

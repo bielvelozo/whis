@@ -18,7 +18,7 @@ Regras que valem sempre:
 - **Nada derruba o processo.** Uma resposta que falha vira mensagem de erro em
   português na DM, e o atendimento continua na próxima.
 - A única escrita no vault é o pedido explícito `anotar <texto>`, que acrescenta
-  uma linha em *Falar* da nota viva pelo mesmo caminho de `daily --anotar` —
+  uma linha em *Pontos* da nota viva pelo mesmo caminho de `daily --anotar` —
   sem passar pelo modelo, para a seção do usuário continuar dele.
 
 É um processo separado da bandeja, com trava de instância própria.
@@ -192,7 +192,7 @@ class Atendente:
         _vault.anotar_ponto(raiz, texto)
         _log.info("Ponto anotado pela DM em %s", _vault.CAMINHO_DA_NOTA_VIVA)
         return (
-            f"Anotado em `{_vault.CAMINHO_DA_NOTA_VIVA}`, em *{_vault.SECAO_FALAR}*. "
+            f"Anotado em `{_vault.CAMINHO_DA_NOTA_VIVA}`, em *{_vault.SECAO_PONTOS}*. "
             f"Fica lá até você tirar."
         )
 

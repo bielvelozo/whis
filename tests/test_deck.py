@@ -31,11 +31,11 @@ NOTA = (
     "\n"
     "- quem revisa o PR?\n"
     "\n"
-    "## Pontos\n"
+    "## Falar\n"
     "\n"
     "- também não entra\n"
     "\n"
-    "## Falar\n"
+    "## Pontos\n"
     "\n"
     "Parágrafo solto\n"
 )
@@ -48,12 +48,12 @@ def secao(titulo: str, linhas: list[str]) -> NotaViva:
 def test_cada_secao_com_texto_vira_um_slide_na_ordem_do_deck():
     deck = montar_deck(NotaViva.de_texto(NOTA))
 
-    assert [slide.id for slide in deck.slides] == ["fiz", "fazendo", "duvidas", "falar"]
+    assert [slide.id for slide in deck.slides] == ["fiz", "fazendo", "duvidas", "pontos"]
     assert [slide.titulo for slide in deck.slides] == [
         "O que eu fiz",
         "O que estou fazendo",
         "Dúvidas",
-        "Falar",
+        "Pontos",
     ]
 
 
@@ -65,9 +65,9 @@ def test_o_texto_sai_sem_o_marcador_e_com_a_profundidade():
 
 
 def test_paragrafo_solto_entra_como_item_de_nivel_zero():
-    falar = montar_deck(NotaViva.de_texto(NOTA)).slides[-1]
+    pontos = montar_deck(NotaViva.de_texto(NOTA)).slides[-1]
 
-    assert falar.itens == (ItemDoSlide("Parágrafo solto", 0),)
+    assert pontos.itens == (ItemDoSlide("Parágrafo solto", 0),)
 
 
 def test_recuo_por_espacos_tambem_e_sub_item():
@@ -76,7 +76,7 @@ def test_recuo_por_espacos_tambem_e_sub_item():
     assert [item.profundidade for item in deck.slides[0].itens] == [0, 1, 2]
 
 
-def test_pontos_e_fazer_nunca_entram():
+def test_falar_e_fazer_nunca_entram():
     textos = [item.texto for slide in montar_deck(NotaViva.de_texto(NOTA)).slides for item in slide.itens]
 
     assert not any("não entra" in texto for texto in textos)
@@ -89,13 +89,13 @@ def test_o_que_terminei_antiga_nao_vira_slide():
 
 
 def test_nota_sem_texto_e_deck_vazio():
-    assert montar_deck(NotaViva.de_texto("## O que eu fiz\n\n-\n\t1.\n\n## Falar\n")).vazio()
+    assert montar_deck(NotaViva.de_texto("## O que eu fiz\n\n-\n\t1.\n\n## Pontos\n")).vazio()
 
 
 def test_o_deck_guarda_as_linhas_literais_das_secoes_que_viraram_slide():
     deck = montar_deck(NotaViva.de_texto(NOTA))
 
-    assert [secao.titulo for secao in deck.secoes] == ["O que eu fiz", "O que estou fazendo", "Dúvidas", "Falar"]
+    assert [secao.titulo for secao in deck.secoes] == ["O que eu fiz", "O que estou fazendo", "Dúvidas", "Pontos"]
     assert deck.secoes[0].linhas == ("- FN-123 frete corrigido", "\t- subiu em produção")
 
 

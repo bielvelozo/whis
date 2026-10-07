@@ -48,16 +48,16 @@ def test_a_nota_vira_deck_publicado_e_copia_com_o_link(configuracao, caminho_do_
     resultado = gerar(configuracao, publicacao, tmp_path)
 
     assert resultado.publicado and resultado.url == URL_DO_DECK_FAKE
-    assert [slide.id for slide in resultado.deck.slides] == ["fiz", "fazendo", "duvidas", "falar"]
+    assert [slide.id for slide in resultado.deck.slides] == ["fiz", "fazendo", "duvidas", "pontos"]
     assert publicacao.url_recebida is None
     assert sorted(publicacao.conteudos) == [
         "project/deck.json",
         "project/slides/duvidas.html",
-        "project/slides/falar.html",
         "project/slides/fazendo.html",
         "project/slides/fiz.html",
+        "project/slides/pontos.html",
     ]
-    assert json.loads(publicacao.conteudos["project/deck.json"])["order"] == ["fiz", "fazendo", "duvidas", "falar"]
+    assert json.loads(publicacao.conteudos["project/deck.json"])["order"] == ["fiz", "fazendo", "duvidas", "pontos"]
     assert resultado.copia.resolve() == copia_de_hoje(caminho_do_vault).resolve()
     frente = ler_frontmatter(resultado.copia)
     assert frente["tipo"] == "daily" and frente["deck"] == URL_DO_DECK_FAKE and "data" not in frente
@@ -72,7 +72,7 @@ def test_a_copia_tem_so_as_secoes_que_viraram_slide_com_as_linhas_literais(
 
     texto = corpo(resultado.copia)
     assert "## O que eu fiz\n\n- FN-123 frete do checkout corrigido\n\t- subiu em produção\n" in texto
-    for fora in ("## Pontos", "## Fazer"):
+    for fora in ("## Falar", "## Fazer"):
         assert fora not in texto
 
 
@@ -101,14 +101,14 @@ def test_a_nota_com_as_quatro_secoes_do_deck_sai_byte_a_byte_igual(configuracao,
 
 
 def test_nota_sem_as_secoes_do_deck_ganha_os_titulos_que_faltam(configuracao, caminho_do_vault: Path, tmp_path: Path):
-    """A nota de verdade dele, em 2026-09-30, não tinha *O que eu fiz*, *O que estou fazendo* nem *Falar*."""
+    """A nota de verdade dele, em 2026-09-30, não tinha *O que eu fiz* nem *O que estou fazendo*."""
     original = "---\ntipo: daily-atual\n---\n\n## Dúvidas\n\n- uma dúvida\n\n## Fazer\n\n- [ ] uma tarefa\n"
     arquivo = escrever_nota_da_daily(caminho_do_vault, original)
 
     gerar(configuracao, PublicacaoDoDeckFake(), tmp_path)
 
     texto = arquivo.read_bytes().decode("utf-8")
-    for titulo in ("O que eu fiz", "O que estou fazendo", "Dúvidas", "Falar"):
+    for titulo in ("O que eu fiz", "O que estou fazendo", "Dúvidas", "Pontos"):
         assert texto.count(f"## {titulo}\n") == 1
     assert texto.index("## O que eu fiz") < texto.index("## O que estou fazendo") < texto.index("## Fazer")
     assert "## O que terminei" not in texto
@@ -126,7 +126,7 @@ def test_simular_nao_publica_nem_escreve_nada_nem_o_titulo(configuracao, caminho
 
 
 def test_nota_vazia_nao_publica_nem_grava_copia_mas_ganha_o_titulo(configuracao, caminho_do_vault: Path, tmp_path: Path):
-    arquivo = escrever_nota_da_daily(caminho_do_vault, "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n## Falar\n")
+    arquivo = escrever_nota_da_daily(caminho_do_vault, "---\ntipo: daily-atual\n---\n\n## O que eu fiz\n\n## Pontos\n")
     publicacao = PublicacaoDoDeckFake()
 
     resultado = gerar(configuracao, publicacao, tmp_path)

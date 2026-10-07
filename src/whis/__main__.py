@@ -620,14 +620,14 @@ def _relatar_jornal(resultado: ResultadoDoJornal) -> None:
 
 
 def _anotar_ponto(configuracao: Configuracao, texto: str) -> int:
-    """Acrescenta uma linha em *Falar* de `daily/atual.md` e sai, sem publicar nada."""
+    """Acrescenta uma linha em *Pontos* de `daily/atual.md` e sai, sem publicar nada."""
     if not texto.strip():
         _log.error("Nada a anotar: --anotar precisa de um texto.")
         return 1
     raiz = _vault.preparar(configuracao.vault)
     arquivo = _vault.anotar_ponto(raiz, texto)
     print(f"Anotado em {arquivo}")
-    print(f"Está em '## {_vault.SECAO_FALAR}' da nota viva, e fica lá até você tirar.")
+    print(f"Está em '## {_vault.SECAO_PONTOS}' da nota viva, e fica lá até você tirar.")
     return 0
 
 
@@ -1468,7 +1468,7 @@ def construir_parser() -> argparse.ArgumentParser:
         "--anotar",
         metavar="TEXTO",
         default=None,
-        help="acrescenta uma linha em '## Falar' de daily/atual.md e sai, sem publicar nada",
+        help="acrescenta uma linha em '## Pontos' de daily/atual.md e sai, sem publicar nada",
     )
     daily_cmd.add_argument(
         "--fakes",

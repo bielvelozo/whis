@@ -11,7 +11,7 @@ from whis import vault
 AGORA = datetime(2026, 9, 30, 13, 55, tzinfo=timezone(timedelta(hours=-3)))
 URL = "https://claude.ai/artifact/DeckDaDaily123"
 ANTIGA = "https://claude.ai/artifact/DeckAntigo789"
-SECOES = [("O que eu fiz", ("- FN-123 frete", "\t- subiu")), ("Falar", ("- sexta saio cedo",))]
+SECOES = [("O que eu fiz", ("- FN-123 frete", "\t- subiu")), ("Pontos", ("- sexta saio cedo",))]
 
 
 def escrever(pasta: Path, texto: str, nome: str = "2026-09-30.md") -> Path:
@@ -32,7 +32,7 @@ def test_a_copia_guarda_as_secoes_com_as_linhas_literais_e_o_link(tmp_path: Path
 
     assert texto.lstrip().startswith("# Daily — 30 de setembro de 2026 (quarta-feira)\n")
     assert f"> [!info] [Abrir os slides]({URL})" in texto
-    assert "## O que eu fiz\n\n- FN-123 frete\n\t- subiu\n\n## Falar\n\n- sexta saio cedo\n" in texto
+    assert "## O que eu fiz\n\n- FN-123 frete\n\t- subiu\n\n## Pontos\n\n- sexta saio cedo\n" in texto
 
 
 def test_sem_deck_a_copia_nao_tem_o_campo_nem_o_link(tmp_path: Path):
