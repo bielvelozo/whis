@@ -811,6 +811,8 @@ def comandos_padrao(
                 formacao=portas.formacao,
                 publicacao=portas.publicacao,
                 leitor_do_x=portas.leitor_do_x,
+                marcacoes=portas.marcacoes,
+                quiz=portas.quiz,
             )
         except JornalNaoNasceu as erro:
             return resultado_do_jornal_que_nao_nasceu(erro)

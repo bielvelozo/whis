@@ -21,17 +21,23 @@ from whis.efemeride import Efemeride
 from whis.feeds import Coleta
 from whis.fonte_x import ErroDoX, LeituraDoX, LoginDoXVenceu, PostDoX
 from whis.fontes_do_jornal import CAMINHO_DAS_FONTES, MODELO_DAS_FONTES, FonteDoX
+from whis.efemeride import UA_WIKIPEDIA
+from whis.fakes import MarcacoesFake, QuizFake
 from whis.jornal import (
     AVISO_DA_ESCOLHA,
     AVISO_DA_FORMACAO,
     AVISO_DA_PUBLICACAO,
+    AVISO_DAS_MARCACOES,
     AVISO_DO_LOGIN_DO_X,
+    AVISO_DO_QUIZ,
     CAMINHO_DA_TRILHA,
+    QUIZ_SEM_NADA,
     JornalNaoNasceu,
     gerar_jornal,
     links_publicados,
     ultima_url,
 )
+from whis.pagina_do_jornal import SCRIPT
 from whis.placar_espn import Gol, Jogo, Placar
 from whis.portas import (
     Aula,
@@ -39,7 +45,10 @@ from whis.portas import (
     Dica,
     ErroDeEditor,
     ErroDeFormacao,
+    ErroDeMarcacoes,
     ErroDePublicacao,
+    ErroDeQuiz,
+    Resposta,
     Escolha,
     Formacao,
     ItemEscolhido,
@@ -106,20 +115,36 @@ class EditorDublê:
         )
 
 
-class FormacaoDublê:
-    def __init__(self, *, erro: Exception | None = None) -> None:
-        self.erro = erro
-        self.trilha_recebida: str | None = None
+SVG = '<svg viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8" fill="none" stroke="currentColor"/></svg>'
+PAGINA_DO_TURBO = "https://en.wikipedia.org/wiki/Turbocharger"
+FOTO_DO_TURBO = "https://img.exemplo.com/turbo.jpg"
 
-    def ensinar(self, data: date, trilha: str) -> Formacao:
+
+class FormacaoDublê:
+    """Uma aula de negócios com esquema e uma de carro com foto, respeitando as vagas."""
+
+    def __init__(self, *, erro: Exception | None = None, foto_de: str = PAGINA_DO_TURBO) -> None:
+        self.erro = erro
+        self.foto_de = foto_de
+        self.trilha_recebida: str | None = None
+        self.vagas_recebidas: dict[str, int] | None = None
+
+    def ensinar(self, data: date, trilha: str, vagas=None) -> Formacao:
         self.trilha_recebida = trilha
+        self.vagas_recebidas = dict(vagas) if vagas is not None else None
         if self.erro:
             raise self.erro
+        vagas = vagas or {"negocios": 1, "carros": 2}
+        negocios = Aula(
+            "Proposta de valor", "Texto da aula.", ("https://exemplo.com/x",), "negócios · proposta de valor",
+            visual="esquema", esquema=SVG,
+        )
+        turbo = Aula(
+            "O turbo", "Como funciona.", (PAGINA_DO_TURBO,), "carros · turbo", visual="foto", foto_de=self.foto_de,
+        )
         return Formacao(
-            software=Aula("Dublês de teste", "Texto da aula.", ("https://martinfowler.com/x",), "software · dublês de teste"),
-            carros=(
-                Aula("O turbo", "Como funciona.", ("https://en.wikipedia.org/wiki/Turbocharger",), "carros · turbo"),
-            ),
+            negocios=negocios if vagas.get("negocios") else None,
+            carros=(turbo,)[: vagas.get("carros", 0)],
             medida=Medida(0.25, 60.0, Janelas(30, 61), Janelas(31, 61)),
         )
 
@@ -146,6 +171,9 @@ def _jpeg() -> bytes:
 def rede_das_capas(request: httpx.Request) -> httpx.Response:
     if request.url.host == "img.exemplo.com":
         return httpx.Response(200, content=_jpeg(), headers={"content-type": "image/jpeg"})
+    if str(request.url) == PAGINA_DO_TURBO:
+        html = f'<html><head><meta property="og:image" content="{FOTO_DO_TURBO}"></head></html>'
+        return httpx.Response(200, text=html, headers={"content-type": "text/html"})
     return httpx.Response(404)
 
 
@@ -175,14 +203,14 @@ def cenario(tmp_path: Path, monkeypatch):
     return estado
 
 
-def gerar(cenario, *, editor=None, formacao=None, publicacao=None, agora=AGORA, **extras):
+def gerar(cenario, *, editor=None, formacao=None, publicacao=None, agora=AGORA, rede=None, **extras):
     return gerar_jornal(
         agora,
         cenario["configuracao"],
         editor=editor or EditorDublê(),
         formacao=formacao or FormacaoDublê(),
         publicacao=publicacao or PublicacaoDublê(),
-        rede=httpx.MockTransport(rede_das_capas),
+        rede=rede or httpx.MockTransport(rede_das_capas),
         pasta_da_edicao=cenario["pasta"],
         dormir=lambda _s: None,
         **extras,
@@ -205,7 +233,7 @@ def test_a_edicao_completa_escreve_a_nota_e_publica(cenario):
                   'plano_antes: "5h=30% 7d=61%"', 'plano_depois: "5h=31% 7d=62%"', 'custo_usd: "0.7200"',
                   "segundos:", "fontes_com_falha:"):
         assert campo in nota
-    assert "## Aprender hoje" in nota and "### Dublês de teste" in nota
+    assert "## Aprender hoje" in nota and "### Proposta de valor" in nota
     assert "### [Título tecnologia-1](https://exemplo.com/tecnologia/1)" in nota
     assert "![](https://img.exemplo.com/1.jpg)" in nota
     assert "img/1.jpg" not in nota
@@ -235,18 +263,18 @@ def test_secao_sem_item_diz_nada_relevante_na_nota_e_na_pagina(cenario):
     assert "Nada relevante nas últimas 24 h." in publicacao.chamadas[0][0]
 
 
-def test_a_pagina_nao_tem_script_e_usa_as_capas_locais(cenario):
+def test_a_pagina_so_tem_o_script_das_marcacoes_e_usa_as_capas_locais(cenario):
     publicacao = PublicacaoDublê()
 
     gerar(cenario, publicacao=publicacao)
 
     pagina, capas, url_atual = publicacao.chamadas[0]
-    assert "<script" not in pagina.lower()
+    assert pagina.lower().count("<script") == 1 and SCRIPT in pagina
     assert '<meta name="color-scheme" content="light">' in pagina
     assert "<title>Jornal do Whis</title>" in pagina
     assert 'src="img/1.jpg"' in pagina
     assert "img.exemplo.com" not in pagina
-    assert list(capas) == ["img/1.jpg"]
+    assert list(capas) == ["img/1.jpg", "img/aula-2026-09-25-carros-1.jpg"]
     assert capas["img/1.jpg"].read_bytes()[:2] == b"\xff\xd8"
     assert Image.open(capas["img/1.jpg"]).width == 900
     assert url_atual is None
@@ -335,7 +363,7 @@ def test_a_trilha_so_ganha_linhas_no_fim(cenario):
     depois = trilha.read_bytes().decode("utf-8")
     assert formacao.trilha_recebida == antes
     assert depois.startswith(antes)
-    assert depois[len(antes):] == "- 2026-09-25 · software · dublês de teste\n- 2026-09-25 · carros · turbo\n"
+    assert depois[len(antes):] == "- 2026-09-25 · negócios · proposta de valor\n- 2026-09-25 · carros · turbo\n"
 
 
 def test_fontes_md_nasce_do_modelo_na_primeira_edicao(cenario):
@@ -402,8 +430,8 @@ def test_sem_leitura_do_plano_o_cabecalho_diz(cenario):
             return replace(super().escolher(candidatos, limites, time), medida=Medida(0.4, 1.0))
 
     class FormacaoSemPlano(FormacaoDublê):
-        def ensinar(self, data, trilha):
-            return replace(super().ensinar(data, trilha), medida=Medida(0.2, 1.0))
+        def ensinar(self, data, trilha, vagas=None):
+            return replace(super().ensinar(data, trilha, vagas), medida=Medida(0.2, 1.0))
 
     class PublicacaoSemPlano(PublicacaoDublê):
         def publicar(self, html, capas, url_atual):
@@ -436,7 +464,7 @@ def test_capa_que_nao_baixa_deixa_o_item_sem_capa(cenario):
 
     brasil = next(s for s in resultado.edicao.secoes if s.id == "brasil")
     assert brasil.itens[0].capa is None
-    assert list(publicacao.chamadas[0][1]) == ["img/1.jpg"]
+    assert [p for p in publicacao.chamadas[0][1] if not p.startswith("img/aula-")] == ["img/1.jpg"]
 
 
 # -- Dev com IA: o X ----------------------------------------------------------
@@ -680,3 +708,249 @@ def test_noticia_de_rss_ainda_pode_ser_destaque_grande_ao_lado_de_post_do_x():
 
     assert html.startswith('<article class="lead"><a href="https://simonwillison.net/1">')
     assert _lista(itens[:1]).startswith('<article class="item sem">')
+
+
+# --- a formação: figura, trava por área, marcações e o quiz de sábado ------------
+
+TERCA = AGORA + timedelta(days=4)
+SABADO = datetime(2026, 9, 26, 8, 20, tzinfo=BRT)
+AULAS = "noticias/aulas"
+
+
+def nota_da_aula(cenario, id_: str) -> str:
+    return (cenario["vault"] / AULAS / f"{id_}.md").read_text(encoding="utf-8")
+
+
+def marcar_no_obsidian(cenario, *ids: str) -> None:
+    for id_ in ids:
+        arquivo = cenario["vault"] / AULAS / f"{id_}.md"
+        arquivo.write_text(arquivo.read_text(encoding="utf-8").replace("status: pendente", "status: lida"), encoding="utf-8")
+
+
+def test_aula_de_foto_sai_com_a_foto_publicada_e_a_url_na_nota(cenario):
+    publicacao = PublicacaoDublê()
+
+    gerar(cenario, publicacao=publicacao)
+
+    html, capas, _ = publicacao.chamadas[0]
+    assert '<img class="foto" src="img/aula-2026-09-25-carros-1.jpg"' in html
+    assert capas["img/aula-2026-09-25-carros-1.jpg"].read_bytes()[:2] == b"\xff\xd8"
+    assert f"![]({FOTO_DO_TURBO})" in nota_de(cenario)
+    assert f"imagem: \"{FOTO_DO_TURBO}\"" in nota_da_aula(cenario, "2026-09-25-carros-1")
+
+
+def test_aula_de_esquema_sai_com_o_svg_inline_e_o_arquivo_ao_lado(cenario):
+    publicacao = PublicacaoDublê()
+
+    gerar(cenario, publicacao=publicacao)
+
+    assert f'<figure class="esquema">{SVG}</figure>' in publicacao.chamadas[0][0]
+    assert (cenario["vault"] / AULAS / "2026-09-25-negocios.svg").read_text(encoding="utf-8") == SVG
+    assert "![[2026-09-25-negocios.svg]]" in nota_de(cenario)
+
+
+def test_foto_que_nao_se_acha_deixa_a_aula_sem_figura_e_sem_aviso(cenario):
+    publicacao = PublicacaoDublê()
+
+    resultado = gerar(cenario, publicacao=publicacao, formacao=FormacaoDublê(foto_de="https://en.wikipedia.org/wiki/Nada"))
+
+    html, capas, _ = publicacao.chamadas[0]
+    assert not [p for p in capas if p.startswith("img/aula-")]
+    assert '<img class="foto"' not in html
+    assert not resultado.edicao.avisos
+
+
+def test_a_wikipedia_e_aberta_com_o_user_agent_do_whis(cenario):
+    vistos = []
+
+    def rede(request: httpx.Request) -> httpx.Response:
+        vistos.append((request.url.host, request.headers["user-agent"]))
+        return rede_das_capas(request)
+
+    gerar(cenario, rede=httpx.MockTransport(rede))
+
+    assert ("en.wikipedia.org", UA_WIKIPEDIA) in vistos
+
+
+def test_cada_aula_tem_o_botao_de_marcar(cenario):
+    publicacao = PublicacaoDublê()
+
+    gerar(cenario, publicacao=publicacao)
+
+    html = publicacao.chamadas[0][0]
+    assert '<button class="li" data-aula="2026-09-25-negocios" type="button">Li esta aula</button>' in html
+    assert 'data-aula="2026-09-25-carros-1"' in html
+    assert html.index("<script>") > html.index("</main>")
+
+
+def test_aula_nao_marcada_volta_e_a_area_nao_avanca(cenario):
+    gerar(cenario)
+    formacao, publicacao = FormacaoDublê(), PublicacaoDublê()
+
+    gerar(cenario, formacao=formacao, publicacao=publicacao, agora=TERCA)
+
+    assert formacao.vagas_recebidas == {"negocios": 0, "carros": 1}
+    nota = nota_de(cenario, "2026-09-29")
+    assert "Pendente desde 25/09" in nota and "### Proposta de valor" in nota
+    html = publicacao.chamadas[0][0]
+    assert "Pendente desde 25/09" in html
+    ordem = [html.index(f'data-aula="{id_}"') for id_ in ("2026-09-25-negocios", "2026-09-25-carros-1", "2026-09-29-carros-1")]
+    assert ordem == sorted(ordem)
+
+
+def test_sem_vaga_a_formacao_nem_e_chamada(cenario):
+    gerar(cenario)
+    gerar(cenario, agora=AGORA + timedelta(days=3))
+    formacao = FormacaoDublê(erro=AssertionError("a formação não devia ser chamada"))
+
+    gerar(cenario, formacao=formacao, agora=TERCA)
+
+    assert formacao.vagas_recebidas is None
+
+
+def test_aula_marcada_no_obsidian_libera_a_area(cenario):
+    gerar(cenario)
+    marcar_no_obsidian(cenario, "2026-09-25-negocios")
+    formacao = FormacaoDublê()
+
+    gerar(cenario, formacao=formacao, agora=TERCA)
+
+    assert formacao.vagas_recebidas == {"negocios": 1, "carros": 1}
+
+
+def test_rodar_de_novo_no_mesmo_dia_nao_duplica_aula_nem_trilha(cenario):
+    gerar(cenario)
+    trilha = (cenario["vault"] / CAMINHO_DA_TRILHA).read_bytes()
+    formacao, publicacao = FormacaoDublê(), PublicacaoDublê()
+
+    gerar(cenario, formacao=formacao, publicacao=publicacao)
+
+    assert formacao.vagas_recebidas is None
+    assert (cenario["vault"] / CAMINHO_DA_TRILHA).read_bytes() == trilha
+    assert sorted(p.name for p in (cenario["vault"] / AULAS).glob("*.md")) == [
+        "2026-09-25-carros-1.md",
+        "2026-09-25-negocios.md",
+    ]
+    assert 'data-aula="2026-09-25-negocios"' in publicacao.chamadas[0][0]
+
+
+def test_simular_nao_escreve_nota_de_aula(cenario):
+    gerar(cenario, simular=True)
+
+    assert not (cenario["vault"] / AULAS).exists()
+
+
+def test_aula_marcada_na_pagina_vira_lida_no_vault_e_libera_a_area(cenario):
+    gerar(cenario)
+    marcacoes = MarcacoesFake(leituras={"2026-09-25-negocios": "2026-09-25T22:00:00.000Z"})
+    formacao = FormacaoDublê()
+
+    gerar(cenario, formacao=formacao, marcacoes=marcacoes, agora=TERCA)
+
+    assert marcacoes.chamadas == [(URL_DO_ARTIFACT, "2026-09-25", ())]
+    texto = nota_da_aula(cenario, "2026-09-25-negocios")
+    assert "status: lida" in texto and "2026-09-25T22:00:00.000Z" in texto
+    assert "status: pendente" in nota_da_aula(cenario, "2026-09-25-carros-1")
+    assert formacao.vagas_recebidas == {"negocios": 1, "carros": 1}
+
+
+def test_falha_na_leitura_vira_aviso_e_nada_avanca(cenario):
+    gerar(cenario)
+    formacao = FormacaoDublê()
+
+    resultado = gerar(cenario, formacao=formacao, marcacoes=MarcacoesFake(erro=ErroDeMarcacoes("x")), agora=TERCA)
+
+    assert AVISO_DAS_MARCACOES in resultado.edicao.avisos and resultado.parcial
+    assert formacao.vagas_recebidas == {"negocios": 0, "carros": 1}
+
+
+def test_sem_artifact_ou_sem_nada_esperando_marca_a_leitura_nem_roda(cenario):
+    marcacoes = MarcacoesFake()
+    gerar(cenario, marcacoes=marcacoes)
+    marcar_no_obsidian(cenario, "2026-09-25-negocios", "2026-09-25-carros-1")
+
+    gerar(cenario, marcacoes=marcacoes, agora=TERCA)
+
+    assert marcacoes.chamadas == []
+
+
+def test_simular_le_o_banco_mas_nao_escreve(cenario):
+    gerar(cenario)
+    marcacoes = MarcacoesFake(leituras={"2026-09-25-negocios": "2026-09-25T22:00:00.000Z"})
+    formacao = FormacaoDublê()
+
+    gerar(cenario, formacao=formacao, marcacoes=marcacoes, simular=True, agora=TERCA)
+
+    assert formacao.vagas_recebidas == {"negocios": 1, "carros": 1}
+    assert "status: pendente" in nota_da_aula(cenario, "2026-09-25-negocios")
+
+
+def test_sabado_tem_quiz_e_nenhuma_aula_nova(cenario):
+    gerar(cenario)
+    marcar_no_obsidian(cenario, "2026-09-25-negocios", "2026-09-25-carros-1")
+    formacao, quiz, publicacao = FormacaoDublê(), QuizFake(), PublicacaoDublê()
+
+    resultado = gerar(cenario, formacao=formacao, quiz=quiz, publicacao=publicacao, agora=SABADO)
+
+    assert formacao.vagas_recebidas is None
+    assert [a.id for a in quiz.aulas_recebidas] == ["2026-09-25-carros-1", "2026-09-25-negocios"]
+    nota_do_quiz = (cenario["vault"] / "noticias/quiz/2026-09-26.md").read_text(encoding="utf-8")
+    assert "2026-09-26-q1" in nota_do_quiz and "2026-09-26-q2" in nota_do_quiz
+    assert "quiz: 2026-09-26" in nota_da_aula(cenario, "2026-09-25-negocios")
+    html = publicacao.chamadas[0][0]
+    assert 'class="pergunta" data-id="2026-09-26-q1" data-certa="1" data-quiz="2026-09-26"' in html
+    assert html.index('<h2 class="t">Quiz da semana') < html.index('<h2 class="t">Tecnologia')
+    assert "## Quiz da semana" in nota_de(cenario, "2026-09-26")
+    assert resultado.edicao.aprender is None and resultado.edicao.para_aprender == ()
+
+
+def test_sabado_mostra_as_pendentes_e_diz_que_o_quiz_volta_no_proximo(cenario):
+    gerar(cenario)
+    quiz = QuizFake()
+
+    resultado = gerar(cenario, quiz=quiz, agora=SABADO)
+
+    assert quiz.aulas_recebidas == []
+    assert resultado.edicao.aprender.pendente_desde == date(2026, 9, 25)
+    assert resultado.edicao.quiz.aviso == QUIZ_SEM_NADA
+    assert QUIZ_SEM_NADA in nota_de(cenario, "2026-09-26")
+
+
+def test_quiz_que_falha_traz_as_atrasadas_e_avisa(cenario):
+    gerar(cenario)
+    marcar_no_obsidian(cenario, "2026-09-25-negocios", "2026-09-25-carros-1")
+    gerar(cenario, quiz=QuizFake(), agora=SABADO)
+    domingo = SABADO + timedelta(days=1)
+    gerar(cenario, marcacoes=MarcacoesFake(respostas={"2026-09-26-q1": Resposta(0, False)}), agora=domingo)
+    marcar_no_obsidian(cenario, "2026-09-27-negocios", "2026-09-27-carros-1")
+
+    resultado = gerar(cenario, quiz=QuizFake(erro=ErroDeQuiz("x")), agora=SABADO + timedelta(days=7))
+
+    assert AVISO_DO_QUIZ in resultado.edicao.avisos
+    assert [(p.id, p.origem) for p in resultado.edicao.quiz.perguntas] == [
+        ("2026-10-03-q1", "2026-09-26-q1"),
+        ("2026-10-03-q2", "2026-09-26-q2"),
+    ]
+    antigo = (cenario["vault"] / "noticias/quiz/2026-09-26.md").read_text(encoding="utf-8")
+    assert "Resultado: errada" in antigo and "Resultado: sem resposta" in antigo
+
+
+def test_rodar_de_novo_no_sabado_reaproveita_o_quiz(cenario):
+    gerar(cenario)
+    marcar_no_obsidian(cenario, "2026-09-25-negocios", "2026-09-25-carros-1")
+    gerar(cenario, quiz=QuizFake(), agora=SABADO)
+    quiz = QuizFake()
+
+    resultado = gerar(cenario, quiz=quiz, agora=SABADO)
+
+    assert quiz.aulas_recebidas == []
+    assert [p.id for p in resultado.edicao.quiz.perguntas] == ["2026-09-26-q1", "2026-09-26-q2"]
+
+
+def test_sabado_forcado_em_dia_de_semana(cenario):
+    gerar(cenario)
+    formacao = FormacaoDublê()
+
+    resultado = gerar(cenario, formacao=formacao, quiz=QuizFake(), sabado=True, agora=TERCA)
+
+    assert formacao.vagas_recebidas is None and resultado.edicao.quiz is not None

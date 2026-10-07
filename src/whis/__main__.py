@@ -86,7 +86,9 @@ from .fakes import (
     EditorFake,
     FormacaoFake,
     LeitorDoXFake,
+    MarcacoesFake,
     PublicacaoFake,
+    QuizFake,
     ResumoDoDiaFake,
     ReunioesFake,
     fontes_de_exemplo,
@@ -103,6 +105,7 @@ _log = logging.getLogger("whis")
 #: digitada errada" com "nota parcial" leria a daily errada.
 SAIDA_COMPLETA = 0
 SAIDA_NAO_NASCEU = 1
+SAIDA_DE_USO = 2
 SAIDA_PARCIAL = 3
 
 CODIGOS_DE_SAIDA = f"""\
@@ -256,11 +259,15 @@ def montar_portas_do_jornal(configuracao: Configuracao, *, fakes: bool = False) 
     se houver): é o que emite as janelas do plano e aceita as capas no artifact.
     """
     if fakes:
-        _log.warning("Usando editor, formação, publicação e X FAKE — nada é enviado ao Claude nem ao X.")
-        return PortasDoJornal(EditorFake(), FormacaoFake(), PublicacaoFake(), LeitorDoXFake())
+        _log.warning("Usando editor, formação, publicação, quiz, marcações e X FAKE — nada vai ao Claude nem ao X.")
+        return PortasDoJornal(
+            EditorFake(), FormacaoFake(), PublicacaoFake(), LeitorDoXFake(), MarcacoesFake(), QuizFake()
+        )
 
     from .fonte_x import LeitorDoX
     from .jornal_claude import EditorClaude, FormacaoClaude, PublicacaoClaude
+    from .marcacoes_claude import MarcacoesClaude
+    from .quiz_claude import QuizClaude
 
     modelo = configuracao.claude_modelo or None
     cli = configuracao.claude_cli or None
@@ -269,6 +276,8 @@ def montar_portas_do_jornal(configuracao: Configuracao, *, fakes: bool = False) 
         formacao=FormacaoClaude(modelo=modelo, cli=cli),
         publicacao=PublicacaoClaude(cli=cli),
         leitor_do_x=LeitorDoX(),
+        marcacoes=MarcacoesClaude(cli=cli),
+        quiz=QuizClaude(modelo=modelo, cli=cli),
     )
 
 
@@ -541,8 +550,11 @@ def _comando_news(args: argparse.Namespace) -> int:
             configuracao.origem,
         )
         return SAIDA_COMPLETA
-    portas = montar_portas_do_jornal(configuracao, fakes=args.fakes)
     simular = args.simular or args.fakes
+    if args.sabado and not simular:
+        print("--sabado só vale com --simular ou --fakes: a edição de verdade só é de sábado no sábado.")
+        return SAIDA_DE_USO
+    portas = montar_portas_do_jornal(configuracao, fakes=args.fakes)
     try:
         resultado = gerar_jornal(
             datetime.now().astimezone(),
@@ -551,6 +563,9 @@ def _comando_news(args: argparse.Namespace) -> int:
             formacao=portas.formacao,
             publicacao=portas.publicacao,
             leitor_do_x=portas.leitor_do_x,
+            marcacoes=portas.marcacoes,
+            quiz=portas.quiz,
+            sabado=True if args.sabado else None,
             simular=simular,
         )
     except JornalNaoNasceu as erro:
@@ -585,6 +600,8 @@ def _relatar_jornal(resultado: ResultadoDoJornal) -> None:
         print(f"  {edicao.time_nome or 'Time'}: {len(edicao.time)}")
     aulas = (1 if edicao.aprender else 0) + len(edicao.para_aprender)
     print(f"  Aulas: {aulas}")
+    if edicao.quiz is not None:
+        print(f"  Quiz da semana: {len(edicao.quiz.perguntas)} pergunta(s)")
     print(
         " · ".join(
             parte
@@ -1496,6 +1513,11 @@ def construir_parser() -> argparse.ArgumentParser:
         "--agendada",
         action="store_true",
         help="é como a tarefa Whis-Noticias chama: sai sem gerar nada se [noticias].ativa = false",
+    )
+    news_cmd.add_argument(
+        "--sabado",
+        action="store_true",
+        help="faz a edição de sábado (o quiz no lugar das aulas novas) em qualquer dia; só com --simular ou --fakes",
     )
     news_cmd.set_defaults(funcao=_comando_news)
 

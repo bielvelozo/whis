@@ -696,7 +696,14 @@ def montar_jornal(edicao: "Edicao") -> str:
 
     def aula(a, nivel: str) -> list[str]:
         fontes = ", ".join(f"[{_dominio(url)}]({url})" for url in a.fontes)
-        return [f"{nivel} {a.titulo}", "", a.texto, "", f"Fontes: {fontes}", ""]
+        bloco = [f"{nivel} {a.titulo}", ""]
+        if a.pendente_desde is not None:
+            bloco += [f"_Pendente desde {a.pendente_desde.strftime('%d/%m')}_", ""]
+        if a.imagem:
+            bloco += [f"![]({a.imagem})", ""]
+        elif a.esquema and a.id:
+            bloco += [f"![[{a.id}.svg]]", ""]
+        return bloco + [a.texto, "", f"Fontes: {fontes}", ""]
 
     def item(i) -> list[str]:
         bloco = [f"### [{i.titulo}]({i.link})", ""]
@@ -707,6 +714,15 @@ def montar_jornal(edicao: "Edicao") -> str:
         rodape = i.fonte + (f" · {hora(i.data)}" if i.data else "")
         return bloco + [f"_{rodape}_", ""]
 
+    if edicao.quiz is not None:
+        linhas += ["## Quiz da semana", ""]
+        if not edicao.quiz.perguntas:
+            linhas += [f"_{edicao.quiz.aviso}_", ""]
+        for numero, pergunta in enumerate(edicao.quiz.perguntas, start=1):
+            linhas += [f"**{numero}. {pergunta.pergunta}**", ""]
+            linhas += [f"- {'abcd'[i]}) {texto}" for i, texto in enumerate(pergunta.alternativas)] + [""]
+        if edicao.quiz.perguntas:
+            linhas += [f"Respostas e resultado em [[noticias/quiz/{edicao.quiz.data.isoformat()}]].", ""]
     if edicao.aprender:
         linhas += ["## Aprender hoje", "", *aula(edicao.aprender, "###")]
     for secao in edicao.secoes:

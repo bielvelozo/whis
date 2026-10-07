@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import replace
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
@@ -35,7 +35,10 @@ from .portas import (
     Formacao,
     ItemEscolhido,
     Janelas,
+    Marcacoes,
     Medida,
+    PerguntaNova,
+    PerguntasNovas,
     Publicacao,
     ResumoDoDia,
     Reuniao,
@@ -368,11 +371,20 @@ def _primeiros_por_fonte(candidatos: Iterable[Candidato], quantos: int) -> tuple
     return tuple(escolhidos)
 
 
-class FormacaoFake:
-    """Formação que ensina sempre as mesmas três aulas: uma de software, duas de carro.
+ESQUEMA_FAKE = (
+    '<svg viewBox="0 0 300 90"><rect x="10" y="20" width="110" height="50" rx="6" fill="none" '
+    'stroke="currentColor"/><text x="65" y="50" text-anchor="middle" font-size="13">problema</text>'
+    '<line x1="120" y1="45" x2="180" y2="45" stroke="#5b3fb5" stroke-width="2"/>'
+    '<rect x="180" y="20" width="110" height="50" rx="6" fill="none" stroke="#5b3fb5"/>'
+    '<text x="235" y="50" text-anchor="middle" font-size="13">seu produto</text></svg>'
+)
 
-    Cada aula traz uma URL `https://` em `fontes` e a linha da trilha do dia
-    recebido. Guarda a data e a trilha que recebeu.
+
+class FormacaoFake:
+    """Formação que ensina sempre as mesmas aulas: uma de negócios (com esquema), até duas de carro.
+
+    Respeita as vagas recebidas. Cada aula traz uma URL `https://` em `fontes`
+    e a linha da trilha do dia recebido. Guarda a data, a trilha e as vagas.
     """
 
     def __init__(self, medida: Medida = MEDIDA_DA_FORMACAO_FAKE, erro: Exception | None = None) -> None:
@@ -380,45 +392,101 @@ class FormacaoFake:
         self._erro = erro
         self.data_recebida: date | None = None
         self.trilha_recebida: str | None = None
+        self.vagas_recebidas: dict[str, int] | None = None
 
-    def ensinar(self, data: date, trilha: str) -> Formacao:
+    def ensinar(self, data: date, trilha: str, vagas: Mapping[str, int] | None = None) -> Formacao:
         self.data_recebida = data
         self.trilha_recebida = trilha
+        self.vagas_recebidas = dict(vagas) if vagas is not None else {"negocios": 1, "carros": 2}
         if self._erro is not None:
             raise self._erro
         dia = data.isoformat()
         return Formacao(
-            software=Aula(
-                titulo="[fake] Testes de contrato",
+            negocios=Aula(
+                titulo="[fake] Proposta de valor",
                 texto=(
-                    "Um teste de contrato fixa o que uma porta promete, não como o adaptador "
-                    "faz. Por que isso importa: trocar o adaptador não quebra quem o usa."
+                    "Proposta de valor é o motivo pelo qual alguém escolhe o seu produto e não "
+                    "outro. Por que isso importa: sem ela, ninguém sabe por que comprar de você."
                 ),
-                fontes=("https://martinfowler.com/bliki/ContractTest.html",),
-                trilha=f"- {dia} — software: testes de contrato",
-            ),
-            carros=(
-                Aula(
-                    titulo="[fake] O motor rotativo",
-                    texto=(
-                        "O Wankel troca pistões por um rotor triangular. Por que isso importa: "
-                        "explica o som e a fama do RX-7."
-                    ),
-                    fontes=("https://en.wikipedia.org/wiki/Wankel_engine",),
-                    trilha=f"- {dia} — carros: motor rotativo Wankel",
-                ),
-                Aula(
-                    titulo="[fake] O que é JDM",
-                    texto=(
-                        "JDM são os carros feitos para o mercado japonês. Por que isso importa: "
-                        "é a porta de entrada da cultura que ele começou a acompanhar."
-                    ),
-                    fontes=("https://en.wikipedia.org/wiki/Japanese_domestic_market",),
-                    trilha=f"- {dia} — carros: o que é JDM",
-                ),
-            ),
+                fontes=("https://en.wikipedia.org/wiki/Value_proposition",),
+                trilha=f"- {dia} — negócios: proposta de valor",
+                visual="esquema",
+                esquema=ESQUEMA_FAKE,
+            )
+            if self.vagas_recebidas.get("negocios", 0) > 0
+            else None,
+            carros=_aulas_de_carro_fake(dia)[: self.vagas_recebidas.get("carros", 0)],
             medida=self._medida,
         )
+
+
+class MarcacoesFake:
+    """O banco da página de mentira: devolve as marcações dadas e guarda o que recebeu."""
+
+    def __init__(
+        self,
+        leituras: Mapping[str, str] | None = None,
+        respostas: Mapping[str, object] | None = None,
+        erro: Exception | None = None,
+    ) -> None:
+        self._marcacoes = Marcacoes(leituras=dict(leituras or {}), respostas=dict(respostas or {}))
+        self._erro = erro
+        self.chamadas: list[tuple[str, str | None, tuple[str, ...]]] = []
+
+    def ler(self, url: str, *, leituras_desde: str | None, quizzes: Sequence[str]) -> Marcacoes:
+        self.chamadas.append((url, leituras_desde, tuple(quizzes)))
+        if self._erro is not None:
+            raise self._erro
+        return self._marcacoes
+
+
+class QuizFake:
+    """Uma pergunta fixa por aula recebida, com três alternativas; a certa é a segunda."""
+
+    def __init__(self, erro: Exception | None = None) -> None:
+        self._erro = erro
+        self.aulas_recebidas: list[Aula] = []
+
+    def perguntar(self, aulas: Sequence[Aula]) -> PerguntasNovas:
+        self.aulas_recebidas = list(aulas)
+        if self._erro is not None:
+            raise self._erro
+        return PerguntasNovas(
+            perguntas=tuple(
+                PerguntaNova(
+                    aula=aula.id,
+                    pergunta=f"[fake] Qual é a ideia de “{aula.titulo}”?",
+                    alternativas=("Nenhuma", "A do texto da aula", "Outra"),
+                    certa=1,
+                    explicacao="É o que o texto da aula diz.",
+                )
+                for aula in aulas
+            ),
+            medida=Medida(0.05, 12.0, Janelas(31, 61), Janelas(31, 61)),
+        )
+
+
+def _aulas_de_carro_fake(dia: str) -> tuple[Aula, ...]:
+    return (
+        Aula(
+            titulo="[fake] O motor rotativo",
+            texto=(
+                "O Wankel troca pistões por um rotor triangular. Por que isso importa: "
+                "explica o som e a fama do RX-7."
+            ),
+            fontes=("https://en.wikipedia.org/wiki/Wankel_engine",),
+            trilha=f"- {dia} — carros: motor rotativo Wankel",
+        ),
+        Aula(
+            titulo="[fake] O que é JDM",
+            texto=(
+                "JDM são os carros feitos para o mercado japonês. Por que isso importa: "
+                "é a porta de entrada da cultura que ele começou a acompanhar."
+            ),
+            fontes=("https://en.wikipedia.org/wiki/Japanese_domestic_market",),
+            trilha=f"- {dia} — carros: o que é JDM",
+        ),
+    )
 
 
 class PublicacaoFake:

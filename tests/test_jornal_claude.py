@@ -30,6 +30,7 @@ from claude_agent_sdk import (
 from whis.jornal_claude import (
     AMBIENTE_DA_PUBLICACAO,
     ESQUEMA_DA_FORMACAO,
+    esquema_da_formacao,
     SISTEMA_ESCOLHA,
     SISTEMA_FORMACAO,
     EditorClaude,
@@ -567,12 +568,12 @@ def test_ambiente_herdado_de_outra_sessao_vai_vazio(monkeypatch: pytest.MonkeyPa
 # --- a formação --------------------------------------------------------------------
 
 
-def _aula(titulo: str, fontes: list[str], trilha: str) -> dict:
-    return {"titulo": titulo, "texto": f"Texto de {titulo}. Por que isso importa: importa.", "fontes": fontes, "trilha": trilha}
+def _aula(titulo: str, fontes: list[str], trilha: str, **figura) -> dict:
+    return {"titulo": titulo, "texto": f"Texto de {titulo}. Por que isso importa: importa.", "fontes": fontes, "trilha": trilha, **figura}
 
 
 FORMACAO_COMPLETA = {
-    "software": _aula("Testes de contrato", ["https://martinfowler.com/bliki/ContractTest.html"], "software: testes de contrato"),
+    "negocios": _aula("Proposta de valor", ["https://en.wikipedia.org/wiki/Value_proposition"], "negócios: proposta de valor"),
     "carros": [
         _aula("Motor rotativo", ["https://en.wikipedia.org/wiki/Wankel_engine"], "carros: motor rotativo"),
         _aula("O que é JDM", ["https://en.wikipedia.org/wiki/Japanese_domestic_market"], "carros: o que é JDM"),
@@ -589,13 +590,13 @@ def test_aula_sem_url_e_descartada():
 
 
 def test_fonte_que_nao_e_http_nao_conta_como_url():
-    dados = {**FORMACAO_COMPLETA, "software": _aula("Git", ["livro do Pro Git", "ftp://x"], "software: git")}
+    dados = {**FORMACAO_COMPLETA, "negocios": _aula("Margem", ["livro de finanças", "ftp://x"], "negócios: margem")}
 
-    assert interpretar_formacao(dados, DIA).software is None
+    assert interpretar_formacao(dados, DIA).negocios is None
 
 
 def test_trilha_so_ganha_as_linhas_das_aulas_aceitas():
-    dados = {**FORMACAO_COMPLETA, "software": _aula("Sem fonte", [], "software: sem fonte")}
+    dados = {**FORMACAO_COMPLETA, "negocios": _aula("Sem fonte", [], "negócios: sem fonte")}
 
     formacao = interpretar_formacao(dados, DIA)
 
@@ -606,9 +607,100 @@ def test_trilha_so_ganha_as_linhas_das_aulas_aceitas():
 
 
 def test_linha_da_trilha_sem_area_ganha_a_area():
-    dados = {**FORMACAO_COMPLETA, "software": _aula("Filas", ["https://exemplo.com"], "filas e backpressure")}
+    dados = {**FORMACAO_COMPLETA, "negocios": _aula("Caixa", ["https://exemplo.com"], "fluxo de caixa")}
 
-    assert interpretar_formacao(dados, DIA).software.trilha == "- 2026-09-25 — software: filas e backpressure"
+    assert interpretar_formacao(dados, DIA).negocios.trilha == "- 2026-09-25 — negócios: fluxo de caixa"
+
+
+def test_area_escrita_sem_acento_nao_se_repete_na_trilha():
+    dados = {**FORMACAO_COMPLETA, "negocios": _aula("Preço", ["https://exemplo.com"], "negocios: preço")}
+
+    assert interpretar_formacao(dados, DIA).negocios.trilha == "- 2026-09-25 — negócios: preço"
+
+
+SVG_SIMPLES = '<svg viewBox="0 0 10 10"><rect x="1" y="1" width="8" height="8"/></svg>'
+
+
+def test_aula_de_foto_guarda_a_pagina_da_foto_se_ela_e_fonte():
+    wiki = "https://en.wikipedia.org/wiki/Mazda_RX-7"
+    dados = {**FORMACAO_COMPLETA, "carros": [_aula("RX-7", [wiki], "carros: rx-7", visual="foto", foto_de=wiki, esquema="")]}
+
+    [aula] = interpretar_formacao(dados, DIA).carros
+
+    assert (aula.visual, aula.foto_de, aula.esquema) == ("foto", wiki, "")
+
+
+def test_carro_com_foto_de_fora_das_fontes_usa_a_wikipedia_das_fontes():
+    wiki = "https://en.wikipedia.org/wiki/Mazda_RX-7"
+    dados = {**FORMACAO_COMPLETA, "carros": [_aula("RX-7", ["https://blog.com/rx7", wiki], "carros: rx-7", visual="foto", foto_de="https://outro.com/x")]}
+
+    [aula] = interpretar_formacao(dados, DIA).carros
+
+    assert (aula.titulo, aula.visual, aula.foto_de) == ("RX-7", "foto", wiki)
+
+
+def test_carro_nunca_sai_com_desenho_so_com_foto():
+    wiki = "https://en.wikipedia.org/wiki/Downforce"
+    dados = {**FORMACAO_COMPLETA, "carros": [_aula("Downforce", [wiki], "carros: downforce", visual="esquema", foto_de="", esquema=SVG_SIMPLES)]}
+
+    [aula] = interpretar_formacao(dados, DIA).carros
+
+    assert (aula.visual, aula.foto_de, aula.esquema) == ("foto", wiki, "")
+
+
+def test_negocio_com_foto_de_fora_das_fontes_fica_sem_figura():
+    dados = {**FORMACAO_COMPLETA, "negocios": _aula("Margem", ["https://exemplo.com"], "negócios: margem", visual="foto", foto_de="https://outro.com/x")}
+
+    aula = interpretar_formacao(dados, DIA).negocios
+
+    assert (aula.titulo, aula.visual, aula.foto_de) == ("Margem", "", "")
+
+
+def test_aula_de_esquema_guarda_o_svg_validado():
+    dados = {**FORMACAO_COMPLETA, "negocios": _aula("Margem", ["https://exemplo.com"], "negócios: margem", visual="esquema", foto_de="", esquema=SVG_SIMPLES)}
+
+    aula = interpretar_formacao(dados, DIA).negocios
+
+    assert (aula.visual, aula.esquema, aula.foto_de) == ("esquema", SVG_SIMPLES, "")
+
+
+def test_esquema_recusado_vira_aula_sem_figura_mas_a_aula_fica():
+    dados = {**FORMACAO_COMPLETA, "negocios": _aula("Margem", ["https://exemplo.com"], "negócios: margem", visual="esquema", esquema="<svg><script/></svg>")}
+
+    aula = interpretar_formacao(dados, DIA).negocios
+
+    assert aula.titulo == "Margem" and (aula.visual, aula.esquema) == ("", "")
+
+
+def test_a_regra_da_figura_esta_no_prompt_e_no_esquema():
+    assert "esquema" in SISTEMA_FORMACAO and "Wikipédia" in SISTEMA_FORMACAO
+    assert "Nunca desenhe carro" in SISTEMA_FORMACAO
+    campos = ESQUEMA_DA_FORMACAO["properties"]["carros"]["items"]["properties"]
+    assert campos["visual"]["enum"] == ["foto", "esquema"] and {"foto_de", "esquema"} <= set(campos)
+
+
+def test_o_esquema_e_o_pedido_seguem_as_vagas_do_dia():
+    esquema = esquema_da_formacao({"negocios": 0, "carros": 1})
+
+    assert list(esquema["properties"]) == ["carros"] and esquema["required"] == ["carros"]
+    assert esquema["properties"]["carros"]["maxItems"] == 1
+    assert "Hoje: 0 aula(s) de negócios e 1 de carros." in montar_pedido_de_formacao(DIA, "", {"negocios": 0, "carros": 1})
+
+
+def test_aula_de_area_sem_vaga_e_ignorada():
+    formacao = interpretar_formacao(FORMACAO_COMPLETA, DIA, {"negocios": 0, "carros": 1})
+
+    assert formacao.negocios is None
+    assert [aula.titulo for aula in formacao.carros] == ["Motor rotativo"]
+
+
+def test_formacao_com_vagas_manda_o_esquema_delas():
+    formacao = FormacaoGravada([_resultado(structured_output={"carros": FORMACAO_COMPLETA["carros"][:1]})])
+
+    resultado = formacao.ensinar(DIA, "", {"negocios": 0, "carros": 1})
+
+    assert formacao.opcoes[0].output_format["schema"] == esquema_da_formacao({"negocios": 0, "carros": 1})
+    assert resultado.negocios is None and len(resultado.carros) == 1
 
 
 def test_formacao_fica_com_no_maximo_duas_aulas_de_carro():
@@ -619,7 +711,7 @@ def test_formacao_fica_com_no_maximo_duas_aulas_de_carro():
 
 
 def test_formacao_sem_nenhuma_aula_aceita_vira_erro():
-    dados = {"software": _aula("A", [], "software: a"), "carros": [_aula("B", [], "carros: b")]}
+    dados = {"negocios": _aula("A", [], "negócios: a"), "carros": [_aula("B", [], "carros: b")]}
 
     with pytest.raises(ErroDeFormacao, match="descartadas"):
         interpretar_formacao(dados, DIA)
@@ -652,7 +744,7 @@ def test_formacao_e_agentica_com_busca_na_web_e_saida_estruturada():
     assert opcoes.max_turns == 30
     assert opcoes.output_format == {"type": "json_schema", "schema": ESQUEMA_DA_FORMACAO}
     assert formacao.timeout_s == 420
-    assert resultado.software.titulo == "Testes de contrato"
+    assert resultado.negocios.titulo == "Proposta de valor"
     assert len(resultado.carros) == 2
     assert resultado.medida.custo_usd == pytest.approx(0.24)
     assert resultado.medida.plano_primeiro == Janelas(31, 60)
@@ -697,6 +789,14 @@ def test_republicacao_le_lista_e_publica_no_mesmo_endereco_sem_force(edicao):
     assert "overwrite_unread" in pedido[publicacao:]
     assert "SEM force" in pedido
     assert f'"img/2.jpg": "{capas["img/2.jpg"].as_posix()}"' in pedido
+
+
+def test_os_dois_pedidos_de_publicacao_declaram_o_banco_da_pagina(edicao):
+    html, capas = edicao
+
+    for pedido in (pedido_de_primeira_publicacao(html, capas), pedido_de_republicacao(html, capas, URL)):
+        assert 'capabilities exatamente {"db": {}}' in pedido
+        assert "sem capabilities" not in pedido.lower() and "não passe capabilities" not in pedido.lower()
 
 
 def test_publicacao_usa_haiku_com_artifact_e_read_na_pasta_da_edicao(edicao):

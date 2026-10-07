@@ -8,7 +8,7 @@ testes. Trocar de provedor não toca nenhuma das costuras.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
@@ -135,24 +135,37 @@ class PortaEditor(Protocol):
 
 @dataclass(frozen=True)
 class Aula:
-    """Um texto da formação, escrito a partir das páginas em `fontes`."""
+    """Um texto da formação, escrito a partir das páginas em `fontes`.
+
+    A figura é `foto` (o caminho publicado da imagem baixada de `imagem`, que
+    veio da página `foto_de`) ou `esquema` (um SVG já validado); `visual` diz
+    qual das duas o Claude escolheu. `id` nasce com a aula e é a chave da nota
+    em `noticias/aulas/` e da marcação na página.
+    """
 
     titulo: str
     texto: str
     fontes: tuple[str, ...]
     trilha: str = ""
+    visual: str = ""
+    foto_de: str = ""
+    esquema: str = ""
+    imagem: str = ""
+    foto: str = ""
+    id: str = ""
+    pendente_desde: date | None = None
 
 
 @dataclass(frozen=True)
 class Formacao:
-    """O que a formação devolve: uma aula de software e as de carro aceitas."""
+    """O que a formação devolve: uma aula de negócios e as de carro aceitas."""
 
-    software: Aula | None = None
+    negocios: Aula | None = None
     carros: tuple[Aula, ...] = ()
     medida: Medida = field(default_factory=Medida)
 
     def aulas(self) -> tuple[Aula, ...]:
-        return ((self.software,) if self.software else ()) + self.carros
+        return ((self.negocios,) if self.negocios else ()) + self.carros
 
 
 class ErroDeFormacao(RuntimeError):
@@ -163,8 +176,74 @@ class ErroDeFormacao(RuntimeError):
 class PortaFormacao(Protocol):
     """Pesquisa na web e ensina o próximo passo da trilha."""
 
-    def ensinar(self, data: date, trilha: str) -> Formacao:
-        """`trilha` é o texto de `noticias/trilha.md`. Levanta `ErroDeFormacao`."""
+    def ensinar(self, data: date, trilha: str, vagas: Mapping[str, int]) -> Formacao:
+        """`trilha` é o texto de `noticias/trilha.md`; `vagas` é `{"negocios": n, "carros": m}`.
+
+        Levanta `ErroDeFormacao`.
+        """
+        ...
+
+
+@dataclass(frozen=True)
+class Resposta:
+    """Uma resposta do quiz marcada na página: a alternativa escolhida e se era a certa."""
+
+    escolha: int
+    certa: bool
+
+
+@dataclass(frozen=True)
+class Marcacoes:
+    """O que ele marcou na página: aulas lidas (`id → quando`) e respostas do quiz."""
+
+    leituras: Mapping[str, str] = field(default_factory=dict)
+    respostas: Mapping[str, Resposta] = field(default_factory=dict)
+    medida: Medida = field(default_factory=Medida)
+
+
+class ErroDeMarcacoes(RuntimeError):
+    """Não deu para ler o banco da página; nada avança hoje."""
+
+
+@runtime_checkable
+class PortaMarcacoes(Protocol):
+    """Lê o banco da página publicada: as coleções `leituras` e `respostas`."""
+
+    def ler(self, url: str, *, leituras_desde: str | None, quizzes: Sequence[str]) -> Marcacoes:
+        """Só as leituras com `em >= leituras_desde` e as respostas dos `quizzes` dados.
+
+        Sem nenhum dos dois, não lê nada. Levanta `ErroDeMarcacoes`.
+        """
+        ...
+
+
+@dataclass(frozen=True)
+class PerguntaNova:
+    """Uma pergunta de múltipla escolha sobre uma aula; `certa` é o índice em `alternativas`."""
+
+    aula: str
+    pergunta: str
+    alternativas: tuple[str, ...]
+    certa: int
+    explicacao: str
+
+
+@dataclass(frozen=True)
+class PerguntasNovas:
+    perguntas: tuple[PerguntaNova, ...] = ()
+    medida: Medida = field(default_factory=Medida)
+
+
+class ErroDeQuiz(RuntimeError):
+    """As perguntas novas não vieram; o quiz sai só com as atrasadas."""
+
+
+@runtime_checkable
+class PortaQuiz(Protocol):
+    """Escreve uma pergunta nova por aula recebida, só a partir do texto dela."""
+
+    def perguntar(self, aulas: Sequence[Aula]) -> PerguntasNovas:
+        """Levanta `ErroDeQuiz`."""
         ...
 
 

@@ -25,15 +25,20 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import httpx
 from PIL import Image
 
+from . import aulas as _aulas
+from . import quiz as _quiz
 from . import vault as _vault
+from .aulas import NotaDeAula
 from .configuracao import Configuracao
-from .efemeride import Efemeride, buscar_efemeride
+from .efemeride import UA_WIKIPEDIA, Efemeride, buscar_efemeride
 from .feeds import Coleta, coletar
 from .fonte_x import ErroDoX, LoginDoXVenceu, PortaDoX, candidatos_do_x
+from .fotos_das_aulas import imagem_da_pagina
 from .fontes_do_jornal import (
     CAMINHO_DAS_FONTES,
     MODELO_DAS_FONTES,
@@ -49,15 +54,22 @@ from .portas import (
     ErroDeEditor,
     ErroDeFormacao,
     ErroDePublicacao,
+    ErroDeMarcacoes,
+    ErroDeQuiz,
     Escolha,
     Formacao,
     ItemEscolhido,
     Janelas,
+    Marcacoes,
     Medida,
+    PerguntasNovas,
     PortaEditor,
     PortaFormacao,
+    PortaMarcacoes,
     PortaPublicacao,
+    PortaQuiz,
 )
+from .quiz import QuizDaSemana
 
 _log = logging.getLogger("whis.jornal")
 
@@ -83,6 +95,10 @@ UA_DAS_CAPAS = (
 AVISO_DA_ESCOLHA = "seleção automática indisponível; itens por ordem de chegada"
 AVISO_DA_FORMACAO = "formação indisponível hoje"
 AVISO_DA_PUBLICACAO = "a página não foi publicada; esta nota existe"
+AVISO_DAS_MARCACOES = "não consegui ler o que você marcou na página; as aulas pendentes continuam"
+AVISO_DO_QUIZ = "quiz novo indisponível hoje"
+QUIZ_SEM_NADA = "Nenhuma aula lida desde o último quiz. O quiz volta no próximo sábado."
+SABADO = 5
 AVISO_DO_LOGIN_DO_X = "o login do X venceu: rode python -m whis x-login"
 INICIO_DO_X_INDISPONIVEL = "X indisponível hoje"
 
@@ -137,6 +153,7 @@ class Edicao:
     capa_da_efemeride: str | None = None
     aprender: Aula | None = None
     para_aprender: tuple[Aula, ...] = ()
+    quiz: QuizDaSemana | None = None
     avisos: tuple[str, ...] = ()
     fontes_com_falha: tuple[str, ...] = ()
     plano_antes: Janelas | None = None
@@ -168,12 +185,14 @@ class ResultadoDoJornal:
 
 @dataclass(frozen=True)
 class PortasDoJornal:
-    """As portas que uma edição usa, montadas juntas pela casca: as três do Claude e o leitor do X."""
+    """As portas que uma edição usa, montadas juntas pela casca: as do Claude e o leitor do X."""
 
     editor: PortaEditor
     formacao: PortaFormacao
     publicacao: PortaPublicacao
     leitor_do_x: PortaDoX | None = None
+    marcacoes: PortaMarcacoes | None = None
+    quiz: PortaQuiz | None = None
 
 
 class JornalNaoNasceu(RuntimeError):
@@ -189,6 +208,9 @@ def gerar_jornal(
     publicacao: PortaPublicacao,
     rede: httpx.BaseTransport | None = None,
     leitor_do_x: PortaDoX | None = None,
+    marcacoes: PortaMarcacoes | None = None,
+    quiz: PortaQuiz | None = None,
+    sabado: bool | None = None,
     simular: bool = False,
     pasta_da_edicao: Path | None = None,
     espera_sem_rede_s: float = 60.0,
@@ -199,7 +221,8 @@ def gerar_jornal(
     """Gera a edição de hoje, escreve a nota e publica a página.
 
     `simular=True` coleta, chama o Claude e monta nota e página numa pasta
-    temporária, mas não publica nem escreve no vault.
+    temporária, mas não publica nem escreve no vault. `sabado=None` decide pelo
+    dia da semana; `True` faz a edição de sábado (quiz no lugar das aulas novas).
 
     Levanta `JornalNaoNasceu` quando nenhum feed respondeu mesmo depois de
     esperar a rede — o caso do PC que acabou de ligar.
@@ -230,8 +253,19 @@ def gerar_jornal(
     avisos: list[str] = list(dict.fromkeys(avisos_do_x.values()))
     limites = {secao.id: (secao.minimo, secao.maximo) for secao in fontes.secoes}
     escolha = _escolher(editor, coleta, limites, avisos)
-    trilha = ler_trilha(vault)
-    aulas = _ensinar(formacao, hoje, trilha, avisos)
+    e_sabado = hoje.weekday() == SABADO if sabado is None else sabado
+
+    notas_do_vault = _aulas.ler_aulas(vault)
+    quizzes_do_vault = _quiz.ler_quizzes(vault)
+    lido = _ler_marcacoes(marcacoes, ultima_url(vault), notas_do_vault, quizzes_do_vault, avisos)
+    notas = _aulas.aplicar_leituras(notas_do_vault, lido.leituras)
+    quizzes = _quiz.aplicar_respostas(quizzes_do_vault, lido.respostas, hoje)
+
+    vagas = _aulas.vagas(notas, hoje, sabado=e_sabado)
+    novas = _ensinar(formacao, hoje, ler_trilha(vault), vagas, avisos) if any(vagas.values()) else Formacao()
+    nascidas = _com_fotos_achadas(_aulas.nascer(novas, hoje, notas), rede)
+    cena = _aulas.em_cena([*notas, *nascidas], hoje)
+    quiz_de_hoje = _montar_quiz(quiz, hoje, notas, quizzes, avisos) if e_sabado else None
 
     pasta = Path(pasta_da_edicao) if pasta_da_edicao else Path(
         tempfile.mkdtemp(prefix=f"whis-jornal-{hoje.isoformat()}-")
@@ -242,21 +276,27 @@ def gerar_jornal(
         fontes,
         coleta,
         escolha,
-        aulas,
+        cena,
         placar,
         efemeride,
         avisos,
         avisos_do_x,
     )
+    edicao = replace(edicao, quiz=quiz_de_hoje.quiz if quiz_de_hoje else None)
     capas = baixar_capas(edicao, pasta, rede=rede)
     edicao = _com_capas(edicao, capas)
+    fotos = baixar_fotos_das_aulas(_aulas_da_edicao(edicao), pasta, rede=rede)
+    edicao = _com_fotos(edicao, fotos)
 
-    medidas = [escolha.medida, aulas.medida]
+    medidas = [escolha.medida, lido.medida, novas.medida]
+    if quiz_de_hoje:
+        medidas.append(quiz_de_hoje.medida)
     edicao = _com_medidas(edicao, medidas, inicio, artifact=ultima_url(vault))
 
     pagina = pasta / "jornal.html"
     pagina.write_text(pagina_html(edicao), encoding="utf-8")
-    arquivos_das_capas = {relativo: pasta / relativo for relativo in sorted(set(capas.values()))}
+    publicados = sorted(set(capas.values()) | set(fotos.values()))
+    arquivos_das_capas = {relativo: pasta / relativo for relativo in publicados}
 
     if simular:
         (pasta / f"{hoje.isoformat()}.md").write_text(_vault.montar_jornal(edicao), encoding="utf-8")
@@ -273,7 +313,8 @@ def gerar_jornal(
     raiz = _vault.preparar(vault)
     caminho = caminho_da_edicao(hoje)
     nota = _vault.escrever(raiz, caminho, _vault.montar_jornal(edicao), zonas=_vault.ZONAS_DO_JORNAL)
-    acrescentar_trilha(raiz, hoje, aulas)
+    _escrever_formacao(raiz, hoje, notas_do_vault, notas, nascidas, quizzes_do_vault, quizzes, quiz_de_hoje)
+    acrescentar_trilha(raiz, hoje, novas)
 
     url_atual = edicao.artifact
     falha: str | None = None
@@ -515,13 +556,110 @@ def escolha_automatica(
     )
 
 
-def _ensinar(formacao: PortaFormacao, hoje: date, trilha: str, avisos: list[str]) -> Formacao:
+def _ensinar(
+    formacao: PortaFormacao, hoje: date, trilha: str, vagas: dict[str, int], avisos: list[str]
+) -> Formacao:
     try:
-        return formacao.ensinar(hoje, trilha)
+        return formacao.ensinar(hoje, trilha, vagas)
     except ErroDeFormacao as erro:
         _log.error("A formação falhou: %s", erro)
         avisos.append(AVISO_DA_FORMACAO)
         return Formacao()
+
+
+def _ler_marcacoes(
+    porta: PortaMarcacoes | None,
+    url: str | None,
+    notas: Sequence[NotaDeAula],
+    quizzes: Sequence[QuizDaSemana],
+    avisos: list[str],
+) -> Marcacoes:
+    """O que ele marcou na página, só do que ainda espera marca; na falha, nada avança."""
+    if porta is None or url is None:
+        return Marcacoes()
+    pendentes = [nota.data for nota in notas if nota.status == _aulas.PENDENTE]
+    leituras_desde = min(pendentes).isoformat() if pendentes else None
+    datas = sorted({q.data.isoformat() for q in quizzes if any(not p.resultado for p in q.perguntas)})
+    if not leituras_desde and not datas:
+        return Marcacoes()
+    try:
+        return porta.ler(url, leituras_desde=leituras_desde, quizzes=datas)
+    except ErroDeMarcacoes as erro:
+        _log.error("Não deu para ler as marcações da página: %s", erro)
+        avisos.append(AVISO_DAS_MARCACOES)
+        return Marcacoes()
+
+
+def _com_fotos_achadas(nascidas: Sequence[NotaDeAula], rede: httpx.BaseTransport | None) -> tuple[NotaDeAula, ...]:
+    aulas = achar_fotos([nota.aula for nota in nascidas], rede=rede)
+    return tuple(replace(nota, aula=aula) for nota, aula in zip(nascidas, aulas))
+
+
+@dataclass(frozen=True)
+class QuizDeHoje:
+    """O quiz do sábado, as aulas que entraram nele e quanto as perguntas novas custaram.
+
+    `novo` é falso quando o quiz de hoje já existia (rodar de novo no sábado o reaproveita).
+    """
+
+    quiz: QuizDaSemana
+    aulas: tuple[NotaDeAula, ...] = ()
+    medida: Medida = Medida()
+    novo: bool = True
+
+
+def _montar_quiz(
+    porta: PortaQuiz | None,
+    hoje: date,
+    notas: Sequence[NotaDeAula],
+    quizzes: Sequence[QuizDaSemana],
+    avisos: list[str],
+) -> QuizDeHoje:
+    existente = next((q for q in quizzes if q.data == hoje), None)
+    if existente is not None:
+        return QuizDeHoje(existente, novo=False)
+    a_perguntar = _quiz.aulas_do_quiz(notas) if porta is not None else []
+    novas = PerguntasNovas()
+    if a_perguntar:
+        try:
+            novas = porta.perguntar([nota.aula for nota in a_perguntar])
+        except ErroDeQuiz as erro:
+            _log.error("As perguntas novas do quiz não vieram: %s", erro)
+            avisos.append(AVISO_DO_QUIZ)
+    quiz = _quiz.novo_quiz(hoje, novas.perguntas, _quiz.atrasadas(quizzes, hoje))
+    if not quiz.perguntas:
+        quiz = replace(quiz, aviso=QUIZ_SEM_NADA)
+    perguntadas = {pergunta.aula for pergunta in novas.perguntas}
+    return QuizDeHoje(quiz, tuple(nota for nota in a_perguntar if nota.id in perguntadas), novas.medida)
+
+
+def _escrever_formacao(
+    raiz: Path,
+    hoje: date,
+    notas_do_vault: Sequence[NotaDeAula],
+    notas: Sequence[NotaDeAula],
+    nascidas: Sequence[NotaDeAula],
+    quizzes_do_vault: Sequence[QuizDaSemana],
+    quizzes: Sequence[QuizDaSemana],
+    quiz_de_hoje: QuizDeHoje | None,
+) -> None:
+    """Grava só o que mudou: aulas lidas, as que nasceram, as que entraram no quiz e os quizzes."""
+    no_quiz = {nota.id for nota in quiz_de_hoje.aulas} if quiz_de_hoje else set()
+    originais = {nota.id: nota for nota in notas_do_vault}
+    for nota in [*notas, *nascidas]:
+        if nota.id in no_quiz:
+            nota = replace(nota, quiz=hoje.isoformat())
+        if originais.get(nota.id) != nota:
+            _aulas.escrever_aula(raiz, nota)
+    for antes, depois in zip(quizzes_do_vault, quizzes):
+        if antes != depois:
+            _quiz.escrever_quiz(raiz, depois)
+    if quiz_de_hoje and quiz_de_hoje.novo:
+        _quiz.escrever_quiz(raiz, quiz_de_hoje.quiz)
+
+
+def _aulas_da_edicao(edicao: Edicao) -> tuple[Aula, ...]:
+    return ((edicao.aprender,) if edicao.aprender else ()) + edicao.para_aprender
 
 
 def _item(escolhido: ItemEscolhido) -> ItemDoJornal:
@@ -542,7 +680,7 @@ def _montar_edicao(
     fontes: FontesDoJornal,
     coleta: Coleta,
     escolha: Escolha,
-    aulas: Formacao,
+    cena: Formacao,
     placar: Placar | None,
     efemeride: Efemeride | None,
     avisos: list[str],
@@ -573,8 +711,8 @@ def _montar_edicao(
         time=tuple(_item(escolhido) for escolhido in escolha.time),
         placar=placar,
         efemeride=efemeride,
-        aprender=aulas.software,
-        para_aprender=aulas.carros,
+        aprender=cena.negocios,
+        para_aprender=cena.carros,
         avisos=tuple(avisos),
         fontes_com_falha=coleta.fontes_com_falha,
     )
@@ -615,9 +753,69 @@ def baixar_capas(
     return capas
 
 
+def _ua_para(url: str) -> str:
+    """A Wikipédia recusa (403) o User-Agent de navegador; pede um que diga quem é o cliente."""
+    host = urlsplit(url).hostname or ""
+    return UA_WIKIPEDIA if host.endswith(("wikipedia.org", "wikimedia.org")) else UA_DAS_CAPAS
+
+
+def achar_fotos(aulas: Sequence[Aula], *, rede: httpx.BaseTransport | None = None) -> tuple[Aula, ...]:
+    """Põe em `imagem` a foto que a página `foto_de` anuncia; sem foto, a aula fica como veio."""
+    paginas = sorted({a.foto_de for a in aulas if a.visual == "foto" and a.foto_de and not a.imagem})
+    if not paginas:
+        return tuple(aulas)
+    achadas: dict[str, str] = {}
+    with httpx.Client(transport=rede, follow_redirects=True, timeout=15) as cliente:
+        for pagina in paginas:
+            try:
+                resposta = cliente.get(pagina, headers={"User-Agent": _ua_para(pagina)})
+            except httpx.HTTPError as erro:
+                _log.debug("Página da foto %s não abriu: %s", pagina, erro)
+                continue
+            if resposta.status_code == 200:
+                imagem = imagem_da_pagina(resposta.text, str(resposta.url))
+                if imagem:
+                    achadas[pagina] = imagem
+    return tuple(
+        replace(a, imagem=achadas[a.foto_de]) if not a.imagem and a.foto_de in achadas else a for a in aulas
+    )
+
+
+def baixar_fotos_das_aulas(
+    aulas: Sequence[Aula], pasta: Path, *, rede: httpx.BaseTransport | None = None
+) -> dict[str, str]:
+    """Baixa e reduz a foto de cada aula que tem uma: `{id da aula: "img/aula-<id>.jpg"}`."""
+    com_foto = [a for a in aulas if a.imagem and a.id]
+    if not com_foto:
+        return {}
+    (Path(pasta) / "img").mkdir(parents=True, exist_ok=True)
+    fotos: dict[str, str] = {}
+    with httpx.Client(transport=rede, follow_redirects=True, timeout=15) as cliente:
+        for aula in com_foto:
+            imagem = _baixar_imagem(cliente, aula.imagem)
+            if imagem is None:
+                continue
+            relativo = f"img/aula-{aula.id}.jpg"
+            (Path(pasta) / relativo).write_bytes(imagem)
+            fotos[aula.id] = relativo
+    _log.info("%d de %d fotos de aula baixadas.", len(fotos), len(com_foto))
+    return fotos
+
+
+def _com_fotos(edicao: Edicao, fotos: dict[str, str]) -> Edicao:
+    def com_foto(aula: Aula) -> Aula:
+        return replace(aula, foto=fotos[aula.id]) if aula.id in fotos else aula
+
+    return replace(
+        edicao,
+        aprender=com_foto(edicao.aprender) if edicao.aprender else None,
+        para_aprender=tuple(com_foto(a) for a in edicao.para_aprender),
+    )
+
+
 def _baixar_imagem(cliente: httpx.Client, url: str) -> bytes | None:
     try:
-        resposta = cliente.get(url)
+        resposta = cliente.get(url, headers={"User-Agent": _ua_para(url)})
         if resposta.status_code != 200 or "image" not in resposta.headers.get("content-type", ""):
             return None
         if "svg" in resposta.headers.get("content-type", ""):

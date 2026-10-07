@@ -2,20 +2,26 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import date
 from pathlib import Path
 
 import pytest
 
-from whis.fakes import URL_DO_JORNAL_FAKE, EditorFake, FormacaoFake, PublicacaoFake
+from whis.esquema import validar_esquema
+from whis.fakes import URL_DO_JORNAL_FAKE, EditorFake, FormacaoFake, MarcacoesFake, PublicacaoFake, QuizFake
 from whis.portas import (
     Candidato,
     ErroDeEditor,
     ErroDeFormacao,
+    ErroDeMarcacoes,
     ErroDePublicacao,
+    ErroDeQuiz,
     PortaEditor,
     PortaFormacao,
+    PortaMarcacoes,
     PortaPublicacao,
+    PortaQuiz,
 )
 
 DIA = date(2026, 9, 25)
@@ -81,10 +87,10 @@ def test_editor_fake_guarda_o_que_recebeu_e_pode_falhar():
     assert editor.time_recebido == TIME
 
 
-def test_formacao_fake_ensina_uma_de_software_e_duas_de_carro_com_url():
+def test_formacao_fake_ensina_uma_de_negocios_e_duas_de_carro_com_url():
     formacao = FormacaoFake().ensinar(DIA, "- 2026-09-24 — carros: o que é JDM\n")
 
-    assert formacao.software is not None
+    assert formacao.negocios is not None
     assert len(formacao.carros) == 2
     assert all(aula.fontes and aula.fontes[0].startswith("https://") for aula in formacao.aulas())
     assert all(aula.trilha.startswith("- 2026-09-25 — ") for aula in formacao.aulas())
@@ -124,3 +130,32 @@ def test_publicacao_fake_pode_falhar(tmp_path: Path):
 
     with pytest.raises(ErroDePublicacao):
         PublicacaoFake(erro=ErroDePublicacao("sem rede")).publicar(html, {}, None)
+
+
+def test_formacao_fake_respeita_as_vagas_e_traz_um_esquema_valido():
+    formacao = FormacaoFake().ensinar(DIA, "", {"negocios": 0, "carros": 1})
+
+    assert formacao.negocios is None and len(formacao.carros) == 1
+    completa = FormacaoFake().ensinar(DIA, "")
+    assert validar_esquema(completa.negocios.esquema) == completa.negocios.esquema
+
+
+def test_marcacoes_fake_devolve_o_que_recebeu_e_pode_falhar():
+    marcacoes = MarcacoesFake(leituras={"2026-09-25-negocios": "x"})
+
+    assert marcacoes.ler("url", leituras_desde="2026-09-25", quizzes=[]).leituras == {"2026-09-25-negocios": "x"}
+    assert marcacoes.chamadas == [("url", "2026-09-25", ())]
+    assert isinstance(marcacoes, PortaMarcacoes)
+    with pytest.raises(ErroDeMarcacoes):
+        MarcacoesFake(erro=ErroDeMarcacoes("x")).ler("url", leituras_desde=None, quizzes=["2026-09-26"])
+
+
+def test_quiz_fake_faz_uma_pergunta_por_aula():
+    aula = FormacaoFake().ensinar(DIA, "").negocios
+
+    perguntas = QuizFake().perguntar([replace(aula, id="2026-09-25-negocios")]).perguntas
+
+    assert [(p.aula, len(p.alternativas), p.certa) for p in perguntas] == [("2026-09-25-negocios", 3, 1)]
+    assert isinstance(QuizFake(), PortaQuiz)
+    with pytest.raises(ErroDeQuiz):
+        QuizFake(erro=ErroDeQuiz("x")).perguntar([aula])

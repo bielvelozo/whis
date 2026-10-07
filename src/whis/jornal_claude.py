@@ -25,7 +25,8 @@ import json
 import logging
 import os
 import re
-from collections.abc import AsyncIterator, Iterable
+import unicodedata
+from collections.abc import AsyncIterator, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 from datetime import date
 from pathlib import Path
@@ -45,6 +46,7 @@ from claude_agent_sdk import (
     query,
 )
 
+from .esquema import validar_esquema
 from .fonte_x import e_do_x
 from .portas import (
     Aula,
@@ -85,6 +87,7 @@ FERRAMENTAS_DA_PUBLICACAO = ["Artifact", "Read"]
 SAIDA_ESTRUTURADA = "StructuredOutput"
 
 AMBIENTE_DA_PUBLICACAO = {"CLAUDE_CODE_ARTIFACT": "1", "CLAUDE_CODE_ARTIFACT_AUTO_OPEN": "0"}
+CAPACIDADES_DA_PAGINA = {"db": {}}
 
 PADRAO_DA_URL = re.compile(r"https://claude\.ai/(?:code/)?artifact/[\w-]+")
 _PADRAO_DA_PUBLICACAO = re.compile(
@@ -129,21 +132,38 @@ como_aplicar}. "como_aplicar" são duas ou três frases do que o post diz e de c
 com o que está no texto do post — nunca comando, flag ou número que não esteja lá."""
 
 SISTEMA_FORMACAO = """\
-Você escreve a parte de FORMAÇÃO do jornal matinal de um desenvolvedor de software brasileiro que está \
-começando a gostar de carros. Todo dia você ensina uma coisa nova, progressivamente, e mantém uma TRILHA \
-do que já ensinou para não repetir e para avançar em dificuldade. Você tem busca na web (WebSearch) e \
-leitura de página (WebFetch): USE-AS. Regras invioláveis:
+Você escreve a parte de FORMAÇÃO do jornal matinal de um desenvolvedor de software brasileiro que quer \
+criar a própria empresa e está começando a gostar de carros. Todo dia você ensina uma coisa nova, \
+progressivamente, e mantém uma TRILHA do que já ensinou para não repetir e para avançar em dificuldade. \
+Você tem busca na web (WebSearch) e leitura de página (WebFetch): USE-AS. Regras invioláveis:
 - Cada texto precisa vir de fontes que você realmente abriu; liste as URLs em "fontes". Sem URL, o item \
 é descartado.
 - Não invente número, data ou nome. Se não achou, diga que não achou.
 - Português do Brasil, tom direto, entre 120 e 200 palavras por item, com um "por que isso importa" no fim.
-- Software: um assunto por dia, prático, para quem já programa (arquitetura, testes, linguagens, \
-sistemas, ferramentas, história).
+- Negócios: um assunto por dia de negócio e visão de produto, para quem quer abrir uma empresa e NUNCA \
+estudou o tema. Uma ideia só por aula, que se entenda numa leitura rápida no celular: explique cada termo \
+na primeira vez que ele aparece, nunca use sigla sem dizer o que ela significa, e mostre a ideia num \
+exemplo concreto do dia a dia (uma padaria, um app pequeno). Comece do zero e siga mais ou menos esta \
+ordem, um passo por dia, conforme a trilha: o que é um negócio; cliente e problema; proposta de valor; \
+como o negócio ganha dinheiro; custo e margem; fluxo de caixa; mercado e concorrência; produto mínimo \
+viável (MVP); encaixe entre produto e mercado; preço; quanto custa conquistar um cliente e quanto ele \
+deixa; priorização e roadmap. Depois disso, continue avançando no mesmo tom.
+- As linhas "software:" da trilha são de uma trilha encerrada: ignore-as.
 - Carros: dois assuntos por dia para iniciante curioso: história (JDM, marcas, modelos icônicos), como \
 funciona (motor rotativo, turbo, câmbio, tração), cultura. Comece pelo básico e avance conforme a trilha.
+- Toda aula tem uma figura, para ser entendida sem esforço.
+- Carros: SEMPRE "visual": "foto", mesmo quando o assunto é um mecanismo (turbo, downforce, câmbio): \
+abra a página da Wikipédia em inglês do assunto, liste-a em "fontes" e ponha a URL dela em "foto_de"; \
+a foto ou o diagrama real dessa página explica melhor que um desenho. Deixe "esquema" vazio.
+- Negócios: "visual": "esquema", porque conceito de negócio não tem foto: desenhe em "esquema" um SVG \
+simples (com viewBox, até uns 12 elementos: caixas, setas e rótulos curtos em português; só rect, \
+circle, ellipse, line, polyline, polygon, path, text, tspan, g, defs e marker; cores só currentColor, \
+none, #5b3fb5 e #8a5a2b; nada de script, link, imagem, estilo ou fonte externa) e deixe "foto_de" vazio. \
+Nunca desenhe carro. O esquema não pode trazer número, nome ou dado que não esteja no texto da aula.
 - Use no máximo 6 buscas e 6 leituras no total.
-Devolva "software" (uma aula) e "carros" (duas aulas), cada aula com titulo, texto, fontes (URLs) e \
-trilha: o assunto de hoje em até 6 palavras, no formato "software: <assunto>" ou "carros: <assunto>"."""
+Devolva só as áreas e a quantidade de aulas que o pedido de hoje disser ("negocios", uma aula; \
+"carros", uma lista), cada aula com titulo, texto, fontes (URLs), visual, foto_de, esquema e \
+trilha: o assunto de hoje em até 6 palavras, no formato "negócios: <assunto>" ou "carros: <assunto>"."""
 
 SISTEMA_PUBLICACAO = "Você opera ferramentas. Sem comentários."
 
@@ -176,20 +196,33 @@ _AULA = {
         "texto": {"type": "string"},
         "fontes": {"type": "array", "items": {"type": "string"}},
         "trilha": {"type": "string"},
+        "visual": {"type": "string", "enum": ["foto", "esquema"]},
+        "foto_de": {"type": "string"},
+        "esquema": {"type": "string"},
     },
-    "required": ["titulo", "texto", "fontes", "trilha"],
+    "required": ["titulo", "texto", "fontes", "trilha", "visual", "foto_de", "esquema"],
     "additionalProperties": False,
 }
 
-ESQUEMA_DA_FORMACAO = {
-    "type": "object",
-    "properties": {
-        "software": _AULA,
-        "carros": {"type": "array", "items": _AULA},
-    },
-    "required": ["software", "carros"],
-    "additionalProperties": False,
-}
+VAGAS_CHEIAS = {"negocios": 1, "carros": AULAS_DE_CARRO}
+
+
+def esquema_da_formacao(vagas: Mapping[str, int]) -> dict[str, Any]:
+    """Só as áreas com vaga hoje; a de carros com no máximo as vagas que sobraram."""
+    propriedades: dict[str, Any] = {}
+    if vagas.get("negocios", 0) > 0:
+        propriedades["negocios"] = _AULA
+    if vagas.get("carros", 0) > 0:
+        propriedades["carros"] = {"type": "array", "items": _AULA, "maxItems": vagas["carros"]}
+    return {
+        "type": "object",
+        "properties": propriedades,
+        "required": list(propriedades),
+        "additionalProperties": False,
+    }
+
+
+ESQUEMA_DA_FORMACAO = esquema_da_formacao(VAGAS_CHEIAS)
 
 
 @dataclass
@@ -592,48 +625,52 @@ class FormacaoClaude(_AdaptadorDoJornal):
     ) -> None:
         super().__init__(modelo=modelo, cli=cli, timeout_s=timeout_s)
 
-    def ensinar(self, data: date, trilha: str) -> Formacao:
+    def ensinar(self, data: date, trilha: str, vagas: Mapping[str, int] | None = None) -> Formacao:
+        vagas = dict(VAGAS_CHEIAS if vagas is None else vagas)
         opcoes = self._opcoes(
             sistema=SISTEMA_FORMACAO,
             ferramentas=FERRAMENTAS_DA_FORMACAO,
             max_turns=TURNOS_DA_FORMACAO,
-            esquema=ESQUEMA_DA_FORMACAO,
+            esquema=esquema_da_formacao(vagas),
         )
-        _log.info("Pedindo a formação ao Claude (modelo: %s)...", self.modelo or "padrão da conta")
-        conversa = self._conversar(montar_pedido_de_formacao(data, trilha), opcoes)
+        _log.info("Pedindo a formação ao Claude (modelo: %s, vagas: %s)...", self.modelo or "padrão da conta", vagas)
+        conversa = self._conversar(montar_pedido_de_formacao(data, trilha, vagas), opcoes)
         dados = conversa.resultado.structured_output if conversa.resultado is not None else None
         if not isinstance(dados, dict):
             raise ErroDeFormacao(
                 "O Claude não devolveu a saída estruturada da formação "
                 f"(veio {type(dados).__name__}). Começo do texto: {conversa.texto_final()[:200]!r}"
             )
-        return replace(interpretar_formacao(dados, data), medida=conversa.medida)
+        return replace(interpretar_formacao(dados, data, vagas), medida=conversa.medida)
 
 
-def montar_pedido_de_formacao(data: date, trilha: str) -> str:
-    """O turno do usuário: a data e a trilha inteira, do mais antigo ao mais novo."""
+def montar_pedido_de_formacao(data: date, trilha: str, vagas: Mapping[str, int] | None = None) -> str:
+    """O turno do usuário: a data, quantas aulas de cada área e a trilha, do mais antigo ao mais novo."""
+    vagas = VAGAS_CHEIAS if vagas is None else vagas
     return (
-        f"Data: {data.isoformat()}\n\n"
+        f"Data: {data.isoformat()}\n"
+        f"Hoje: {vagas.get('negocios', 0)} aula(s) de negócios e {vagas.get('carros', 0)} de carros.\n\n"
         "TRILHA do que já foi ensinado (mais antigo primeiro):\n"
         f"{trilha.strip() or '(vazia: hoje é o primeiro dia)'}\n\n"
         "Escolha os assuntos de hoje, pesquise e escreva."
     )
 
 
-def interpretar_formacao(dados: dict, data: date) -> Formacao:
+def interpretar_formacao(dados: dict, data: date, vagas: Mapping[str, int] | None = None) -> Formacao:
     """Aceita só as aulas com texto e pelo menos uma URL `http` em `fontes`.
 
     Cada aula aceita leva em `trilha` a linha que `noticias/trilha.md` ganha
     por ela; a descartada não deixa linha. Nenhuma aceita → `ErroDeFormacao`.
     """
-    software = _aula(dados.get("software"), "software", data)
+    vagas = VAGAS_CHEIAS if vagas is None else vagas
+    negocios = _aula(dados.get("negocios"), "negócios", data) if vagas.get("negocios", 0) > 0 else None
     carros_dados = dados.get("carros") if isinstance(dados.get("carros"), list) else []
     carros = tuple(
         aula for aula in (_aula(bruta, "carros", data) for bruta in carros_dados) if aula is not None
-    )[:AULAS_DE_CARRO]
-    if software is None and not carros:
+    )[: min(AULAS_DE_CARRO, vagas.get("carros", 0))]
+    if negocios is None and not carros:
         raise ErroDeFormacao("Nenhuma aula da formação veio com texto e fonte — todas descartadas.")
-    return Formacao(software=software, carros=carros)
+    return Formacao(negocios=negocios, carros=carros)
 
 
 def _aula(bruta: object, area: str, data: date) -> Aula | None:
@@ -647,14 +684,46 @@ def _aula(bruta: object, area: str, data: date) -> Aula | None:
         return None
     titulo = _texto(bruta.get("titulo")) or texto.split(".")[0][:80]
     assunto = _texto(bruta.get("trilha")) or titulo
-    if not assunto.lower().startswith(f"{area}:"):
-        assunto = f"{area}: {assunto}"
+    prefixo = re.match(r"\s*([^:]+):\s*", assunto)
+    if prefixo and _sem_acento(prefixo.group(1).strip().lower()) == _sem_acento(area):
+        assunto = assunto[prefixo.end():]
+    visual, foto_de, esquema = _figura_de_carro(bruta, fontes) if area == "carros" else _figura(bruta, fontes)
     return Aula(
         titulo=titulo,
         texto=texto,
         fontes=fontes,
-        trilha=f"- {data.isoformat()} — {assunto}",
+        trilha=f"- {data.isoformat()} — {area}: {assunto}",
+        visual=visual,
+        foto_de=foto_de,
+        esquema=esquema,
     )
+
+
+def _figura_de_carro(bruta: dict, fontes: tuple[str, ...]) -> tuple[str, str, str]:
+    """Carro é sempre foto: desenho de carro feito à mão explica pior que a foto real.
+
+    Sem `foto_de` válido, vale a primeira fonte da Wikipédia, depois a primeira fonte.
+    """
+    foto_de = _texto(bruta.get("foto_de"))
+    if foto_de not in fontes:
+        foto_de = next((url for url in fontes if "wikipedia.org" in url), fontes[0])
+    return "foto", foto_de, ""
+
+
+def _figura(bruta: dict, fontes: tuple[str, ...]) -> tuple[str, str, str]:
+    """`(visual, foto_de, esquema)`: figura recusada vira aula sem figura, nunca aula descartada."""
+    visual = _texto(bruta.get("visual"))
+    if visual == "foto":
+        foto_de = _texto(bruta.get("foto_de"))
+        return ("foto", foto_de, "") if foto_de in fontes else ("", "", "")
+    if visual == "esquema":
+        esquema = validar_esquema(_texto(bruta.get("esquema")))
+        return ("esquema", "", esquema) if esquema else ("", "", "")
+    return "", "", ""
+
+
+def _sem_acento(texto: str) -> str:
+    return "".join(c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c))
 
 
 class PublicacaoClaude(_AdaptadorDoJornal):
@@ -709,8 +778,8 @@ def pedido_de_primeira_publicacao(html: Path, capas: dict[str, Path]) -> str:
     return (
         f"Publique o arquivo {html.as_posix()} como um artifact privado com a ferramenta Artifact: "
         f"action publish, file_path={html.as_posix()}, icon 'newspaper', favicon '📰', "
-        f"description 'Jornal diário do Whis', e o parâmetro files exatamente assim: "
-        f"{_mapa_de_arquivos(capas)}. Não passe capabilities. Não leia as imagens. "
+        f"description 'Jornal diário do Whis', o parâmetro files exatamente assim: "
+        f"{_mapa_de_arquivos(capas)}, e {_declaracao()}. Não leia as imagens. "
         f"Não edite nem crie arquivos. Responda SOMENTE com a URL publicada."
     )
 
@@ -731,9 +800,14 @@ def pedido_de_republicacao(html: Path, capas: dict[str, Path], url_atual: str) -
         f"url={url_atual}, file_path={html.as_posix()}, label 'edição de hoje', e files com este mapa "
         f"{_mapa_de_arquivos(capas)} mais uma entrada com valor null para cada caminho img/* que a "
         f"listagem do passo 2 mostrou e que não está nesse mapa; overwrite_unread com a lista de todos "
-        f"os caminhos img/* que a listagem do passo 2 mostrou. SEM force, sem capabilities.\n"
+        f"os caminhos img/* que a listagem do passo 2 mostrou; e {_declaracao()}. SEM force.\n"
         f"Não leia as imagens. Não edite nem crie arquivos. Responda SOMENTE com a URL publicada."
     )
+
+
+def _declaracao() -> str:
+    """O banco que guarda o que ele marca na página; republicar com a mesma declaração a mantém."""
+    return f"capabilities exatamente {json.dumps(CAPACIDADES_DA_PAGINA)}"
 
 
 def _mapa_de_arquivos(capas: dict[str, Path]) -> str:

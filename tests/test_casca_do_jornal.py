@@ -342,3 +342,41 @@ def test_o_help_do_windows_documenta_o_jornal(capsys):
 
     ajuda = capsys.readouterr().out
     assert "--news" in ajuda and "[noticias].horario" in ajuda
+
+
+# -- a formação na casca --------------------------------------------------------------
+
+
+def test_news_sabado_sem_simular_e_erro_de_uso(tmp_path: Path, capsys):
+    codigo = main(["news", "--sabado", "--config", str(escrever(tmp_path, ""))])
+
+    assert codigo == 2
+    assert "--sabado só vale com --simular ou --fakes" in capsys.readouterr().out
+
+
+def test_news_fakes_sabado_pede_a_edicao_de_sabado_com_as_portas_novas(tmp_path: Path, monkeypatch):
+    import whis.__main__ as casca
+    from whis.fakes import MarcacoesFake, QuizFake
+
+    recebido: dict = {}
+
+    def gerar_falso(agora, configuracao, **portas):
+        recebido.update(portas)
+        raise casca.JornalNaoNasceu("teste")
+
+    monkeypatch.setattr(casca, "gerar_jornal", gerar_falso)
+
+    main(["news", "--fakes", "--sabado", "--config", str(escrever(tmp_path, ""))])
+
+    assert recebido["sabado"] is True and recebido["simular"] is True
+    assert isinstance(recebido["marcacoes"], MarcacoesFake) and isinstance(recebido["quiz"], QuizFake)
+
+
+def test_as_portas_de_verdade_leem_o_banco_e_fazem_o_quiz():
+    from whis.__main__ import montar_portas_do_jornal
+    from whis.marcacoes_claude import MarcacoesClaude
+    from whis.quiz_claude import QuizClaude
+
+    portas = montar_portas_do_jornal(Configuracao(vault=Path("V")))
+
+    assert isinstance(portas.marcacoes, MarcacoesClaude) and isinstance(portas.quiz, QuizClaude)

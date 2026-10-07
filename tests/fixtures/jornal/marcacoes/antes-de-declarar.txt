@@ -1,0 +1,1 @@
+db read failed (invalid-argument): this artifact's current published version does not declare the database capability — republish it with the db capability declared, then retry

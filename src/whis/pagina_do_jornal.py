@@ -20,6 +20,7 @@ from .portas import Aula, Janelas
 
 if TYPE_CHECKING:
     from .jornal import DicaDoJornal, Edicao, ItemDoJornal
+    from .quiz import QuizDaSemana
 
 _BRT = timezone(timedelta(hours=-3))
 
@@ -30,6 +31,7 @@ MESES = (
 )
 
 CORES = {
+    "quiz": "#b5651d",
     "aprender": "#5b3fb5",
     "ia": "#0e7c86",
     "tecnologia": "#1d5fb8",
@@ -70,10 +72,87 @@ h3.sub{font:700 12px/1.2 var(--sans);letter-spacing:.14em;text-transform:upperca
 .aula h4{font:700 19px/1.2 var(--serif);margin:0 0 8px}.aula p{margin:0 0 10px;white-space:pre-line;font-size:15px}
 .aula .f{font-size:12px;color:var(--cinza)}.aula .f a{text-decoration:underline;word-break:break-all}
 .aula .ver{font-size:13px;color:var(--cinza)}.aula .ver a{text-decoration:underline;color:var(--tinta)}
+.aula img.foto{display:block;width:100%;height:auto;max-height:280px;object-fit:contain;background:var(--papel);border:1px solid var(--fio);margin:0 0 10px}
+.aula .esquema{margin:0 0 10px;padding:8px;background:var(--papel);border:1px solid var(--fio);color:var(--tinta)}.aula .esquema svg{display:block;width:100%;height:auto;max-height:320px}
+.aula .pend{font:600 11px/1.3 var(--sans);letter-spacing:.08em;text-transform:uppercase;color:#8a2f1d;margin:0 0 6px}
+.marca{display:flex;align-items:center;flex-wrap:wrap;gap:10px;margin-top:12px}
+button.li,button.alt{min-height:44px;padding:0 18px;border:1px solid var(--c);border-radius:22px;background:var(--papel);color:var(--tinta);font:600 15px/1.2 var(--sans);cursor:pointer;touch-action:manipulation}
+button.li.lida{background:var(--c);color:#fff}button.li:disabled,button.alt:disabled{cursor:default}button.li:disabled:not(.lida){opacity:.45}
+.li-nota,.q-nota{font-size:12px;color:var(--cinza)}
+.pergunta{background:var(--creme);border-left:4px solid var(--c);padding:14px 16px;margin:0 0 12px}
+.pergunta h4{font:700 18px/1.3 var(--serif);margin:0 0 10px}.alts{display:flex;flex-direction:column;gap:8px}
+button.alt{text-align:left;border-radius:12px;padding:10px 14px}
+button.alt.certa{background:#2f7d3a;border-color:#2f7d3a;color:#fff}button.alt.errada{background:#a8382f;border-color:#a8382f;color:#fff}
+.pergunta .q-nota{margin:8px 0 0}.pergunta details{margin-top:8px;font-size:14px}.pergunta summary{cursor:pointer;color:var(--cinza)}
 table{width:100%;border-collapse:collapse;font-size:14px;margin:0 0 10px}td{padding:6px 4px;border-bottom:1px solid var(--fio);vertical-align:top}
 td.p{white-space:nowrap;font:700 16px/1 var(--serif);text-align:center;width:64px}td.g{color:var(--cinza);font-size:12px;border-bottom:1px solid var(--fio)}
 .liga{font:700 12px/1.2 var(--sans);letter-spacing:.12em;text-transform:uppercase;margin:10px 0 4px}
 footer{color:var(--cinza);font-size:12px;margin-top:36px;border-top:3px double var(--tinta);padding-top:10px;text-align:center}
+"""
+
+
+#: O único script da página: o check das aulas e as respostas do quiz, guardados no banco do
+#: artifact. Fora do claude.ai (a página local do `--simular`) `window.claude` nem existe, e
+#: permissão negada chega como rejeição da primeira leitura, não como `null`.
+SCRIPT = """
+(async () => {
+  const botoes = [...document.querySelectorAll("button.li")];
+  const perguntas = [...document.querySelectorAll(".pergunta")];
+  if (!botoes.length && !perguntas.length) return;
+  const AVISO = "Para marcar, abra logado no claude.ai.";
+  let db = null;
+  try { db = window.claude ? await window.claude.use("db") : null; } catch (e) { db = null; }
+  const nota = (b, t) => { const n = b.parentElement.querySelector(".li-nota"); if (n) n.textContent = t; };
+  const pintar = (b, lida) => { b.classList.toggle("lida", lida); b.textContent = lida ? "Lida \\u2713" : "Li esta aula"; };
+  const apagar = () => { for (const b of botoes) { b.disabled = true; nota(b, AVISO); } };
+  if (!db) apagar();
+  else {
+    try {
+      for (const b of botoes) {
+        const doc = await db.doc("leituras/" + b.dataset.aula).get();
+        pintar(b, Boolean(doc.exists && doc.data().lida));
+      }
+      for (const b of botoes) b.addEventListener("click", async () => {
+        const antes = b.classList.contains("lida");
+        b.disabled = true; pintar(b, !antes); nota(b, "");
+        try { await db.doc("leituras/" + b.dataset.aula).set({ lida: !antes, em: new Date().toISOString() }); }
+        catch (e) { pintar(b, antes); nota(b, "Não consegui guardar."); }
+        b.disabled = false;
+      });
+    } catch (e) { db = null; apagar(); }
+  }
+  const revelar = (q, escolha) => {
+    const certa = Number(q.dataset.certa);
+    q.querySelectorAll("button.alt").forEach((a, i) => {
+      a.disabled = true;
+      if (i === certa) a.classList.add("certa");
+      else if (i === escolha) a.classList.add("errada");
+    });
+    const d = q.querySelector("details");
+    if (d) d.open = true;
+  };
+  let feitas = {};
+  if (db && perguntas.length) {
+    try {
+      const snap = await db.collection("respostas").where("quiz", "==", perguntas[0].dataset.quiz).get();
+      for (const d of snap.docs) feitas[d.id] = d.data();
+    } catch (e) { db = null; feitas = {}; }
+  }
+  for (const q of perguntas) {
+    if (feitas[q.dataset.id]) { revelar(q, Number(feitas[q.dataset.id].escolha)); continue; }
+    if (!db) q.querySelector(".q-nota").textContent = "Sua resposta não vai ficar guardada.";
+    q.querySelectorAll("button.alt").forEach((a) => a.addEventListener("click", async () => {
+      const escolha = Number(a.dataset.i);
+      revelar(q, escolha);
+      if (!db) return;
+      try {
+        await db.doc("respostas/" + q.dataset.id).set({
+          escolha, certa: escolha === Number(q.dataset.certa), quiz: q.dataset.quiz, em: new Date().toISOString(),
+        });
+      } catch (e) { q.querySelector(".q-nota").textContent = "Não consegui guardar a resposta."; }
+    }));
+  }
+})();
 """
 
 
@@ -161,9 +240,55 @@ def frase(aviso: str) -> str:
 def _aula(aula: Aula) -> str:
     fontes = " · ".join(f'<a href="{_e(url)}">{_e(dominio(url))}</a>' for url in aula.fontes)
     return (
-        f'<div class="aula"><h4>{_e(aula.titulo)}</h4><p>{_e(aula.texto)}</p>'
-        f'<div class="f">Fontes: {fontes}</div></div>'
+        f'<div class="aula">{_figura(aula)}{_pendente(aula)}<h4>{_e(aula.titulo)}</h4><p>{_e(aula.texto)}</p>'
+        f'<div class="f">Fontes: {fontes}</div>{_marca(aula)}</div>'
     )
+
+
+def _marca(aula: Aula) -> str:
+    if not aula.id:
+        return ""
+    return (
+        f'<div class="marca"><button class="li" data-aula="{_e(aula.id)}" type="button">Li esta aula</button>'
+        '<span class="li-nota"></span></div>'
+    )
+
+
+def _figura(aula: Aula) -> str:
+    """O esquema entra sem escape: só chega aqui o SVG que `validar_esquema` aceitou."""
+    if aula.foto:
+        return f'<img class="foto" src="{_e(aula.foto)}" alt="">'
+    if aula.esquema:
+        return f'<figure class="esquema">{aula.esquema}</figure>'
+    return ""
+
+
+def _pendente(aula: Aula) -> str:
+    if aula.pendente_desde is None:
+        return ""
+    return f'<p class="pend">Pendente desde {aula.pendente_desde.strftime("%d/%m")}</p>'
+
+
+LETRAS = "abcd"
+
+
+def _quiz(quiz: QuizDaSemana) -> str:
+    if not quiz.perguntas:
+        return f'<p class="vazio">{_e(quiz.aviso)}</p>'
+    partes = []
+    for numero, pergunta in enumerate(quiz.perguntas, start=1):
+        alternativas = "".join(
+            f'<button class="alt" data-i="{i}" type="button">{LETRAS[i]}) {_e(texto)}</button>'
+            for i, texto in enumerate(pergunta.alternativas)
+        )
+        certa = f"{LETRAS[pergunta.certa]}) {pergunta.alternativas[pergunta.certa]}"
+        partes.append(
+            f'<div class="pergunta" data-id="{_e(pergunta.id)}" data-certa="{pergunta.certa}" '
+            f'data-quiz="{quiz.data.isoformat()}"><h4>{numero}. {_e(pergunta.pergunta)}</h4>'
+            f'<div class="alts">{alternativas}</div><p class="q-nota"></p>'
+            f"<details><summary>Ver resposta</summary><p><b>{_e(certa)}</b>. {_e(pergunta.explicacao)}</p></details></div>"
+        )
+    return "".join(partes)
 
 
 def _abre_secao(numero: int, titulo: str, cor: str) -> str:
@@ -230,6 +355,9 @@ def pagina_html(edicao: Edicao) -> str:
     ]
 
     numero = 0
+    if edicao.quiz is not None:
+        numero += 1
+        partes += [_abre_secao(numero, "Quiz da semana", CORES["quiz"]), _quiz(edicao.quiz), "</section>"]
     if edicao.aprender:
         numero += 1
         partes += [_abre_secao(numero, "Aprender hoje", CORES["aprender"]), _aula(edicao.aprender), "</section>"]
@@ -256,6 +384,8 @@ def pagina_html(edicao: Edicao) -> str:
     )
     partes.append(
         f"<footer>{falhas}Gerado pelo Whis a partir de feeds públicos. "
-        "Cada item leva à fonte original.</footer></main></body></html>"
+        "Cada item leva à fonte original.</footer></main>"
     )
-    return "".join(partes)
+    corpo = "".join(partes)
+    script = f"<script>{SCRIPT}</script>" if ("data-aula=" in corpo or 'class="pergunta"' in corpo) else ""
+    return f"{corpo}{script}</body></html>"
