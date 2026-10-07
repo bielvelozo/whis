@@ -563,32 +563,54 @@ def test_whis_hunt_fakes_corre_inteiro_num_vault_temporario(arquivo_de_configura
 # -- os adaptadores com mensagens gravadas ------------------------------------------------------------
 
 
-def _gravado(classe, mensagens):
+def _gravado(classe, mensagens, *seguintes):
+    roteiro = [mensagens, *seguintes]
+
     class Gravado(classe):
         async def _mensagens(self, prompt, opcoes):
+            self.pedidos = [*getattr(self, "pedidos", []), (prompt, opcoes)]
             self.prompt, self.opcoes = prompt, opcoes
-            for mensagem in mensagens:
+            for mensagem in roteiro[min(len(self.pedidos), len(roteiro)) - 1]:
                 yield mensagem
 
     return Gravado()
 
 
+SAIDA_DO_PREPARO = {
+    "resumo": "Landing page.", "por_que_casa": "Web.", "o_que_estica": "", "alertas": "prazo\n\n- **escopo** vago",
+    "preco": "R$ 700", "prazo": "7 dias", "proposta": "Olá", "plano": "1. a\n2. b", "perguntas": "",
+    "como_enviar": "Workana, sem link.", "amostra_titulo": "Conceito da landing",
+}
+
+
+def _preparar(preparo, oportunidade):
+    veredito = TriagemFake().triar([oportunidade], None, "", "")[0]
+    return preparo.preparar(oportunidade, veredito, "texto", portas_fake().perfil.montar("", "", ""), "regras", "")
+
+
 def test_o_preparo_le_a_saida_estruturada_e_so_o_explorador_tem_ferramenta():
-    from whis.cacada_claude import ExploradorClaude, PreparoClaude
+    from whis.cacada_claude import TURNOS_DO_PREPARO, ExploradorClaude, PreparoClaude
 
     oportunidade = oportunidades_de_exemplo()[1]
-    saida = {
-        "resumo": "Landing page.", "por_que_casa": "Web.", "o_que_estica": "", "alertas": ["prazo"], "preco": "R$ 700",
-        "prazo": "7 dias", "proposta": "Olá", "plano": ["a", "b"], "perguntas": [], "como_enviar": "Workana, sem link.",
-        "amostra_titulo": "Conceito", "amostra_html": "<!doctype html><html><body>oi</body></html>",
-    }
-    preparo = _gravado(PreparoClaude, [_resultado(structured_output=saida)])
+    html = "<!doctype html><html><body>oi</body></html>"
+    preparo = _gravado(
+        PreparoClaude,
+        [_resultado(structured_output=SAIDA_DO_PREPARO)],
+        [AssistantMessage(content=[TextBlock(f"Segue:\n```html\n{html}\n```")], model="m"), _resultado()],
+    )
 
-    pacote = preparo.preparar(oportunidade, TriagemFake().triar([oportunidade], None, "", "")[0], "texto", portas_fake().perfil.montar("", "", ""), "regras", "")
+    pacote = _preparar(preparo, oportunidade)
 
-    assert pacote.id == oportunidade.id and pacote.alertas == ("prazo",) and "<html>" in pacote.amostra_html
-    assert preparo.opcoes.tools == [] and preparo.opcoes.allowed_tools == []
-    assert "TEXTO DA PÁGINA" in preparo.prompt and "regras" in preparo.prompt
+    assert pacote.id == oportunidade.id and pacote.amostra_html == html
+    assert pacote.alertas == ("prazo", "**escopo** vago") and pacote.plano == ("a", "b") and pacote.perguntas == ()
+    (prompt, opcoes), (prompt_da_amostra, opcoes_da_amostra) = preparo.pedidos
+    assert opcoes.tools == [] and opcoes.allowed_tools == []
+    assert opcoes.max_turns == TURNOS_DO_PREPARO > 2, "a saída estruturada recusada volta como turno novo"
+    assert "amostra_html" not in opcoes.output_format["schema"]["properties"], "o HTML não vai dentro do JSON"
+    assert "TEXTO DA PÁGINA" in prompt and "regras" in prompt
+    assert opcoes_da_amostra.output_format is None and opcoes_da_amostra.tools == []
+    assert "Conceito da landing" in prompt_da_amostra and "TEXTO DA PÁGINA" in prompt_da_amostra
+    assert "regras" not in prompt_da_amostra, "a amostra não leva o perfil dele"
 
     explorador = _gravado(ExploradorClaude, [_resultado(structured_output={"oportunidades": [
         {"tipo": "freela", "titulo": "Site", "link": "https://ex.com/1", "descricao": "d", "fonte": "Contra"},
@@ -599,6 +621,28 @@ def test_o_preparo_le_a_saida_estruturada_e_so_o_explorador_tem_ferramenta():
     assert [o.link for o in achadas] == ["https://ex.com/1"] and achadas[0].fonte == "Web (Contra)"
     assert explorador.opcoes.tools == ["WebSearch", "WebFetch"]
     assert "https://visto.com" in explorador.prompt
+
+
+def test_a_amostra_que_falha_nao_derruba_o_pacote_e_a_vaga_nao_pede_amostra():
+    from whis.cacada_claude import PreparoClaude
+
+    freela, vaga = oportunidades_de_exemplo()[1], oportunidades_de_exemplo()[0]
+    caiu = _gravado(
+        PreparoClaude,
+        [_resultado(structured_output=SAIDA_DO_PREPARO)],
+        [_resultado(is_error=True, subtype="error_during_execution", result="caiu")],
+    )
+    sem_html = _gravado(
+        PreparoClaude,
+        [_resultado(structured_output=SAIDA_DO_PREPARO)],
+        [AssistantMessage(content=[TextBlock("Não consigo fazer a página.")], model="m"), _resultado()],
+    )
+    so_pacote = _gravado(PreparoClaude, [_resultado(structured_output={**SAIDA_DO_PREPARO, "amostra_titulo": ""})])
+
+    for preparo in (caiu, sem_html):
+        pacote = _preparar(preparo, freela)
+        assert pacote.proposta == "Olá" and pacote.amostra_html == "" and len(preparo.pedidos) == 2
+    assert _preparar(so_pacote, vaga).amostra_html == "" and len(so_pacote.pedidos) == 1
 
 
 def test_api_key_paga_no_ambiente_e_recusada(monkeypatch: pytest.MonkeyPatch):

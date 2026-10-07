@@ -823,7 +823,7 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
             elif pacote.get("amostra"):
                 linhas.append(f"→ Amostra: `{pacote['amostra']}`")
         elif pacote.get("falha"):
-            linhas.append(f"→ O pacote não saiu ({pacote['falha'][:120]}). Abra a oportunidade e decida.")
+            linhas.append(f"→ O pacote não saiu ({pacote['falha']}). Abra a oportunidade e decida.")
         else:
             linhas.append("→ Sem pacote nesta corrida (teto de pacotes ou a corrida parou antes).")
         linhas.append("")
