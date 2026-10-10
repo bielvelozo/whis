@@ -128,7 +128,9 @@ class Pacote:
     `proposta` sai no idioma da oportunidade. `amostra_html`, quando há, é a
     página de conceito para o cliente de um freela web; o resto do pacote vale
     sem ela. `como_enviar` diz o caminho no site e a regra do link (a Workana
-    suspende proposta com link externo).
+    suspende proposta com link externo). `formulario` traz, uma por item no
+    formato "Pergunta: resposta", as respostas que os formulários de candidatura
+    costumam pedir (pretensão no formato do campo, data de início, fuso, inglês).
     """
 
     id: str
@@ -144,12 +146,14 @@ class Pacote:
     como_enviar: str = ""
     amostra_html: str = ""
     amostra_titulo: str = ""
+    formulario: tuple[str, ...] = ()
 
     def para_json(self) -> dict[str, Any]:
         dados = asdict(self)
         dados["alertas"] = list(self.alertas)
         dados["plano"] = list(self.plano)
         dados["perguntas"] = list(self.perguntas)
+        dados["formulario"] = list(self.formulario)
         return dados
 
     @classmethod
@@ -172,6 +176,7 @@ class Pacote:
             como_enviar=str(dados.get("como_enviar", "")),
             amostra_html=str(dados.get("amostra_html", "")),
             amostra_titulo=str(dados.get("amostra_titulo", "")),
+            formulario=lista("formulario"),
         )
 
 

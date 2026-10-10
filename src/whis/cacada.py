@@ -731,6 +731,8 @@ def montar_pacote(oportunidade: Oportunidade, veredito: Veredito, pacote: Pacote
     linhas += ["## Alertas", "", *lista(pacote.alertas), ""]
     linhas += ["## Preço e prazo", "", f"- **Preço / pretensão:** {pacote.preco or '—'}", f"- **Prazo:** {pacote.prazo or '—'}", ""]
     linhas += ["## Proposta pronta", "", "```text", pacote.proposta.strip() or "(vazia)", "```", ""]
+    if pacote.formulario:
+        linhas += ["## Respostas de formulário", "", *lista(pacote.formulario), ""]
     linhas += ["## Como enviar", "", pacote.como_enviar or "—", ""]
     linhas += ["## Plano de execução", "", *lista(pacote.plano), ""]
     if pacote.perguntas:

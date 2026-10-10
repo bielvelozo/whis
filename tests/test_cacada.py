@@ -396,6 +396,7 @@ def test_a_cacada_deixa_relatorio_pacotes_e_nunca_toca_os_criterios(configuracao
     landing = next(p for p in pacotes if "landing" in p.name)
     texto = landing.read_text(encoding="utf-8")
     assert "## Proposta pronta" in texto and "```text" in texto and "## Amostra" in texto
+    assert "## Respostas de formulário" in texto and "- Nível de inglês: intermediário" in texto
     html = (landing.with_name(landing.stem + "-amostra") / "index.html").read_text(encoding="utf-8")
     assert 'name="robots" content="noindex"' in html and AVISO in html
 
@@ -580,7 +581,15 @@ SAIDA_DO_PREPARO = {
     "resumo": "Landing page.", "por_que_casa": "Web.", "o_que_estica": "", "alertas": "prazo\n\n- **escopo** vago",
     "preco": "R$ 700", "prazo": "7 dias", "proposta": "Olá", "plano": "1. a\n2. b", "perguntas": "",
     "como_enviar": "Workana, sem link.", "amostra_titulo": "Conceito da landing",
+    "formulario": "- Pretensão (US$ por mês): 3000\n\nNível de inglês: intermediário",
 }
+
+
+def test_a_proposta_e_a_mensagem_seguem_o_mesmo_jeito_de_escrever():
+    from whis.cacada_claude import ESTILO_DOS_TEXTOS, SISTEMA_DAS_APOSTAS, SISTEMA_DO_PREPARO
+
+    assert ESTILO_DOS_TEXTOS in SISTEMA_DO_PREPARO and ESTILO_DOS_TEXTOS in SISTEMA_DAS_APOSTAS
+    assert "3 passos" not in SISTEMA_DO_PREPARO, "passos numerados na carta soam como CV colado"
 
 
 def _preparar(preparo, oportunidade):
@@ -603,7 +612,9 @@ def test_o_preparo_le_a_saida_estruturada_e_so_o_explorador_tem_ferramenta():
 
     assert pacote.id == oportunidade.id and pacote.amostra_html == html
     assert pacote.alertas == ("prazo", "**escopo** vago") and pacote.plano == ("a", "b") and pacote.perguntas == ()
+    assert pacote.formulario == ("Pretensão (US$ por mês): 3000", "Nível de inglês: intermediário")
     (prompt, opcoes), (prompt_da_amostra, opcoes_da_amostra) = preparo.pedidos
+    assert "formulario" in opcoes.output_format["schema"]["required"]
     assert opcoes.tools == [] and opcoes.allowed_tools == []
     assert opcoes.max_turns == TURNOS_DO_PREPARO > 2, "a saída estruturada recusada volta como turno novo"
     assert "amostra_html" not in opcoes.output_format["schema"]["properties"], "o HTML não vai dentro do JSON"

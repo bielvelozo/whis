@@ -153,6 +153,7 @@ class PreparoFake(_Fake):
             como_enviar="Pelo site.",
             amostra_html=amostra,
             amostra_titulo="Conceito" if amostra else "",
+            formulario=("Pretensão: R$ 9.000 por mês", "Nível de inglês: intermediário"),
         )
 
 

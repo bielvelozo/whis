@@ -48,7 +48,7 @@ Uma vaga de emprego ou um freela achado numa fonte da caçada, sempre com o link
 _Avoid_: lead, job, anúncio
 
 **Pacote**:
-Tudo mastigado para uma chance boa, em `cacada/<corrida>/`: o que pedem, por que casa, o que estica, alertas, preço ou pretensão, prazo, a proposta pronta, o plano, perguntas ao cliente, como enviar e, no freela de página web, a **amostra** — uma página de conceito sem nome nem contato dele, com print para anexar e, se configurado, um link no Cloudflare Pages que sai do ar em 30 dias. Ele lê, ajusta e envia.
+Tudo mastigado para uma chance boa, em `cacada/<corrida>/`: o que pedem (com o regime e a carga horária), por que casa, o que estica, alertas, preço ou pretensão (o número pronto para o campo, na moeda e unidade da vaga), prazo, a proposta pronta, as respostas de formulário, o plano, perguntas ao cliente, como enviar (com qual currículo anexar) e, no freela de página web, a **amostra** — uma página de conceito sem nome nem contato dele, com print para anexar e, se configurado, um link no Cloudflare Pages que sai do ar em 30 dias. Ele lê, ajusta e envia.
 _Avoid_: dossiê, kit
 
 **Candidaturas**:

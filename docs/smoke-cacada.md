@@ -125,7 +125,12 @@ Obsidian. Confira:
 - **Antes de tudo**: o que o Whis quer que você responda em *Sobre mim*.
 - **Chances boas**: cada uma com o link do pacote. No pacote, a proposta pronta
   (num bloco de código, com o botão de copiar do Obsidian), preço e prazo,
-  alertas, como enviar e, no freela web, a amostra.
+  alertas, como enviar e, no freela web, a amostra. Confira também: o *O que
+  pedem* diz se é período integral, meio período ou freela; o *Preço* começa
+  pelo número pronto para o campo (moeda e unidade da vaga); a vaga com
+  formulário traz *Respostas de formulário*, uma por linha; o *Como enviar* diz
+  qual currículo anexar; e a proposta lê como alguém digitando, sem passos
+  numerados nem travessão de efeito.
 - **Tentar a sorte**: a mensagem curta, recolhida, e como enviar.
 - **Descartadas**: recolhidas, com o motivo de cada uma. Se uma boa caiu aqui,
   é sinal para ajustar *O que eu procuro*.
