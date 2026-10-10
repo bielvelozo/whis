@@ -69,6 +69,8 @@ TIMEOUT_DO_PREPARO_S = 1200.0
 TURNOS_DO_PREPARO = 6
 TIMEOUT_DO_EXPLORADOR_S = 2400.0
 TURNOS_DO_EXPLORADOR = 60
+TIMEOUT_DO_EXPLORADOR_A_FUNDO_S = 3600.0
+TURNOS_DO_EXPLORADOR_A_FUNDO = 120
 FERRAMENTAS_DO_EXPLORADOR = ["WebSearch", "WebFetch"]
 
 
@@ -479,9 +481,10 @@ ESQUEMA_DO_EXPLORADOR = {
 class ExploradorClaude(_ChamadaDoClaude):
     etapa = "exploração da web"
 
-    def __init__(self, **opcoes: Any) -> None:
-        opcoes.setdefault("timeout_s", TIMEOUT_DO_EXPLORADOR_S)
+    def __init__(self, *, a_fundo: bool = False, **opcoes: Any) -> None:
+        opcoes.setdefault("timeout_s", TIMEOUT_DO_EXPLORADOR_A_FUNDO_S if a_fundo else TIMEOUT_DO_EXPLORADOR_S)
         super().__init__(**opcoes)
+        self.turnos = TURNOS_DO_EXPLORADOR_A_FUNDO if a_fundo else TURNOS_DO_EXPLORADOR
 
     def explorar(
         self, pedido: str, perfil: Perfil, procuro: str, sobre_mim: str, ja_vistas: Sequence[str], nome: str
@@ -495,7 +498,7 @@ class ExploradorClaude(_ChamadaDoClaude):
             sistema=SISTEMA_DO_EXPLORADOR,
             esquema=ESQUEMA_DO_EXPLORADOR,
             ferramentas=FERRAMENTAS_DO_EXPLORADOR,
-            max_turns=TURNOS_DO_EXPLORADOR,
+            max_turns=self.turnos,
         )
         chamada = self._chamar(prompt, opcoes)
         saida = []

@@ -41,6 +41,7 @@ from .cacada_claude import ErroDaCacada, LimiteDoPlano, Plano
 from .configuracao import Configuracao
 from .corrida import Checkpoint, escrever_andamento
 from .criterios_da_cacada import CAMINHO_DOS_CRITERIOS, PASTA_CACADA, Criterios, FonteDaCacada, ler_criterios
+from .freelas_rapidos import MODO_FREELAS, criterios_de_freelas
 from .oportunidades import (
     CHANCE_BOA,
     DESCARTADA,
@@ -256,23 +257,34 @@ def cacar(
     *,
     pasta_do_estado: Path,
     do_zero: bool = False,
+    modo: str = "",
     relogio: Callable[[], datetime] | None = None,
     dormir: Callable[[float], None] = time.sleep,
     ao_pausar: Callable[[str], None] | None = None,
 ) -> ResultadoDaCacada:
-    """A corrida inteira, retomando do checkpoint quando há um inacabado e recente."""
+    """A corrida inteira, retomando do checkpoint quando há um inacabado e recente do mesmo modo.
+
+    `modo="freelas"` é a caçada de freelas rápidos (`freelas_rapidos`).
+    """
     agora = relogio or (lambda: datetime.now().astimezone())
     inicio_monotonico = time.monotonic()
     raiz = _vault.preparar(configuracao.vault)
     criterios = ler_criterios(raiz)
+    if modo == MODO_FREELAS:
+        criterios = criterios_de_freelas(criterios)
 
     checkpoint = Checkpoint.abrir(pasta_do_estado, do_zero=do_zero)
     if checkpoint.retomada and _velho(checkpoint.get("inicio"), agora()):
         _log.info("O checkpoint da caçada tem mais de %d dias: começando do zero.", IDADE_MAXIMA_DA_RETOMADA.days)
         checkpoint = Checkpoint.abrir(pasta_do_estado, do_zero=True)
+    if checkpoint.retomada and checkpoint.get("modo", "") != modo:
+        _log.info("A caçada inacabada é de outro modo: começando do zero.")
+        checkpoint = Checkpoint.abrir(pasta_do_estado, do_zero=True)
     if not checkpoint.retomada:
         momento = agora()
-        checkpoint.guardar(inicio=momento.isoformat(timespec="seconds"), corrida=f"{momento:%Y-%m-%d-%H%M}", etapa="perfil")
+        checkpoint.guardar(
+            inicio=momento.isoformat(timespec="seconds"), corrida=f"{momento:%Y-%m-%d-%H%M}", etapa="perfil", modo=modo
+        )
 
     estado = _Estado(configuracao, raiz, criterios, checkpoint, pasta_do_estado)
     guarda = GuardaDoPlano(configuracao.cacada_teto_semanal, relogio=agora, dormir=dormir, ao_pausar=ao_pausar)
@@ -780,7 +792,8 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
     sem_veredito = [o for i, o in oportunidades.items() if i not in vereditos]
     inicio = _data(estado.checkpoint.get("inicio"))
 
-    titulo = f"# Caçada de {_vault._data_por_extenso(inicio.date())}, {inicio:%H:%M}" if inicio else "# Caçada"
+    nome = "Caçada de freelas rápidos" if estado.checkpoint.get("modo") == MODO_FREELAS else "Caçada"
+    titulo = f"# {nome} de {_vault._data_por_extenso(inicio.date())}, {inicio:%H:%M}" if inicio else f"# {nome}"
     plano = ""
     if guarda.primeiro and guarda.plano and guarda.primeiro.sete_dias is not None:
         plano = f" · plano semanal {guarda.primeiro.sete_dias}% → {guarda.plano.sete_dias}%"

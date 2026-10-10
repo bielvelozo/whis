@@ -106,6 +106,19 @@ python -m whis hunt
 ou pela palheta: `ctrl+space`, `hunt`, Enter. A janela some e a caçada corre
 num processo próprio. Ela não trava a palheta.
 
+Para a caçada de **freelas rápidos**, só no terminal:
+
+```
+python -m whis hunt --freelas
+```
+
+Antes, `python -m whis hunt --simular --freelas` mostra que só as fontes de
+freela são lidas (Freelancer.com com as buscas do modo, 99Freelas, Workana) e
+lista as seis linhas `web` do explorador. **Sucesso:** o relatório se chama
+*Caçada de freelas rápidos*, nenhuma vaga de emprego aparece em chance boa, e
+cada resumo de freela diz quantas horas leva e o preço. Cada linha `web` do
+modo pode levar até 1 h (o explorador vai a fundo).
+
 **Sucesso:** o toast *A caçada começou*. Ela leva horas: perfil (1 a 3 min),
 fontes (5 a 15 min), o explorador na web (10 a 40 min por linha `web`),
 triagem (1 min a cada 20 oportunidades), pacotes (2 a 5 min cada, até 20) e

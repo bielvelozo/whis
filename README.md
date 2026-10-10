@@ -64,7 +64,7 @@ python -m whis daily [--anotar TEXTO] [--simular] [--fakes] [--agendada]
 python -m whis news [--agendada] [--fakes] [--simular]
 python -m whis x-login
 python -m whis meetings [--agendada] [--fakes]
-python -m whis hunt [--simular] [--fakes] [--do-zero]
+python -m whis hunt [--simular] [--fakes] [--do-zero] [--freelas]
 python -m whis contas [--so SITE] [--senha SITE]
 python -m whis navegador [url]
 python -m whis lembrete [--agendada]

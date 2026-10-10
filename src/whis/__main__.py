@@ -13,7 +13,7 @@ para as reuniões da Granola::
     python -m whis daily [--anotar TEXTO] [--simular] [--fakes] [--agendada]
     python -m whis news [--agendada] [--fakes] [--simular]
     python -m whis meetings [--agendada] [--fakes]
-    python -m whis hunt [--simular] [--fakes] [--do-zero]
+    python -m whis hunt [--simular] [--fakes] [--do-zero] [--freelas]
     python -m whis linkedin [--fakes] | linkedin-login | linkedin-publicar <nota>
     python -m whis contas [--so SITE] [--senha SITE] | navegador [url]
     python -m whis lembrete [--agendada] | candidaturas
@@ -308,8 +308,11 @@ def montar_dm(configuracao: Configuracao) -> PortaDM:
     return de_configuracao(configuracao)
 
 
-def montar_portas_da_cacada(configuracao: Configuracao, *, fakes: bool = False):
-    """Os cinco adaptadores do Claude na caçada (a conta do usuário), ou os fakes."""
+def montar_portas_da_cacada(configuracao: Configuracao, *, fakes: bool = False, a_fundo: bool = False):
+    """Os cinco adaptadores do Claude na caçada (a conta do usuário), ou os fakes.
+
+    `a_fundo` dá ao explorador da web mais turnos e mais tempo (modo freelas rápidos).
+    """
     if fakes:
         from .fakes_da_cacada import portas_fake
 
@@ -330,7 +333,7 @@ def montar_portas_da_cacada(configuracao: Configuracao, *, fakes: bool = False):
         navegador = AgenteDoNavegador(**opcoes)
     return PortasDaCacada(
         perfil=PerfilClaude(**opcoes),
-        explorador=ExploradorClaude(**opcoes),
+        explorador=ExploradorClaude(a_fundo=a_fundo, **opcoes),
         triagem=TriagemClaude(**opcoes),
         apostas=ApostasClaude(**opcoes),
         preparo=PreparoClaude(**opcoes),
@@ -768,11 +771,12 @@ def _comando_hunt(args: argparse.Namespace) -> int:
     """
     from . import corrida as _corrida
     from .cacada import cacar
+    from .freelas_rapidos import MODO_FREELAS
 
     configuracao = _configuracao(args)
     _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
     if args.simular:
-        return _simular_coleta(configuracao)
+        return _simular_coleta(configuracao, freelas=args.freelas)
 
     pasta = _corrida.pasta_da_cacada()
     if args.fakes:
@@ -799,9 +803,10 @@ def _comando_hunt(args: argparse.Namespace) -> int:
             try:
                 resultado = cacar(
                     configuracao,
-                    montar_portas_da_cacada(configuracao, fakes=args.fakes),
+                    montar_portas_da_cacada(configuracao, fakes=args.fakes, a_fundo=args.freelas),
                     pasta_do_estado=pasta,
                     do_zero=args.do_zero,
+                    modo=MODO_FREELAS if args.freelas else "",
                     ao_pausar=(
                         (lambda aviso: _palheta.avisar_resultado(configuracao, _palheta.Resultado("A caçada pausou", aviso.capitalize() + ".")))
                         if avisar
@@ -821,12 +826,16 @@ def _comando_hunt(args: argparse.Namespace) -> int:
     return SAIDA_COMPLETA if resultado.completa else SAIDA_PARCIAL
 
 
-def _simular_coleta(configuracao: Configuracao) -> int:
+def _simular_coleta(configuracao: Configuracao, *, freelas: bool = False) -> int:
     """Só a coleta em Python, sem Claude e sem escrever nada além dos critérios: que fonte responde?"""
     from .criterios_da_cacada import ler_criterios
     from .fontes_da_cacada import coletar
 
     criterios = ler_criterios(_vault.preparar(configuracao.vault))
+    if freelas:
+        from .freelas_rapidos import criterios_de_freelas
+
+        criterios = criterios_de_freelas(criterios)
     coleta = coletar(criterios.fontes, datetime.now().astimezone(), ao_ler=lambda nome: print(f"lendo {nome}...", flush=True))
     print()
     for nome, lista in coleta.por_fonte.items():
@@ -1616,6 +1625,14 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     hunt_cmd.add_argument(
         "--do-zero", action="store_true", help="ignora a caçada inacabada e começa outra"
+    )
+    hunt_cmd.add_argument(
+        "--freelas",
+        action="store_true",
+        help=(
+            "modo freelas rápidos: só freela pequeno de preço fechado que paga logo e casa com você; "
+            "lê só as fontes de freela e vasculha a web a fundo por vários lados"
+        ),
     )
     hunt_cmd.set_defaults(funcao=_comando_hunt)
 
