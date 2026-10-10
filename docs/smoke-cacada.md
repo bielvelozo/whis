@@ -117,7 +117,11 @@ freela são lidas (Freelancer.com com as buscas do modo, 99Freelas, Workana) e
 lista as seis linhas `web` do explorador. **Sucesso:** o relatório se chama
 *Caçada de freelas rápidos*, nenhuma vaga de emprego aparece em chance boa, e
 cada resumo de freela diz quantas horas leva e o preço. Cada linha `web` do
-modo pode levar até 1 h (o explorador vai a fundo).
+modo pode levar até 1 h (o explorador vai a fundo). Se ela acabar o principal
+antes da virada da semana do plano, o andamento mostra a etapa `extra`
+("buscando mais", depois "caprichando") e as chances boas passam de "Abrir o
+resumo" para "Abrir o pacote"; se a virada chegar no meio do principal, chega
+o toast de pausa até a virada e ela continua sozinha depois.
 
 **Sucesso:** o toast *A caçada começou*. Ela leva horas: perfil (1 a 3 min),
 fontes (5 a 15 min), o explorador na web (10 a 40 min por linha `web`),

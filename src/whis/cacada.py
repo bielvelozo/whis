@@ -29,7 +29,7 @@ import logging
 import re
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
@@ -41,7 +41,7 @@ from .cacada_claude import ErroDaCacada, LimiteDoPlano, Plano
 from .configuracao import Configuracao
 from .corrida import Checkpoint, escrever_andamento
 from .criterios_da_cacada import CAMINHO_DOS_CRITERIOS, PASTA_CACADA, Criterios, FonteDaCacada, ler_criterios
-from .freelas_rapidos import MODO_FREELAS, criterios_de_freelas
+from .freelas_rapidos import MODO_FREELAS, PEDIDO_DA_RODADA_EXTRA, criterios_de_freelas
 from .oportunidades import (
     CHANCE_BOA,
     DESCARTADA,
@@ -71,11 +71,17 @@ MAXIMO_DA_PAUSA = timedelta(hours=5, minutes=15)
 PAUSA_SEM_HORA = timedelta(minutes=30)
 FOLGA_DEPOIS_DA_VIRADA = timedelta(minutes=2)
 PAUSAS_POR_CHAMADA = 3
+RODADAS_EXTRAS_DE_BUSCA = 30
+RODADAS_EXTRAS_MINIMAS = 3
 IDADE_MAXIMA_DA_RETOMADA = timedelta(days=4)
 
 
 class Parada(RuntimeError):
     """A corrida encerra antes do fim, com o que já tem: o motivo vai para o relatório."""
+
+
+class JanelaEsgotada(RuntimeError):
+    """A janela de 5 h acabou durante o extra do modo freelas: o extra encerra, a corrida não."""
 
 
 class PortaPerfil(Protocol):
@@ -165,6 +171,7 @@ class ResultadoDaCacada:
     plano_depois: int | None = None
     enviadas: int = 0
     precisam_de_voce: int = 0
+    sobrou_plano: bool = False
 
     @property
     def completa(self) -> bool:
@@ -175,7 +182,13 @@ class ResultadoDaCacada:
 
 
 class GuardaDoPlano:
-    """Lê o plano depois de cada chamada e decide: segue, pausa ou para."""
+    """Lê o plano depois de cada chamada e decide: segue, pausa ou para.
+
+    `atravessa_virada` (modo freelas, no principal): em vez de parar na virada
+    da semana ou no teto semanal da véspera, espera a semana virar e segue, uma
+    vez só. `fim_do_extra` (modo freelas, no extra): nada passa desta hora, e o
+    plano acabando encerra o extra com `JanelaEsgotada` em vez de parar a corrida.
+    """
 
     def __init__(
         self,
@@ -192,6 +205,12 @@ class GuardaDoPlano:
         self.plano: Plano | None = None
         self.primeiro: Plano | None = None
         self.pausas: list[str] = []
+        self.atravessa_virada = False
+        self.virada_atravessada = False
+        self.fim_do_extra: datetime | None = None
+
+    def agora(self) -> datetime:
+        return self._relogio()
 
     def ler(self, porta: Any) -> None:
         plano = getattr(porta, "ultimo_plano", None)
@@ -210,10 +229,19 @@ class GuardaDoPlano:
         if self.plano is None:
             return
         semanal = self.plano.sete_dias
-        if semanal is not None and semanal >= self.teto():
-            raise Parada(f"o plano semanal chegou a {semanal}% (o teto desta corrida é {self.teto()}%)")
         vira = self.plano.vira_sete_dias
-        if vira is not None and vira - self._relogio() < MARGEM_DA_VIRADA:
+        no_teto = semanal is not None and semanal >= self.teto()
+        virando = vira is not None and vira - self._relogio() < MARGEM_DA_VIRADA
+        if self.fim_do_extra is not None:
+            if no_teto or virando or self._relogio() >= self.fim_do_extra:
+                raise JanelaEsgotada("o plano da semana acabou ou a virada chegou")
+            return
+        if (no_teto or virando) and self._pode_atravessar(vira):
+            self._esperar_virada(vira)
+            return
+        if no_teto:
+            raise Parada(f"o plano semanal chegou a {semanal}% (o teto desta corrida é {self.teto()}%)")
+        if virando:
             raise Parada("a semana do plano está para virar: daqui em diante a cota é a do trabalho")
 
     def chamar(self, porta: Any, funcao: Callable[[], Any]) -> Any:
@@ -224,16 +252,44 @@ class GuardaDoPlano:
                 resultado = funcao()
             except LimiteDoPlano as limite:
                 self.ler(porta)
+                if self.fim_do_extra is not None and (limite.semanal or limite.retoma_em is None or limite.retoma_em >= self.fim_do_extra):
+                    raise JanelaEsgotada("o plano acabou antes da virada") from limite
                 if limite.semanal:
+                    vira = limite.retoma_em or (self.plano.vira_sete_dias if self.plano else None)
+                    if self._pode_atravessar(vira):
+                        self._esperar_virada(vira)
+                        continue
                     raise Parada("o limite semanal do plano bateu") from limite
                 if tentativa >= PAUSAS_POR_CHAMADA:
                     raise Parada("a janela de 5 h bateu de novo depois de três pausas") from limite
                 self._pausar(limite)
                 continue
             self.ler(porta)
-            self.conferir()
+            if self.fim_do_extra is None:
+                self.conferir()
             return resultado
         raise Parada("a janela de 5 h não abriu")
+
+    def _pode_atravessar(self, vira: datetime | None) -> bool:
+        return (
+            self.atravessa_virada
+            and not self.virada_atravessada
+            and vira is not None
+            and vira - self._relogio() <= VESPERA
+        )
+
+    def _esperar_virada(self, vira: datetime) -> None:
+        self.virada_atravessada = True
+        agora = self._relogio()
+        espera = max(vira + FOLGA_DEPOIS_DA_VIRADA - agora, timedelta(minutes=1))
+        aviso = f"pausada até {(agora + espera).astimezone():%H:%M} (a semana do plano vira; o principal continua depois)"
+        self.pausas.append(aviso)
+        _log.warning("Caçada %s.", aviso)
+        if self._ao_pausar is not None:
+            self._ao_pausar(aviso)
+        self._dormir(espera.total_seconds())
+        if self.plano is not None:
+            self.plano = replace(self.plano, sete_dias=None, vira_sete_dias=None)
 
     def _pausar(self, limite: LimiteDoPlano) -> None:
         agora = self._relogio()
@@ -288,6 +344,7 @@ def cacar(
 
     estado = _Estado(configuracao, raiz, criterios, checkpoint, pasta_do_estado)
     guarda = GuardaDoPlano(configuracao.cacada_teto_semanal, relogio=agora, dormir=dormir, ao_pausar=ao_pausar)
+    guarda.atravessa_virada = modo == MODO_FREELAS
     parada = ""
     try:
         _etapa_do_perfil(estado, portas, guarda)
@@ -297,6 +354,10 @@ def cacar(
         _etapa_do_preparo(estado, portas, guarda)
         _escrever_relatorio(estado, guarda, parada="", em_andamento="escrevendo as mensagens de tentar a sorte")
         _etapa_das_apostas(estado, portas, guarda)
+        if estado.checkpoint.get("modo") == MODO_FREELAS:
+            _escrever_relatorio(estado, guarda, parada="", em_andamento="usando o que sobra do plano até a virada da semana")
+            _etapa_extra(estado, portas, guarda)
+        guarda.atravessa_virada = False
         _etapa_do_envio(estado, portas, guarda)
         _etapa_da_caixa(estado, portas)
     except Parada as motivo:
@@ -327,6 +388,7 @@ def cacar(
         precisam_de_voce=sum(1 for e in (checkpoint.get("envios") or {}).values() if e.get("status") == "precisa_de_voce"),
         plano_antes=guarda.primeiro.sete_dias if guarda.primeiro else None,
         plano_depois=guarda.plano.sete_dias if guarda.plano else None,
+        sobrou_plano=bool(checkpoint.get("sobrou_plano")),
     )
 
 
@@ -500,6 +562,118 @@ def _etapa_do_preparo(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoP
         amostra = _amostra(estado, portas, oportunidade, pacote, caminho) if pacote.amostra_html else {}
         estado.escrever(caminho, montar_pacote(oportunidade, veredito, pacote, amostra, completo=completo))
         pacotes[oportunidade.id] = {"caminho": caminho, **amostra, "pacote": {**pacote.para_json(), "amostra_html": ""}}
+        estado.checkpoint.guardar(pacotes=pacotes)
+
+
+def _etapa_extra(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano) -> None:
+    """Modo freelas: com o principal pronto antes da virada da semana, gasta o que sobra até ela.
+
+    Rodadas na web enquanto cada uma trouxer freela novo (até
+    `RODADAS_EXTRAS_DE_BUSCA`, e no mínimo `RODADAS_EXTRAS_MINIMAS`), com triagem e resumo do que chegou, e o pacote
+    completo (proposta e, no freela web, a amostra) de cada chance boa nova;
+    quando a busca seca, o pacote completo das de tentar a sorte, da melhor para
+    a pior. Só para quando o plano acaba ou a virada chega; se o trabalho acabar
+    antes, marca `sobrou_plano` e quem chamou pode emendar uma caçada de vagas. A janela de 5 h pode pausar se reabrir antes da virada; o plano
+    acabando ou a virada chegando encerram o extra, e a corrida termina inteira.
+    Se o principal só acabou depois da virada, não há extra.
+    """
+    if guarda.virada_atravessada:
+        return
+    plano = guarda.plano
+    if plano is not None and plano.vira_sete_dias is not None:
+        fim = plano.vira_sete_dias - MARGEM_DA_VIRADA
+    elif plano is not None and plano.vira_cinco_horas is not None:
+        fim = plano.vira_cinco_horas
+    else:
+        fim = guarda.agora() + timedelta(hours=5)
+
+    def sobra() -> bool:
+        return guarda.agora() < fim
+
+    guarda.fim_do_extra = fim
+    try:
+        while sobra() and int(estado.checkpoint.get("rodadas_extras") or 0) < RODADAS_EXTRAS_DE_BUSCA:
+            novas = _rodada_extra_de_busca(estado, portas, guarda, sobra)
+            feitas = int(estado.checkpoint.get("rodadas_extras") or 0) + 1
+            if not novas and feitas >= RODADAS_EXTRAS_MINIMAS:
+                feitas = RODADAS_EXTRAS_DE_BUSCA
+            estado.checkpoint.guardar(rodadas_extras=feitas)
+            if novas:
+                _etapa_da_triagem(estado, portas, guarda)
+                _etapa_do_preparo(estado, portas, guarda)
+            _caprichar(estado, portas, guarda, sobra, CHANCE_BOA)
+        _caprichar(estado, portas, guarda, sobra, CHANCE_BOA)
+        _caprichar(estado, portas, guarda, sobra, TENTAR_A_SORTE)
+        estado.checkpoint.guardar(sobrou_plano=sobra())
+    except JanelaEsgotada as motivo:
+        _log.info("O extra da caçada de freelas encerrou: %s.", motivo)
+    finally:
+        guarda.fim_do_extra = None
+
+
+def _rodada_extra_de_busca(
+    estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, sobra: Callable[[], bool]
+) -> int:
+    criterios = estado.criterios
+    perfil = estado.perfil() or Perfil(resumo="")
+    ja_vistas = links_ja_vistos(estado.raiz, excluir=estado.corrida)
+    novas = 0
+    for fonte in (f for f in criterios.fontes if f.tipo == "web"):
+        if not sobra():
+            break
+        oportunidades = estado.oportunidades()
+        vistas = ja_vistas | {o.link for o in oportunidades.values()}
+        estado.andamento("extra", f"buscando mais: {fonte.nome}")
+        try:
+            achadas = guarda.chamar(
+                portas.explorador,
+                lambda fonte=fonte, vistas=sorted(vistas): portas.explorador.explorar(
+                    f"{fonte.argumento} {PEDIDO_DA_RODADA_EXTRA}", perfil, criterios.procuro, criterios.sobre_mim, vistas, fonte.nome
+                ),
+            )
+        except ErroDaCacada as erro:
+            _log.warning("A rodada extra em %s falhou: %s", fonte.nome, erro)
+            continue
+        chegaram = {o.id: o for o in achadas if o.link not in vistas and o.id not in oportunidades}
+        if chegaram:
+            novas += len(chegaram)
+            estado.checkpoint.guardar(oportunidades=[o.para_json() for o in (*oportunidades.values(), *chegaram.values())])
+    return novas
+
+
+def _caprichar(
+    estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, sobra: Callable[[], bool], classe: str
+) -> None:
+    from .fontes_da_cacada import ler_detalhe
+
+    perfil = estado.perfil() or Perfil(resumo="")
+    criterios = estado.criterios
+    for oportunidade, veredito in _ordenadas(estado.oportunidades(), estado.vereditos(), classe):
+        if not sobra():
+            return
+        pacotes = estado.pacotes()
+        atual = pacotes.get(oportunidade.id) or {}
+        if atual.get("completo"):
+            continue
+        estado.andamento("extra", f"caprichando: {oportunidade.titulo[:60]}")
+        pagina = (portas.ler_detalhe or (lambda o: ler_detalhe(o, rede=portas.rede)))(oportunidade)
+        try:
+            pacote = guarda.chamar(
+                portas.preparo,
+                lambda: portas.preparo.preparar(oportunidade, veredito, pagina, perfil, criterios.procuro, criterios.sobre_mim),
+            )
+        except ErroDaCacada as erro:
+            _log.warning("O pacote completo de %s não saiu: %s", oportunidade.link, erro)
+            continue
+        caminho = atual.get("caminho") or caminho_do_pacote(estado.corrida, oportunidade)
+        amostra = _amostra(estado, portas, oportunidade, pacote, caminho) if pacote.amostra_html else {}
+        estado.escrever(caminho, montar_pacote(oportunidade, veredito, pacote, amostra))
+        pacotes[oportunidade.id] = {
+            "caminho": caminho,
+            **amostra,
+            "pacote": {**pacote.para_json(), "amostra_html": ""},
+            "completo": True,
+        }
         estado.checkpoint.guardar(pacotes=pacotes)
 
 
@@ -873,6 +1047,9 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
                 envio.get("status", ""), "**O Whis tentou enviar e não conseguiu:**"
             )
             linhas += ["", f"{rotulo} {envio.get('falta') or envio.get('motivo', '')}".rstrip()]
+        pacote = pacotes.get(oportunidade.id) or {}
+        if pacote.get("caminho"):
+            linhas += ["", f"→ **[[{pacote['caminho'].removesuffix('.md')}|Abrir o pacote]]** (proposta pronta, preço, como enviar)"]
         aposta = apostas.get(oportunidade.id)
         if aposta is not None:
             linhas += ["", "> [!quote]- Mensagem pronta (clique para abrir)"]

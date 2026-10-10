@@ -800,6 +800,11 @@ def _comando_hunt(args: argparse.Namespace) -> int:
                         "Corre por horas e não envia nada. O relatório nasce em cacada/ e eu aviso quando acabar.",
                     ),
                 )
+            ao_pausar = (
+                (lambda aviso: _palheta.avisar_resultado(configuracao, _palheta.Resultado("A caçada pausou", aviso.capitalize() + ".")))
+                if avisar
+                else None
+            )
             try:
                 resultado = cacar(
                     configuracao,
@@ -807,12 +812,17 @@ def _comando_hunt(args: argparse.Namespace) -> int:
                     pasta_do_estado=pasta,
                     do_zero=args.do_zero,
                     modo=MODO_FREELAS if args.freelas else "",
-                    ao_pausar=(
-                        (lambda aviso: _palheta.avisar_resultado(configuracao, _palheta.Resultado("A caçada pausou", aviso.capitalize() + ".")))
-                        if avisar
-                        else None
-                    ),
+                    ao_pausar=ao_pausar,
                 )
+                if args.freelas and resultado.completa and resultado.sobrou_plano:
+                    _relatar_cacada(resultado)
+                    print("Os freelas acabaram e ainda sobra plano antes da virada: emendando a caçada de vagas.", flush=True)
+                    resultado = cacar(
+                        configuracao,
+                        montar_portas_da_cacada(configuracao, fakes=args.fakes),
+                        pasta_do_estado=pasta,
+                        ao_pausar=ao_pausar,
+                    )
             finally:
                 _corrida.liberar_sono()
     except _corrida.CacadaEmAndamento as erro:

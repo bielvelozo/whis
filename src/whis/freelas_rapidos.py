@@ -38,6 +38,11 @@ _A_FUNDO = (
     "recebendo propostas, e traga o máximo de freelas reais que achar."
 )
 
+PEDIDO_DA_RODADA_EXTRA = (
+    "RODADA EXTRA: a primeira passada já trouxe o que está em JÁ VISTAS. Agora traga freelas DIFERENTES: "
+    "abra páginas, filtros, categorias e sites que você ainda não abriu, e não repita nenhum link."
+)
+
 FONTES_DE_FREELA_RAPIDO = (
     FonteDaCacada("Freelancer.com · Shopify", "freelancer", "shopify"),
     FonteDaCacada("Freelancer.com · Next.js", "freelancer", "nextjs"),
