@@ -98,7 +98,8 @@ app_token = ""               # App-Level Token xapp com connections:write: a con
 [cacada]
 email = ""                   # o Gmail só da caçada (nunca o do trabalho): o que o Whis põe nos pacotes e, numa entrega futura, usa para criar contas
 teto_semanal = 100           # a caçada usa o plano semanal do Claude até aqui (%) e para; fora da véspera da virada, para em 70
-maximo_de_pacotes = 20       # quantas chances boas ganham pacote completo por caçada, das melhores para as piores
+maximo_de_pacotes = 20       # quantas chances boas ganham resumo (ou pacote completo) por caçada, das melhores para as piores
+pacote_completo = false      # true = cada chance boa ganha o pacote completo (proposta, respostas de formulário, como enviar, amostra) e cada tentar a sorte a mensagem pronta; false = só um resumo curto da vaga
 cloudflare_token = ""        # API token do Cloudflare (Pages: Edit) para pôr as amostras no ar; vazio = amostra só no vault
 cloudflare_conta = ""        # o Account ID do Cloudflare, ao lado do token
 cloudflare_projeto = ""      # nome do projeto do Pages (vira <nome>.pages.dev); vazio = um nome neutro sorteado uma vez
@@ -184,6 +185,7 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "email", "cacada_email", Tipo.TEXTO),
     Chave("cacada", "teto_semanal", "cacada_teto_semanal", Tipo.INTEIRO),
     Chave("cacada", "maximo_de_pacotes", "cacada_maximo_de_pacotes", Tipo.INTEIRO),
+    Chave("cacada", "pacote_completo", "cacada_pacote_completo", Tipo.BOOLEANO),
     Chave("cacada", "cloudflare_token", "cacada_cloudflare_token", Tipo.SEGREDO),
     Chave("cacada", "cloudflare_conta", "cacada_cloudflare_conta", Tipo.TEXTO),
     Chave("cacada", "cloudflare_projeto", "cacada_cloudflare_projeto", Tipo.TEXTO),
@@ -247,7 +249,7 @@ class Configuracao:
 
     `cacada_*` é a caçada de vagas e freelas: o e-mail dedicado (nunca o do
     trabalho), o teto do plano semanal em que ela para, quantos pacotes ela
-    prepara, e as chaves opcionais do Cloudflare Pages para pôr as amostras
+    prepara, se o pacote é o completo ou só o resumo curto (o padrão), e as chaves opcionais do Cloudflare Pages para pôr as amostras
     no ar. Os critérios e as fontes não moram aqui, e sim em
     `cacada/criterios.md` no vault.
 
@@ -283,6 +285,7 @@ class Configuracao:
     cacada_email: str = ""
     cacada_teto_semanal: int = 100
     cacada_maximo_de_pacotes: int = 20
+    cacada_pacote_completo: bool = False
     cacada_cloudflare_token: str = ""
     cacada_cloudflare_conta: str = ""
     cacada_cloudflare_projeto: str = ""
@@ -414,6 +417,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         cacada_cloudflare_token=str(cacada.get("cloudflare_token", "")).strip(),
         cacada_cloudflare_conta=str(cacada.get("cloudflare_conta", "")).strip(),
         cacada_cloudflare_projeto=_projeto_do_pages(cacada.get("cloudflare_projeto", ""), arquivo),
+        cacada_pacote_completo=_booleano(cacada.get("pacote_completo", False), "[cacada].pacote_completo", arquivo),
         cacada_enviar_sozinho=_booleano(cacada.get("enviar_sozinho", False), "[cacada].enviar_sozinho", arquivo),
         cacada_maximo_de_envios=_inteiro_entre(cacada.get("maximo_de_envios", 10), "[cacada].maximo_de_envios", 0, 100, arquivo),
         cacada_senha_de_app=str(cacada.get("senha_de_app", "")).replace(" ", "").strip(),

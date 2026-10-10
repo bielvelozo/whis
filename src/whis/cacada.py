@@ -117,6 +117,10 @@ class PortaPreparo(Protocol):
         self, oportunidade: Oportunidade, veredito: Veredito, pagina: str, perfil: Perfil, procuro: str, sobre_mim: str
     ) -> Pacote: ...
 
+    def resumir(
+        self, oportunidade: Oportunidade, veredito: Veredito, pagina: str, perfil: Perfil, procuro: str, sobre_mim: str
+    ) -> Pacote: ...
+
 
 @dataclass
 class PortasDaCacada:
@@ -460,6 +464,7 @@ def _etapa_do_preparo(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoP
     perfil = estado.perfil() or Perfil(resumo="")
     criterios = estado.criterios
     chances = _ordenadas(oportunidades, vereditos, CHANCE_BOA)[: estado.configuracao.cacada_maximo_de_pacotes]
+    completo = estado.configuracao.cacada_pacote_completo
     from .fontes_da_cacada import ler_detalhe
 
     for numero, (oportunidade, veredito) in enumerate(chances, 1):
@@ -468,10 +473,11 @@ def _etapa_do_preparo(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoP
             continue
         estado.andamento("preparo", f"{numero} de {len(chances)}: {oportunidade.titulo[:60]}")
         pagina = (portas.ler_detalhe or (lambda o: ler_detalhe(o, rede=portas.rede)))(oportunidade)
+        fazer = portas.preparo.preparar if completo else portas.preparo.resumir
         try:
             pacote = guarda.chamar(
                 portas.preparo,
-                lambda: portas.preparo.preparar(oportunidade, veredito, pagina, perfil, criterios.procuro, criterios.sobre_mim),
+                lambda: fazer(oportunidade, veredito, pagina, perfil, criterios.procuro, criterios.sobre_mim),
             )
         except ErroDaCacada as erro:
             _log.warning("O pacote de %s não saiu: %s", oportunidade.link, erro)
@@ -480,7 +486,7 @@ def _etapa_do_preparo(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoP
             continue
         caminho = caminho_do_pacote(estado.corrida, oportunidade)
         amostra = _amostra(estado, portas, oportunidade, pacote, caminho) if pacote.amostra_html else {}
-        estado.escrever(caminho, montar_pacote(oportunidade, veredito, pacote, amostra))
+        estado.escrever(caminho, montar_pacote(oportunidade, veredito, pacote, amostra, completo=completo))
         pacotes[oportunidade.id] = {"caminho": caminho, **amostra, "pacote": {**pacote.para_json(), "amostra_html": ""}}
         estado.checkpoint.guardar(pacotes=pacotes)
 
@@ -506,6 +512,8 @@ def _amostra(
 
 
 def _etapa_das_apostas(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano) -> None:
+    if not (estado.configuracao.cacada_pacote_completo or estado.configuracao.cacada_enviar_sozinho):
+        return
     oportunidades = estado.oportunidades()
     vereditos = estado.vereditos()
     perfil = estado.perfil() or Perfil(resumo="")
@@ -680,7 +688,9 @@ def montar_nota_do_perfil(perfil: Perfil, corrida: str) -> str:
     return "\n".join(linhas)
 
 
-def montar_pacote(oportunidade: Oportunidade, veredito: Veredito, pacote: Pacote, amostra: dict[str, str]) -> str:
+def montar_pacote(
+    oportunidade: Oportunidade, veredito: Veredito, pacote: Pacote, amostra: dict[str, str], *, completo: bool = True
+) -> str:
     def lista(itens: Sequence[str], vazio: str = "_(nenhum)_") -> list[str]:
         return [f"- {item}" for item in itens] if itens else [vazio]
 
@@ -727,7 +737,10 @@ def montar_pacote(oportunidade: Oportunidade, veredito: Veredito, pacote: Pacote
         "",
     ]
     if pacote.o_que_estica:
-        linhas += ["## O que estica", "", pacote.o_que_estica, ""]
+        linhas += ["## Ponto fraco", "", pacote.o_que_estica, ""]
+    if not completo:
+        linhas += ["## Salário", "", pacote.preco or "—", ""]
+        return "\n".join(linhas)
     linhas += ["## Alertas", "", *lista(pacote.alertas), ""]
     linhas += ["## Preço e prazo", "", f"- **Preço / pretensão:** {pacote.preco or '—'}", f"- **Prazo:** {pacote.prazo or '—'}", ""]
     linhas += ["## Proposta pronta", "", "```text", pacote.proposta.strip() or "(vazia)", "```", ""]
@@ -819,7 +832,10 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
             linhas += [veredito.motivo, ""]
         pacote = pacotes.get(oportunidade.id) or {}
         if pacote.get("caminho"):
-            linhas.append(f"→ **[[{pacote['caminho'].removesuffix('.md')}|Abrir o pacote]]** (proposta pronta, preço, como enviar)")
+            if pacote.get("pacote", {}).get("proposta"):
+                linhas.append(f"→ **[[{pacote['caminho'].removesuffix('.md')}|Abrir o pacote]]** (proposta pronta, preço, como enviar)")
+            else:
+                linhas.append(f"→ **[[{pacote['caminho'].removesuffix('.md')}|Abrir o resumo]]** (o que pedem, ponto fraco, salário)")
             if pacote.get("url"):
                 linhas.append(f"→ Amostra no ar: {pacote['url']}")
             elif pacote.get("amostra"):

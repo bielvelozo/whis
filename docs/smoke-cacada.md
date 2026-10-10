@@ -123,7 +123,11 @@ No fim chega o toast *A caçada terminou*, com o botão que abre o relatório no
 Obsidian. Confira:
 
 - **Antes de tudo**: o que o Whis quer que você responda em *Sobre mim*.
-- **Chances boas**: cada uma com o link do pacote. No pacote, a proposta pronta
+- **Chances boas**: por padrão, cada uma com o link do resumo ("Abrir o
+  resumo"): *O que pedem*, *Por que casa*, *Ponto fraco* (uma frase) e
+  *Salário*, sem proposta nem como enviar; e as tentar a sorte sem mensagem
+  pronta. Com `[cacada].pacote_completo = true` no config, o link vira "Abrir o
+  pacote" e vale o resto deste item. No pacote, a proposta pronta
   (num bloco de código, com o botão de copiar do Obsidian), preço e prazo,
   alertas, como enviar e, no freela web, a amostra. Confira também: o *O que
   pedem* diz se é período integral, meio período ou freela; o *Preço* começa

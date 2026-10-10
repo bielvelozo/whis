@@ -156,6 +156,16 @@ class PreparoFake(_Fake):
             formulario=("Pretensão: R$ 9.000 por mês", "Nível de inglês: intermediário"),
         )
 
+    def resumir(self, oportunidade, veredito, pagina, perfil, procuro, sobre_mim) -> Pacote:
+        self._contar()
+        return Pacote(
+            id=oportunidade.id,
+            resumo=f"Pedem: {oportunidade.titulo}.",
+            por_que_casa="Casa com a stack web (exemplo).",
+            o_que_estica="Pedem um ano a mais do que ele tem (exemplo).",
+            preco="Faixa não informada; pedir R$ 9.000 por mês (exemplo).",
+        )
+
 
 def portas_fake(**opcoes_da_triagem) -> PortasDaCacada:
     return PortasDaCacada(

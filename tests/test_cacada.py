@@ -8,6 +8,7 @@ da janela de 5 h e a parada da semanal, sem esperar ninguém.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import subprocess
 from datetime import UTC, datetime, timedelta
@@ -376,7 +377,29 @@ def pasta_do_estado(tmp_path: Path) -> Path:
     return tmp_path / "estado"
 
 
+def test_por_padrao_a_chance_boa_ganha_so_o_resumo_curto(configuracao: Configuracao, pasta_do_estado: Path):
+    raiz = Path(configuracao.vault)
+    portas = portas_fake()
+
+    resultado = cacar(configuracao, portas, pasta_do_estado=pasta_do_estado)
+
+    assert not configuracao.cacada_pacote_completo
+    assert resultado.completa and resultado.chances_boas == 3
+    assert portas.preparo.chamadas == 3 and portas.apostas.chamadas == 0
+    relatorio = (raiz / resultado.relatorio).read_text(encoding="utf-8")
+    assert "Mensagem pronta" not in relatorio and "Abrir o resumo" in relatorio
+    pasta = raiz / "cacada" / resultado.corrida
+    resumos = list(pasta.glob("*.md"))
+    assert len(resumos) == 3 and not [p for p in pasta.iterdir() if p.is_dir()], "sem amostra no resumo"
+    texto = resumos[0].read_text(encoding="utf-8")
+    for secao in ("## O que pedem", "## Por que casa", "## Ponto fraco", "## Salário"):
+        assert secao in texto
+    for secao in ("## Proposta pronta", "## Respostas de formulário", "## Como enviar", "## Plano de execução", "## Alertas"):
+        assert secao not in texto
+
+
 def test_a_cacada_deixa_relatorio_pacotes_e_nunca_toca_os_criterios(configuracao: Configuracao, pasta_do_estado: Path):
+    configuracao = dataclasses.replace(configuracao, cacada_pacote_completo=True)
     raiz = Path(configuracao.vault)
     (raiz / "cacada").mkdir(parents=True)
     (raiz / CAMINHO_DOS_CRITERIOS).write_text(MODELO_DOS_CRITERIOS + "\n<!-- meu -->\n", encoding="utf-8")
@@ -590,6 +613,25 @@ def test_a_proposta_e_a_mensagem_seguem_o_mesmo_jeito_de_escrever():
 
     assert ESTILO_DOS_TEXTOS in SISTEMA_DO_PREPARO and ESTILO_DOS_TEXTOS in SISTEMA_DAS_APOSTAS
     assert "3 passos" not in SISTEMA_DO_PREPARO, "passos numerados na carta soam como CV colado"
+
+
+def test_o_resumo_pede_so_quatro_campos_curtos_e_nao_faz_amostra():
+    from whis.cacada_claude import PreparoClaude
+
+    freela = oportunidades_de_exemplo()[1]
+    preparo = _gravado(PreparoClaude, [_resultado(structured_output={
+        "resumo": "Landing page.", "por_que_casa": "Web.", "ponto_fraco": "Nunca fez Webflow.", "salario": "R$ 700",
+    })])
+    veredito = TriagemFake().triar([freela], None, "", "")[0]
+
+    pacote = preparo.resumir(freela, veredito, "texto", portas_fake().perfil.montar("", "", ""), "regras", "")
+
+    assert (pacote.resumo, pacote.por_que_casa, pacote.o_que_estica, pacote.preco) == (
+        "Landing page.", "Web.", "Nunca fez Webflow.", "R$ 700"
+    )
+    assert pacote.proposta == "" and pacote.amostra_html == "" and len(preparo.pedidos) == 1
+    (_, opcoes), = preparo.pedidos
+    assert set(opcoes.output_format["schema"]["required"]) == {"resumo", "por_que_casa", "ponto_fraco", "salario"}
 
 
 def _preparar(preparo, oportunidade):
