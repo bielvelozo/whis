@@ -460,7 +460,7 @@ def _etapa_do_perfil(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPl
 def _etapa_da_coleta(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, agora: datetime) -> None:
     if estado.checkpoint.get("coletada"):
         return
-    from .fontes_da_cacada import barrar_freelancer, coletar
+    from .fontes_da_cacada import coletar
 
     criterios = estado.criterios
     ja_vistas = links_ja_vistos(estado.raiz, excluir=estado.corrida)
@@ -491,19 +491,39 @@ def _etapa_da_coleta(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPl
             todas.setdefault(oportunidade.id, oportunidade)
 
     novas = [o for o in todas.values() if o.link not in ja_vistas]
-    estado.andamento("coleta", "conferindo as skills do Freelancer.com")
-    barrado = barrar_freelancer(novas, estado.configuracao.cacada_usuario_freelancer, rede=portas.rede)
-    novas = list(barrado.ficam)
+    repetidas = len(todas) - len(novas)
+    estado.andamento("coleta", "conferindo se dá para propor")
+    novas = _tirar_o_que_nao_da(estado, portas, guarda, novas)
     _log.info("Caçada: %d oportunidade(s) coletada(s), %d nova(s).", len(todas), len(novas))
     estado.checkpoint.guardar(
         oportunidades=[o.para_json() for o in novas],
         lidas=lidas,
         falhas=falhas,
-        repetidas=len(todas) - len(novas) - barrado.sem_skill - barrado.so_para_quem_paga,
-        freelancer_sem_skill=barrado.sem_skill,
-        freelancer_so_para_quem_paga=barrado.so_para_quem_paga,
+        repetidas=repetidas,
         coletada=True,
     )
+
+
+def _tirar_o_que_nao_da(
+    estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, oportunidades: Sequence[Oportunidade]
+) -> list[Oportunidade]:
+    """Tira o que ele não consegue propor (travado na conta grátis ou já fechado) e soma no checkpoint."""
+    from .fontes_da_cacada import filtrar_o_que_da
+
+    filtrado = filtrar_o_que_da(
+        oportunidades,
+        estado.configuracao.cacada_usuario_freelancer,
+        rede=portas.rede,
+        dormir=guarda._dormir,
+        agora=guarda._relogio(),
+    )
+    checkpoint = estado.checkpoint
+    checkpoint.guardar(
+        freelancer_sem_skill=int(checkpoint.get("freelancer_sem_skill") or 0) + filtrado.sem_skill,
+        freelancer_so_para_quem_paga=int(checkpoint.get("freelancer_so_para_quem_paga") or 0) + filtrado.so_para_quem_paga,
+        fechadas=int(checkpoint.get("fechadas") or 0) + filtrado.fechadas,
+    )
+    return list(filtrado.ficam)
 
 
 def _etapa_da_triagem(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano) -> None:
@@ -542,9 +562,18 @@ def _etapa_do_preparo(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoP
     vereditos = estado.vereditos()
     perfil = estado.perfil() or Perfil(resumo="")
     criterios = estado.criterios
-    chances = _ordenadas(oportunidades, vereditos, CHANCE_BOA)[: estado.configuracao.cacada_maximo_de_pacotes]
     completo = estado.configuracao.cacada_pacote_completo
     from .fontes_da_cacada import ler_detalhe
+
+    pacotes = estado.pacotes()
+    sem_pacote = [o for o, _ in _ordenadas(oportunidades, vereditos, CHANCE_BOA) if o.id not in pacotes]
+    if sem_pacote:
+        estado.andamento("preparo", "conferindo se as chances boas ainda estão abertas")
+        ficam = {o.id: o for o in _tirar_o_que_nao_da(estado, portas, guarda, sem_pacote)}
+        sairam = {o.id for o in sem_pacote} - ficam.keys()
+        oportunidades = {i: ficam.get(i, o) for i, o in oportunidades.items() if i not in sairam}
+        estado.checkpoint.guardar(oportunidades=[o.para_json() for o in oportunidades.values()])
+    chances = _ordenadas(oportunidades, vereditos, CHANCE_BOA)[: estado.configuracao.cacada_maximo_de_pacotes]
 
     for numero, (oportunidade, veredito) in enumerate(chances, 1):
         pacotes = estado.pacotes()
@@ -640,6 +669,8 @@ def _rodada_extra_de_busca(
             _log.warning("A rodada extra em %s falhou: %s", fonte.nome, erro)
             continue
         chegaram = {o.id: o for o in achadas if o.link not in vistas and o.id not in oportunidades}
+        if chegaram:
+            chegaram = {o.id: o for o in _tirar_o_que_nao_da(estado, portas, guarda, list(chegaram.values()))}
         if chegaram:
             novas += len(chegaram)
             estado.checkpoint.guardar(oportunidades=[o.para_json() for o in (*oportunidades.values(), *chegaram.values())])
@@ -1100,6 +1131,8 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
     repetidas = estado.checkpoint.get("repetidas")
     if repetidas:
         linhas.append(f"- {repetidas} já tinham aparecido em caçadas anteriores e ficaram de fora.")
+    if fechadas := estado.checkpoint.get("fechadas"):
+        linhas.append(f"- {fechadas} já estavam fechadas quando a caçada conferiu e ficaram de fora.")
     if sem_skill := estado.checkpoint.get("freelancer_sem_skill"):
         linhas.append(
             f"- {sem_skill} do Freelancer.com ficaram de fora porque pedem skill que não está no seu perfil "

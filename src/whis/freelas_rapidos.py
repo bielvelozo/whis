@@ -35,7 +35,7 @@ a issue abre. Bounty com proposta já postada, PR aberto ou mais de uns 5 coment
 fechada é "descartada". Sem "detalhes" que mostrem a concorrência, bounty também fica em \
 "tentar_a_sorte", e o motivo diz que não deu para ver quantos já propuseram.
 - Projeto da 99Freelas com "Projeto exclusivo para assinantes" nos detalhes só aceita proposta dele na hora que os detalhes dizem: julgue igual aos outros, e o resumo começa dizendo quando abre para ele.
-- Projeto do Freelancer.com com "escolha a skill" nos detalhes: o resumo diz qual skill ele marca na proposta.
+- Projeto do Freelancer.com com "escolha a skill" nos detalhes: o resumo diz qual skill ele marca na proposta e avisa que, se a página disser "aberto apenas a freelancers selecionados", ele pula (pede saldo de US$ 20, que ele não deposita). A conta grátis dele tem só 6 propostas por mês no Freelancer.com: lá, "chance_boa" só com encaixe muito forte.
 - Freela grande (semanas de trabalho), sem orçamento nenhum e sem escopo, ou com prazo curto demais \
 para quem trabalha de dia é "descartada". Freela por hora avulso continua "descartada".
 - No resumo do freela, diga quantas horas ele leva com IA e o preço que faz sentido pedir."""

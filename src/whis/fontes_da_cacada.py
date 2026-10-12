@@ -579,50 +579,87 @@ def _info_da_99freelas(trecho: str) -> str:
     return " ".join(texto_limpo(trecho).split())
 
 
-# -- o que a conta grátis do Freelancer.com não deixa propor ------------------------------------
+# -- o que ele não consegue propor: travado na conta grátis ou já fechado ------------------------
 
 _PROJETO_DO_FREELANCER = re.compile(r"freelancer\.com/projects/([^?#]+?)/?(?:[?#]|$)", re.I)
+_PROJETO_DA_99FREELAS = re.compile(r"99freelas\.com\.br/project/[^/?#]+", re.I)
 _SO_PARA_QUEM_PAGA = ("pf_only",)
+_EXCLUSIVO = "Projeto exclusivo para assinantes da 99Freelas"
+#: O cliente pode exigir saldo de US$ 20 na conta de quem propõe, e só a sessão logada dele
+#: diz isso (`freelancerCanBidOnProject.php`); ele decidiu não depositar.
+AVISO_DE_SALDO_MINIMO = (
+    "Se a página disser que o projeto está aberto apenas a freelancers selecionados, pule: pede saldo de US$ 20"
+)
 
 
 @dataclass(frozen=True)
-class FreelancerBarrado:
+class Filtrado:
     """O que ficou depois do filtro e quantos saíram por cada motivo."""
 
     ficam: tuple[Oportunidade, ...]
     sem_skill: int = 0
     so_para_quem_paga: int = 0
+    fechadas: int = 0
+
+    def somar(self, outro: Filtrado) -> Filtrado:
+        return Filtrado(
+            outro.ficam,
+            self.sem_skill + outro.sem_skill,
+            self.so_para_quem_paga + outro.so_para_quem_paga,
+            self.fechadas + outro.fechadas,
+        )
+
+
+def filtrar_o_que_da(
+    oportunidades: Sequence[Oportunidade],
+    usuario_freelancer: str,
+    *,
+    rede: httpx.BaseTransport | None = None,
+    dormir: Callable[[float], None] = time.sleep,
+    agora: datetime | None = None,
+) -> Filtrado:
+    """O Freelancer.com pela API e a 99Freelas pela página do projeto, nessa ordem."""
+    freelancer = barrar_freelancer(oportunidades, usuario_freelancer, rede=rede)
+    return freelancer.somar(conferir_99freelas(freelancer.ficam, rede=rede, dormir=dormir, agora=agora))
 
 
 def barrar_freelancer(
     oportunidades: Sequence[Oportunidade], usuario: str, *, rede: httpx.BaseTransport | None = None
-) -> FreelancerBarrado:
+) -> Filtrado:
     """Tira os projetos do Freelancer.com em que a conta grátis dele não consegue propor.
 
-    Para propor, o Freelancer.com pede uma skill do projeto que esteja no perfil, e a
-    conta grátis tem poucas skills e não troca; projeto só para Preferred Freelancer
-    também fica fechado. Projeto que a API não acha e erro na rede deixam tudo como
-    está: o filtro nunca derruba a caçada.
+    Para propor, o Freelancer.com pede uma skill do projeto que esteja no perfil;
+    projeto só para Preferred Freelancer e projeto que já não está aberto também
+    saem, e o mesmo projeto com o link em outra caixa fica uma vez só. Projeto que
+    a API não acha e erro na rede deixam tudo como está: o filtro nunca derruba a
+    caçada. Sem usuário, só o que já fechou sai.
     """
     links = {o.id: casou.group(1) for o in oportunidades if (casou := _PROJETO_DO_FREELANCER.search(o.link))}
-    if not usuario or not links:
-        return FreelancerBarrado(tuple(oportunidades))
+    if not links:
+        return Filtrado(tuple(oportunidades))
     try:
         with httpx.Client(transport=rede, timeout=TEMPO_LIMITE_S, follow_redirects=True, headers=CABECALHOS) as cliente:
-            skills = _skills_do_perfil(cliente, usuario)
+            skills = _skills_do_perfil(cliente, usuario) if usuario else set()
             projetos = _projetos_do_freelancer(cliente, sorted(set(links.values())))
     except Exception as erro:  # noqa: BLE001 — sem o filtro, a caçada segue com tudo
-        _log.warning("Caçada: o filtro de skills do Freelancer.com não rodou: %s", _motivo(erro))
-        return FreelancerBarrado(tuple(oportunidades))
-    if not skills:
-        _log.warning("Caçada: o perfil %s do Freelancer.com não tem skills; o filtro não rodou.", usuario)
-        return FreelancerBarrado(tuple(oportunidades))
+        _log.warning("Caçada: o filtro do Freelancer.com não rodou: %s", _motivo(erro))
+        return Filtrado(tuple(oportunidades))
+    if usuario and not skills:
+        _log.warning("Caçada: o perfil %s do Freelancer.com não tem skills; só o que fechou sai.", usuario)
     ficam: list[Oportunidade] = []
-    sem_skill = so_para_quem_paga = 0
+    vistos: set[str] = set()
+    sem_skill = so_para_quem_paga = fechadas = 0
     for oportunidade in oportunidades:
-        projeto = projetos.get(links.get(oportunidade.id, "").casefold())
+        slug = links.get(oportunidade.id, "").casefold()
+        projeto = projetos.get(slug)
         if projeto is None:
             ficam.append(oportunidade)
+            continue
+        if slug in vistos:
+            continue
+        vistos.add(slug)
+        if not _aberto_no_freelancer(projeto):
+            fechadas += 1
             continue
         travas = projeto.get("upgrades") if isinstance(projeto.get("upgrades"), dict) else {}
         if any(travas.get(trava) is True for trava in _SO_PARA_QUEM_PAGA):
@@ -630,19 +667,68 @@ def barrar_freelancer(
             continue
         pedidas = {j.get("id"): str(j.get("name", "")) for j in projeto.get("jobs") or [] if isinstance(j, dict)}
         casam = [nome for id_, nome in pedidas.items() if id_ in skills]
-        if pedidas and not casam:
+        if skills and pedidas and not casam:
             sem_skill += 1
             continue
-        if casam:
-            aviso = f"Freelancer.com: na proposta, escolha a skill {', '.join(casam)}"
+        if casam and "escolha a skill" not in oportunidade.detalhes:
+            aviso = f"Freelancer.com: na proposta, escolha a skill {', '.join(casam)}. {AVISO_DE_SALDO_MINIMO}"
             oportunidade = replace(oportunidade, detalhes=" | ".join(p for p in (oportunidade.detalhes, aviso) if p))
         ficam.append(oportunidade)
     _log.info(
-        "Caçada: Freelancer.com — %d sem skill do perfil e %d só para Preferred Freelancer ficaram de fora.",
+        "Caçada: Freelancer.com — %d sem skill do perfil, %d só para Preferred Freelancer e %d já fechados ficaram de fora.",
         sem_skill,
         so_para_quem_paga,
+        fechadas,
     )
-    return FreelancerBarrado(tuple(ficam), sem_skill, so_para_quem_paga)
+    return Filtrado(tuple(ficam), sem_skill, so_para_quem_paga, fechadas)
+
+
+def _aberto_no_freelancer(projeto: dict) -> bool:
+    situacao = str(projeto.get("frontend_project_status") or "open").casefold()
+    return situacao == "open" and str(projeto.get("status") or "active").casefold() == "active"
+
+
+def conferir_99freelas(
+    oportunidades: Sequence[Oportunidade],
+    *,
+    rede: httpx.BaseTransport | None = None,
+    dormir: Callable[[float], None] = time.sleep,
+    agora: datetime | None = None,
+) -> Filtrado:
+    """Abre a página de cada projeto da 99Freelas: o fechado sai, o exclusivo diz quando abre.
+
+    Projeto aberto tem o botão de enviar proposta (`/project/bid/`); o fechado ou
+    em andamento não tem. Página que não abre deixa o projeto como está.
+    """
+    agora = (agora or datetime.now()).astimezone()
+    ficam: list[Oportunidade] = []
+    fechadas = 0
+    lidas = 0
+    with httpx.Client(transport=rede, timeout=TEMPO_LIMITE_S, follow_redirects=True, headers=CABECALHOS) as cliente:
+        for oportunidade in oportunidades:
+            if not _PROJETO_DA_99FREELAS.search(oportunidade.link):
+                ficam.append(oportunidade)
+                continue
+            if lidas:
+                dormir(random.uniform(*PAUSA_ENTRE_PAGINAS_S))
+            lidas += 1
+            try:
+                pagina = _texto(cliente, oportunidade.link)
+            except Exception as erro:  # noqa: BLE001 — sem a página, o projeto fica
+                _log.info("Caçada: a página de %s não abriu (%s); fica como está.", oportunidade.link, _motivo(erro))
+                ficam.append(oportunidade)
+                continue
+            if "/project/bid/" not in pagina:
+                fechadas += 1
+                continue
+            exclusivo = _exclusivo_da_99freelas(pagina, agora)
+            if exclusivo:
+                resto = [p for p in oportunidade.detalhes.split(" | ") if p and not p.startswith(_EXCLUSIVO)]
+                oportunidade = replace(oportunidade, detalhes=" | ".join([exclusivo, *resto]))
+            ficam.append(oportunidade)
+    if lidas:
+        _log.info("Caçada: 99Freelas — %d de %d projeto(s) já estavam fechados.", fechadas, lidas)
+    return Filtrado(tuple(ficam), fechadas=fechadas)
 
 
 def _skills_do_perfil(cliente: httpx.Client, usuario: str) -> set[int]:

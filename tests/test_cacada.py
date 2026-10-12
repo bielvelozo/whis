@@ -48,6 +48,7 @@ from whis.fakes_da_cacada import TriagemFake, oportunidades_de_exemplo, portas_f
 from whis.fontes_da_cacada import (
     barrar_freelancer,
     coletar,
+    conferir_99freelas,
     interpretar_99freelas,
     interpretar_linkedin,
     interpretar_workana,
@@ -796,7 +797,8 @@ def test_freelancer_fica_so_com_projeto_que_pede_skill_do_perfil():
     barrado = barrar_freelancer(oportunidades, "gabriel", rede=rede)
 
     assert [o.titulo for o in barrado.ficam] == ["react/painel", "php/sumiu", "Site"]
-    assert barrado.ficam[0].detalhes == "Freelancer.com: na proposta, escolha a skill React.js"
+    assert barrado.ficam[0].detalhes.startswith("Freelancer.com: na proposta, escolha a skill React.js. ")
+    assert "freelancers selecionados" in barrado.ficam[0].detalhes
     assert (barrado.sem_skill, barrado.so_para_quem_paga) == (1, 1)
 
 
@@ -808,6 +810,61 @@ def test_freelancer_sem_usuario_ou_sem_rede_deixa_tudo_como_esta():
 
     assert barrar_freelancer(oportunidades, "", rede=_rede({})).ficam == tuple(oportunidades)
     assert barrar_freelancer(oportunidades, "gabriel", rede=httpx.MockTransport(caiu)).ficam == tuple(oportunidades)
+
+
+def test_freelancer_tira_o_projeto_fechado_e_o_mesmo_link_em_outra_caixa():
+    rede = _rede(
+        {
+            "/users/": httpx.Response(200, json={"result": {"users": {"1": {"jobs": [{"id": 759, "name": "React.js"}]}}}}),
+            "/projects/?": httpx.Response(200, json={"result": {"projects": [
+                {"seo_url": "react/Painel", "jobs": [{"id": 759, "name": "React.js"}]},
+                {"seo_url": "react/fechou", "jobs": [{"id": 759}], "frontend_project_status": "closed"},
+            ]}}),
+        }
+    )
+    oportunidades = [
+        _projeto_do_freelancer("react/Painel"),
+        _projeto_do_freelancer("react/painel"),
+        _projeto_do_freelancer("react/fechou"),
+    ]
+
+    filtrado = barrar_freelancer(oportunidades, "gabriel", rede=rede)
+
+    assert [o.titulo for o in filtrado.ficam] == ["react/Painel"]
+    assert filtrado.fechadas == 1
+
+
+def _projeto_da_99freelas(slug: str) -> Oportunidade:
+    return Oportunidade.nova(tipo=FREELA, fonte="99Freelas", titulo=slug, link=f"https://www.99freelas.com.br/project/{slug}")
+
+
+def test_99freelas_tira_o_fechado_e_diz_quando_o_exclusivo_abre():
+    aberto = '<a href="/project/bid/aberto-1" class="btn blue clickable">Enviar proposta</a>'
+    exclusivo = (
+        '<img src="https://cdn/images/flat_project_exclusive.png" title="Projeto Exclusivo. Ficar&aacute; '
+        'dispon&iacute;vel para todos os profissionais em 2h10m05s.">' + aberto
+    )
+    rede = _rede(
+        {
+            "/project/fechado-2": httpx.Response(200, text='<button class="btn status-3">Em andamento</button>'),
+            "/project/exclusivo-3": httpx.Response(200, text=exclusivo),
+            "/project/aberto-1": httpx.Response(200, text=aberto),
+        }
+    )
+    velho = replace_detalhes(_projeto_da_99freelas("exclusivo-3"), "Projeto exclusivo para assinantes da 99Freelas: abre para quem não assina em 01/01 às 00:00 | Propostas: 3")
+    oportunidades = [_projeto_da_99freelas("aberto-1"), _projeto_da_99freelas("fechado-2"), velho, _projeto_da_99freelas("sumiu-4")]
+
+    filtrado = conferir_99freelas(oportunidades, rede=rede, dormir=lambda s: None, agora=datetime(2026, 10, 12, 10, 0).astimezone())
+
+    assert [o.titulo for o in filtrado.ficam] == ["aberto-1", "exclusivo-3", "sumiu-4"]
+    assert filtrado.fechadas == 1
+    assert filtrado.ficam[1].detalhes == (
+        "Projeto exclusivo para assinantes da 99Freelas: abre para quem não assina em 12/10 às 12:10 | Propostas: 3"
+    )
+
+
+def replace_detalhes(oportunidade: Oportunidade, detalhes: str) -> Oportunidade:
+    return dataclasses.replace(oportunidade, detalhes=detalhes)
 
 
 def test_get_on_board_e_freelancer_pelas_apis_publicas():
