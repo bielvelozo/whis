@@ -5,13 +5,17 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from claude_agent_sdk import ResultMessage
+
 from whis.cacada import cacar
 from whis.cacada_claude import (
+    SISTEMA_DO_EXPLORADOR,
     TURNOS_DO_EXPLORADOR,
     TURNOS_DO_EXPLORADOR_A_FUNDO,
     ExploradorClaude,
     LimiteDoPlano,
     Plano,
+    _oportunidade_no_pedido,
 )
 from whis.configuracao import Configuracao
 from whis.corrida import Checkpoint
@@ -186,3 +190,33 @@ def test_trocar_de_modo_comeca_uma_caçada_nova_em_vez_de_retomar(configuracao: 
 def test_o_explorador_a_fundo_tem_mais_turnos():
     assert ExploradorClaude().turnos == TURNOS_DO_EXPLORADOR
     assert ExploradorClaude(a_fundo=True).turnos == TURNOS_DO_EXPLORADOR_A_FUNDO > TURNOS_DO_EXPLORADOR
+
+
+def test_a_concorrencia_que_o_explorador_ve_chega_na_triagem():
+    class Gravado(ExploradorClaude):
+        async def _mensagens(self, prompt, opcoes):
+            self.opcoes = opcoes
+            yield ResultMessage(
+                subtype="success", duration_ms=1, duration_api_ms=1, is_error=False, num_turns=1, session_id="s",
+                total_cost_usd=0.05,
+                structured_output={"oportunidades": [{
+                    "tipo": "freela", "titulo": "Bounty: label do GPS", "link": "https://github.com/Expensify/App/issues/103488",
+                    "descricao": "d", "fonte": "GitHub", "detalhes": "4 propostas postadas, 23 comentários, sem responsável",
+                }]},
+            )
+
+    explorador = Gravado()
+    [achada] = explorador.explorar("bounties", portas_fake().perfil.montar("", "", ""), "", "", [], "Web · bounties pagos")
+
+    assert achada.detalhes == "4 propostas postadas, 23 comentários, sem responsável"
+    assert _oportunidade_no_pedido(achada)["detalhes"] == achada.detalhes
+    esquema = explorador.opcoes.output_format["schema"]["properties"]["oportunidades"]["items"]
+    assert "detalhes" in esquema["properties"] and "detalhes" not in esquema["required"]
+    assert "propostas" in SISTEMA_DO_EXPLORADOR and "comentários" in SISTEMA_DO_EXPLORADOR
+
+
+def test_bounty_ja_disputado_nao_e_freela_rapido():
+    regra = PEDIDO_DE_FREELAS_RAPIDOS.casefold()
+    assert "bounty" in regra and "proposta" in regra and "responsável" in regra
+    [bounties] = [f for f in FONTES_DE_FREELA_RAPIDO if "bount" in f.nome.casefold()]
+    assert "detalhes" in bounties.argumento and "comentários" in bounties.argumento

@@ -450,7 +450,9 @@ link inventado, de página de busca ou de agregador sem a vaga.
 - Traga entre 5 e 25 oportunidades, as melhores primeiro. Pouco e certo vale mais que muito e duvidoso.
 Para cada uma: tipo ("vaga" ou "freela"), titulo, link, empresa (ou cliente), local (remoto? que país? \
 cidade?), regime, faixa (salário ou orçamento como está na página, ou vazio), publicada (data ISO se \
-souber), descricao (até 800 caracteres do que pedem) e fonte (o site)."""
+souber), descricao (até 800 caracteres do que pedem), fonte (o site) e detalhes (a concorrência que a \
+página mostra: quantas propostas, candidatos ou comentários já tem, se alguém já foi designado ou já \
+abriu PR, o prazo; vazio se a página não mostra)."""
 
 _OPORTUNIDADE_DO_EXPLORADOR = {
     "type": "object",
@@ -465,6 +467,7 @@ _OPORTUNIDADE_DO_EXPLORADOR = {
         "publicada": {"type": "string"},
         "descricao": {"type": "string"},
         "fonte": {"type": "string"},
+        "detalhes": {"type": "string"},
     },
     "required": ["tipo", "titulo", "link", "descricao", "fonte"],
     "additionalProperties": False,
@@ -521,6 +524,7 @@ class ExploradorClaude(_ChamadaDoClaude):
                     faixa=str(bruto.get("faixa", "")),
                     publicada=str(bruto.get("publicada", "")),
                     descricao=str(bruto.get("descricao", "")),
+                    detalhes=str(bruto.get("detalhes", "")),
                 )
             )
         return tuple(saida)

@@ -460,7 +460,7 @@ def _etapa_do_perfil(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPl
 def _etapa_da_coleta(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, agora: datetime) -> None:
     if estado.checkpoint.get("coletada"):
         return
-    from .fontes_da_cacada import coletar
+    from .fontes_da_cacada import barrar_freelancer, coletar
 
     criterios = estado.criterios
     ja_vistas = links_ja_vistos(estado.raiz, excluir=estado.corrida)
@@ -491,12 +491,17 @@ def _etapa_da_coleta(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPl
             todas.setdefault(oportunidade.id, oportunidade)
 
     novas = [o for o in todas.values() if o.link not in ja_vistas]
+    estado.andamento("coleta", "conferindo as skills do Freelancer.com")
+    barrado = barrar_freelancer(novas, estado.configuracao.cacada_usuario_freelancer, rede=portas.rede)
+    novas = list(barrado.ficam)
     _log.info("Caçada: %d oportunidade(s) coletada(s), %d nova(s).", len(todas), len(novas))
     estado.checkpoint.guardar(
         oportunidades=[o.para_json() for o in novas],
         lidas=lidas,
         falhas=falhas,
-        repetidas=len(todas) - len(novas),
+        repetidas=len(todas) - len(novas) - barrado.sem_skill - barrado.so_para_quem_paga,
+        freelancer_sem_skill=barrado.sem_skill,
+        freelancer_so_para_quem_paga=barrado.so_para_quem_paga,
         coletada=True,
     )
 
@@ -1095,6 +1100,13 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
     repetidas = estado.checkpoint.get("repetidas")
     if repetidas:
         linhas.append(f"- {repetidas} já tinham aparecido em caçadas anteriores e ficaram de fora.")
+    if sem_skill := estado.checkpoint.get("freelancer_sem_skill"):
+        linhas.append(
+            f"- {sem_skill} do Freelancer.com ficaram de fora porque pedem skill que não está no seu perfil "
+            "(a conta grátis não propõe neles)."
+        )
+    if so_para_quem_paga := estado.checkpoint.get("freelancer_so_para_quem_paga"):
+        linhas.append(f"- {so_para_quem_paga} do Freelancer.com ficaram de fora porque são só para Preferred Freelancer.")
     for aviso in estado.criterios.avisos:
         linhas.append(f"- Aviso: {aviso}")
     linhas += ["", "O perfil usado está em [[cacada/perfil]]; os critérios, em [[cacada/criterios]].", ""]

@@ -21,7 +21,7 @@ import random
 import re
 import time
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from urllib.parse import quote_plus, urlencode
@@ -511,8 +511,17 @@ def ler_99freelas(
 _ITEM_DA_99FREELAS = re.compile(r'<li\b[^>]*class="[^"]*\bresult-item\b[^"]*"[^>]*>', re.I)
 
 
-def interpretar_99freelas(pagina: str, nome: str = "99Freelas") -> tuple[Oportunidade, ...]:
-    """Os `li.result-item` da listagem: título e link, a linha de informação e a descrição."""
+_ABRE_EM = re.compile(r"dispon\S*vel para todos os profissionais em\s*(?:(\d+)d)?\s*(?:(\d+)h)?\s*(?:(\d+)m)?", re.I)
+
+
+def interpretar_99freelas(pagina: str, nome: str = "99Freelas", agora: datetime | None = None) -> tuple[Oportunidade, ...]:
+    """Os `li.result-item` da listagem: título e link, a linha de informação e a descrição.
+
+    Projeto com a bandeira de exclusivo só aceita proposta de assinante nas
+    primeiras 24 h; a listagem diz quanto falta para abrir, e o detalhe leva a
+    hora em que ele, que não assina, já pode propor.
+    """
+    agora = (agora or datetime.now()).astimezone()
     inicios = [casou.start() for casou in _ITEM_DA_99FREELAS.finditer(pagina)]
     saida = []
     for indice, inicio in enumerate(inicios):
@@ -527,6 +536,7 @@ def interpretar_99freelas(pagina: str, nome: str = "99Freelas") -> tuple[Oportun
         texto_da_info = _info_da_99freelas(info.group(1)) if info else ""
         publicada = re.search(r'class="datetime"[^>]*cp-datetime="(\d+)"', bloco)
         habilidades = ", ".join(texto_limpo(h) for h in re.findall(r'class="habilidade"[^>]*>(.*?)</a>', bloco, re.S))
+        exclusivo = _exclusivo_da_99freelas(bloco, agora)
         descricao_limpa = texto_limpo(re.sub(r'<a[^>]*class="(?:more|less)-link"[^>]*>.*?</a>', "", descricao.group(1), flags=re.S)) if descricao else ""
         saida.append(
             Oportunidade.nova(
@@ -536,10 +546,23 @@ def interpretar_99freelas(pagina: str, nome: str = "99Freelas") -> tuple[Oportun
                 link=href if href.startswith("http") else f"https://www.99freelas.com.br{href}",
                 publicada=_data(int(publicada.group(1)) / 1000) if publicada else None,
                 descricao=descricao_limpa.replace(" …", "").replace("…", ""),
-                detalhes=" | ".join(p for p in (texto_da_info, f"habilidades: {habilidades}" if habilidades else "") if p),
+                detalhes=" | ".join(
+                    p for p in (exclusivo, texto_da_info, f"habilidades: {habilidades}" if habilidades else "") if p
+                ),
             )
         )
     return tuple(saida)
+
+
+def _exclusivo_da_99freelas(bloco: str, agora: datetime) -> str:
+    if "flat_project_exclusive" not in bloco:
+        return ""
+    falta = _ABRE_EM.search(_html.unescape(bloco))
+    if not falta:
+        return "Projeto exclusivo para assinantes da 99Freelas: abre para quem não assina até 24 h depois de publicado"
+    dias, horas, minutos = (int(parte or 0) for parte in falta.groups())
+    abre = agora + timedelta(days=dias, hours=horas, minutes=minutos)
+    return f"Projeto exclusivo para assinantes da 99Freelas: abre para quem não assina em {abre:%d/%m às %H:%M}"
 
 
 def _info_da_99freelas(trecho: str) -> str:
@@ -554,6 +577,92 @@ def _info_da_99freelas(trecho: str) -> str:
 
     trecho = re.sub(r'<b[^>]*class="([^"]*datetime[^"]*)"[^>]*cp-datetime="(\d+)"[^>]*>\s*</b>', data, trecho)
     return " ".join(texto_limpo(trecho).split())
+
+
+# -- o que a conta grátis do Freelancer.com não deixa propor ------------------------------------
+
+_PROJETO_DO_FREELANCER = re.compile(r"freelancer\.com/projects/([^?#]+?)/?(?:[?#]|$)", re.I)
+_SO_PARA_QUEM_PAGA = ("pf_only",)
+
+
+@dataclass(frozen=True)
+class FreelancerBarrado:
+    """O que ficou depois do filtro e quantos saíram por cada motivo."""
+
+    ficam: tuple[Oportunidade, ...]
+    sem_skill: int = 0
+    so_para_quem_paga: int = 0
+
+
+def barrar_freelancer(
+    oportunidades: Sequence[Oportunidade], usuario: str, *, rede: httpx.BaseTransport | None = None
+) -> FreelancerBarrado:
+    """Tira os projetos do Freelancer.com em que a conta grátis dele não consegue propor.
+
+    Para propor, o Freelancer.com pede uma skill do projeto que esteja no perfil, e a
+    conta grátis tem poucas skills e não troca; projeto só para Preferred Freelancer
+    também fica fechado. Projeto que a API não acha e erro na rede deixam tudo como
+    está: o filtro nunca derruba a caçada.
+    """
+    links = {o.id: casou.group(1) for o in oportunidades if (casou := _PROJETO_DO_FREELANCER.search(o.link))}
+    if not usuario or not links:
+        return FreelancerBarrado(tuple(oportunidades))
+    try:
+        with httpx.Client(transport=rede, timeout=TEMPO_LIMITE_S, follow_redirects=True, headers=CABECALHOS) as cliente:
+            skills = _skills_do_perfil(cliente, usuario)
+            projetos = _projetos_do_freelancer(cliente, sorted(set(links.values())))
+    except Exception as erro:  # noqa: BLE001 — sem o filtro, a caçada segue com tudo
+        _log.warning("Caçada: o filtro de skills do Freelancer.com não rodou: %s", _motivo(erro))
+        return FreelancerBarrado(tuple(oportunidades))
+    if not skills:
+        _log.warning("Caçada: o perfil %s do Freelancer.com não tem skills; o filtro não rodou.", usuario)
+        return FreelancerBarrado(tuple(oportunidades))
+    ficam: list[Oportunidade] = []
+    sem_skill = so_para_quem_paga = 0
+    for oportunidade in oportunidades:
+        projeto = projetos.get(links.get(oportunidade.id, "").casefold())
+        if projeto is None:
+            ficam.append(oportunidade)
+            continue
+        travas = projeto.get("upgrades") if isinstance(projeto.get("upgrades"), dict) else {}
+        if any(travas.get(trava) is True for trava in _SO_PARA_QUEM_PAGA):
+            so_para_quem_paga += 1
+            continue
+        pedidas = {j.get("id"): str(j.get("name", "")) for j in projeto.get("jobs") or [] if isinstance(j, dict)}
+        casam = [nome for id_, nome in pedidas.items() if id_ in skills]
+        if pedidas and not casam:
+            sem_skill += 1
+            continue
+        if casam:
+            aviso = f"Freelancer.com: na proposta, escolha a skill {', '.join(casam)}"
+            oportunidade = replace(oportunidade, detalhes=" | ".join(p for p in (oportunidade.detalhes, aviso) if p))
+        ficam.append(oportunidade)
+    _log.info(
+        "Caçada: Freelancer.com — %d sem skill do perfil e %d só para Preferred Freelancer ficaram de fora.",
+        sem_skill,
+        so_para_quem_paga,
+    )
+    return FreelancerBarrado(tuple(ficam), sem_skill, so_para_quem_paga)
+
+
+def _skills_do_perfil(cliente: httpx.Client, usuario: str) -> set[int]:
+    url = "https://www.freelancer.com/api/users/0.1/users/?" + urlencode({"usernames[]": usuario, "jobs": "true"})
+    dados = _json(cliente, url)
+    usuarios = ((dados.get("result") or {}) if isinstance(dados, dict) else {}).get("users") or {}
+    lista = usuarios.values() if isinstance(usuarios, dict) else usuarios
+    return {j["id"] for u in lista if isinstance(u, dict) for j in u.get("jobs") or [] if isinstance(j, dict) and "id" in j}
+
+
+def _projetos_do_freelancer(cliente: httpx.Client, seo_urls: Sequence[str]) -> dict[str, dict]:
+    projetos: dict[str, dict] = {}
+    for inicio in range(0, len(seo_urls), 20):
+        consulta = [("seo_urls[]", s) for s in seo_urls[inicio : inicio + 20]]
+        consulta += [("job_details", "true"), ("upgrade_details", "true")]
+        dados = _json(cliente, "https://www.freelancer.com/api/projects/0.1/projects/?" + urlencode(consulta))
+        for projeto in _lista((dados.get("result") or {}) if isinstance(dados, dict) else {}, "projects"):
+            if projeto.get("seo_url"):
+                projetos[str(projeto["seo_url"]).casefold()] = projeto
+    return projetos
 
 
 # -- LinkedIn, pela busca pública ---------------------------------------------------------

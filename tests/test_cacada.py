@@ -46,6 +46,7 @@ from whis.criterios_da_cacada import (
 )
 from whis.fakes_da_cacada import TriagemFake, oportunidades_de_exemplo, portas_fake
 from whis.fontes_da_cacada import (
+    barrar_freelancer,
     coletar,
     interpretar_99freelas,
     interpretar_linkedin,
@@ -170,6 +171,22 @@ def test_99freelas_le_os_itens_e_ignora_o_sem_titulo():
     assert "Propostas: 3" in projeto.detalhes and "React, Node.js" in projeto.detalhes
     assert "Expandir" not in projeto.descricao
     assert projeto.publicada.startswith("2026-09-21")
+
+
+def test_99freelas_diz_quando_o_projeto_exclusivo_abre_para_quem_nao_assina():
+    pagina = PAGINA_DA_99FREELAS.replace(
+        '<li class="result-item" data-id="111">',
+        '<li class="with-flag result-item " data-id="111"><div class="flags"><img '
+        'src="https://cdn/images/flat_project_exclusive.png" alt="Projeto exclusivo" '
+        'title="Projeto Exclusivo. Ficar&aacute; dispon&iacute;vel para todos os profissionais em 22h37m44s."></div>',
+    )
+    agora = datetime(2026, 10, 12, 1, 0).astimezone()
+
+    [projeto] = interpretar_99freelas(pagina, agora=agora)
+
+    assert projeto.detalhes.startswith("Projeto exclusivo para assinantes da 99Freelas: abre para quem não assina em 12/10 às 23:37")
+    [comum] = interpretar_99freelas(PAGINA_DA_99FREELAS, agora=agora)
+    assert "exclusivo" not in comum.detalhes
 
 
 def test_linkedin_le_o_cartao_da_busca_publica():
@@ -748,6 +765,49 @@ def test_do_claude_code_saem_so_contagens(tmp_path: Path):
 
     assert "1 sessão(ões) em 1 projeto(s)" in texto and ".tsx 1" in texto and "code-review 1" in texto and "MCP 1" in texto
     assert "empresa" not in texto and "segredo" not in texto and "cliente" not in texto and "Checkout" not in texto
+
+
+def _projeto_do_freelancer(slug: str, link: str = "") -> Oportunidade:
+    return Oportunidade.nova(
+        tipo=FREELA, fonte="Freelancer.com", titulo=slug, link=link or f"https://www.freelancer.com/projects/{slug}"
+    )
+
+
+def test_freelancer_fica_so_com_projeto_que_pede_skill_do_perfil():
+    rede = _rede(
+        {
+            "/users/": httpx.Response(200, json={"result": {"users": {"1": {"jobs": [{"id": 759, "name": "React.js"}]}}}}),
+            "/projects/?": httpx.Response(200, json={"result": {"projects": [
+                {"seo_url": "react/painel", "jobs": [{"id": 759, "name": "React.js"}, {"id": 13, "name": "Python"}]},
+                {"seo_url": "python/scraper", "jobs": [{"id": 13, "name": "Python"}]},
+                {"seo_url": "react/so-pf", "jobs": [{"id": 759, "name": "React.js"}], "upgrades": {"pf_only": True}},
+            ]}}),
+        }
+    )
+    workana = Oportunidade.nova(tipo=FREELA, fonte="Workana", titulo="Site", link="https://www.workana.com/job/site")
+    oportunidades = [
+        _projeto_do_freelancer("react/painel"),
+        _projeto_do_freelancer("python/scraper", "https://www.freelancer.com/projects/python/scraper/?w=f"),
+        _projeto_do_freelancer("react/so-pf"),
+        _projeto_do_freelancer("php/sumiu"),
+        workana,
+    ]
+
+    barrado = barrar_freelancer(oportunidades, "gabriel", rede=rede)
+
+    assert [o.titulo for o in barrado.ficam] == ["react/painel", "php/sumiu", "Site"]
+    assert barrado.ficam[0].detalhes == "Freelancer.com: na proposta, escolha a skill React.js"
+    assert (barrado.sem_skill, barrado.so_para_quem_paga) == (1, 1)
+
+
+def test_freelancer_sem_usuario_ou_sem_rede_deixa_tudo_como_esta():
+    oportunidades = [_projeto_do_freelancer("python/scraper")]
+
+    def caiu(pedido: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("sem rede")
+
+    assert barrar_freelancer(oportunidades, "", rede=_rede({})).ficam == tuple(oportunidades)
+    assert barrar_freelancer(oportunidades, "gabriel", rede=httpx.MockTransport(caiu)).ficam == tuple(oportunidades)
 
 
 def test_get_on_board_e_freelancer_pelas_apis_publicas():

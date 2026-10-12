@@ -29,6 +29,13 @@ app ou checkout Shopify, landing page, site pequeno, correção de bug em React/
 de API ou webhook, automação ou script em Python ou Node, scraping, painel simples, integração com LLM. \
 Quanto mais novo o anúncio (até 3 dias) e menos propostas, maior o encaixe.
 - "tentar_a_sorte" é o freela rápido de encaixe médio, ou o bom que já tem muita proposta.
+- Bounty de issue (GitHub, Algora, Opire) é disputado em minutos: ganha quem posta a proposta logo que \
+a issue abre. Bounty com proposta já postada, PR aberto ou mais de uns 5 comentários nunca é \
+"chance_boa": no máximo "tentar_a_sorte". Bounty com responsável designado, PR já aceito ou issue \
+fechada é "descartada". Sem "detalhes" que mostrem a concorrência, bounty também fica em \
+"tentar_a_sorte", e o motivo diz que não deu para ver quantos já propuseram.
+- Projeto da 99Freelas com "Projeto exclusivo para assinantes" nos detalhes só aceita proposta dele na hora que os detalhes dizem: julgue igual aos outros, e o resumo começa dizendo quando abre para ele.
+- Projeto do Freelancer.com com "escolha a skill" nos detalhes: o resumo diz qual skill ele marca na proposta.
 - Freela grande (semanas de trabalho), sem orçamento nenhum e sem escopo, ou com prazo curto demais \
 para quem trabalha de dia é "descartada". Freela por hora avulso continua "descartada".
 - No resumo do freela, diga quantas horas ele leva com IA e o preço que faz sentido pedir."""
@@ -79,7 +86,9 @@ FONTES_DE_FREELA_RAPIDO = (
         "web",
         "bounties pagos e abertos em projetos open-source de TypeScript, JavaScript, React, Node ou Python, "
         "publicados nos últimos 14 dias, de US$ 50 para cima, no Algora, Opire, IssueHunt, BountySource ou "
-        "issues do GitHub com label de bounty, que dê para resolver em poucas horas. " + _A_FUNDO,
+        "issues do GitHub com label de bounty, que dê para resolver em poucas horas. Abra a issue de cada "
+        "bounty e diga em detalhes quantas propostas e comentários ela já tem, se alguém foi designado e se "
+        "já há PR; prefira as que ainda não têm proposta nenhuma. " + _A_FUNDO,
     ),
     FonteDaCacada(
         "Web · posts de quem está contratando",
