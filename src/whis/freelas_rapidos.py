@@ -67,12 +67,13 @@ FONTES_DE_FREELA_RAPIDO = (
         "integração de API ou automação, que dê para entregar em até um fim de semana. " + _A_FUNDO,
     ),
     FonteDaCacada(
-        "Web · Upwork, Contra e afins",
+        "Web · Contra e clientes dos EUA e da Europa",
         "web",
-        "fixed-price freelance web development gigs posted in the last 3 days on Upwork, Contra, Freelancer.com, "
-        "Guru, PeoplePerHour or Toptal-like boards that accept workers from Brazil or worldwide: small Shopify "
-        "fixes, landing pages, React/Next.js or Node bug fixes, API integrations, scripts and automations, "
-        "doable in under 20 hours. " + _A_FUNDO,
+        "fixed-price freelance web development gigs posted in the last 3 days by clients in the US, Canada, "
+        "Europe or Latin America that accept workers from Brazil: Contra projects first (no fees), then Guru "
+        "and PeoplePerHour; skip Freelancer.com and Upwork (paid bids) and any project budgeted in Indian "
+        "rupees. Small Shopify fixes, landing pages, React/Next.js or Node bug fixes, API integrations, scripts "
+        "and automations, doable in under 20 hours. " + _A_FUNDO,
     ),
     FonteDaCacada(
         "Web · Shopify",
@@ -91,11 +92,20 @@ FONTES_DE_FREELA_RAPIDO = (
         "já há PR; prefira as que ainda não têm proposta nenhuma. " + _A_FUNDO,
     ),
     FonteDaCacada(
-        "Web · posts de quem está contratando",
+        "Web · posts de quem contrata no Brasil",
         "web",
-        "posts [Hiring] dos últimos 3 dias no Reddit (r/forhire, r/jobbit, r/slavelabour, r/webdev, "
-        "r/reactjs), no X/Twitter e no Hacker News de gente procurando freela de desenvolvimento web, script "
-        "ou automação com pagamento por tarefa, aceitando remoto do Brasil. " + _A_FUNDO,
+        "posts públicos dos últimos 3 dias de brasileiros procurando freelancer ou dev para um trabalho pago: "
+        "LinkedIn (\"procuro freelancer\", \"preciso de um dev\", \"freela de site\", \"freela Shopify\"), X/Twitter "
+        "(\"freela dev\", \"procuro programador\"), grupos e comunidades públicas (Discord, Telegram, Facebook, "
+        "Reddit r/brdev e r/programacao), de site, loja, automação, integração ou correção de bug. Traga o "
+        "post com o link dele e como falar com quem postou. " + _A_FUNDO,
+    ),
+    FonteDaCacada(
+        "Web · Shopify no Brasil",
+        "web",
+        "lojistas e agências brasileiras de Shopify procurando dev freela nos últimos 7 dias: posts no "
+        "LinkedIn e no Instagram, comunidades de Shopify no Brasil, agências parceiras da Shopify que "
+        "terceirizam tema, seção, app ou migração, e lojas que anunciam vaga freela. " + _A_FUNDO,
     ),
     FonteDaCacada(
         "Web · freelas no Brasil fora das plataformas grandes",
