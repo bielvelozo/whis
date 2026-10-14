@@ -203,3 +203,38 @@ class PostsFake(_Fake):
             {"titulo": f"Post de exemplo {numero}", "texto": f"Gancho do post {numero}.\n\nCorpo (com parênteses).", "por_que": "exemplo"}
             for numero in range(1, quantos + 1)
         ]
+
+
+class NavegadorLogadoFake:
+    """O Chrome da caçada de mentira: cada URL devolve o HTML dado (as fixtures reais), e o resto falha.
+
+    `motivo` simula o Chrome que não abre (perfil em uso, sem Chrome). `visitadas`
+    guarda as URLs pedidas e `aberturas` quantas sessões foram abertas.
+    """
+
+    def __init__(self, paginas: dict[str, str] | None = None, *, motivo: str = "") -> None:
+        self.paginas = dict(paginas or {})
+        self.motivo = motivo
+        self.visitadas: list[str] = []
+        self.aberturas = 0
+
+    def abrir(self):
+        from .navegador_logado import SemNavegador, SessaoLogada
+
+        fake = self
+
+        class Sessao(SessaoLogada):
+            def __init__(self) -> None:
+                super().__init__()
+                self.motivo = fake.motivo
+
+            def html(self, url: str) -> str:
+                if self.motivo:
+                    raise SemNavegador(self.motivo)
+                fake.visitadas.append(url)
+                if url not in fake.paginas:
+                    raise SemNavegador(f"página fora do fake: {url}")
+                return fake.paginas[url]
+
+        self.aberturas += 1
+        return Sessao()

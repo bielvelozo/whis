@@ -53,13 +53,20 @@ PEDIDO_DA_RODADA_EXTRA = (
 
 PEOPLEPERHOUR = "peopleperhour"
 WORKANA = "workana"
+NOVENTA_E_NOVE = "99freelas"
+VINTEPILA = "vintepila"
+FREELANCER_BR = "freelancer.com.br"
 
 
-def _web_recentes(com_workana: bool) -> FonteDaCacada:
-    if com_workana:
+def _web_recentes(com_workana: bool, com_99freelas: bool = True) -> FonteDaCacada | None:
+    if com_workana and com_99freelas:
         nome, onde = "Web · Workana e 99Freelas recentes", "na Workana e na 99Freelas"
-    else:
+    elif com_99freelas:
         nome, onde = "Web · 99Freelas recentes", "na 99Freelas (nada da Workana: a conta dele lá não está ativa)"
+    elif com_workana:
+        nome, onde = "Web · Workana recentes", "na Workana (nada da 99Freelas: ela é lida logada à parte)"
+    else:
+        return None
     return FonteDaCacada(
         nome,
         "web",
@@ -69,16 +76,21 @@ def _web_recentes(com_workana: bool) -> FonteDaCacada:
     )
 
 
-def _web_fora_das_grandes(com_workana: bool) -> FonteDaCacada:
+def _web_fora_das_grandes(com_workana: bool, sem_vintepila: bool = False, sem_freelancer_br: bool = False) -> FonteDaCacada:
     fora = "fora da Workana e da 99Freelas" if com_workana else (
         "fora da 99Freelas e sem nada da Workana (a conta dele lá não está ativa)"
     )
+    nada = [
+        "da VintePila (ela é lida logada à parte)" if sem_vintepila else "",
+        "do freelancer.com.br (responder lá pede plano pago)" if sem_freelancer_br else "",
+    ]
+    nada_de = f"Não traga nada {' nem '.join(n for n in nada if n)}. " if any(nada) else ""
     return FonteDaCacada(
         "Web · freelas no Brasil fora das plataformas grandes",
         "web",
         "pedidos de freela de desenvolvimento web, sistema pequeno, automação ou loja virtual publicados nos "
         f"últimos 3 dias no Brasil {fora} (GetNinjas, Freelas.com.br, Trampos, "
-        "comunidades e posts públicos), com orçamento ou preço fechado. " + _A_FUNDO,
+        f"comunidades e posts públicos), com orçamento ou preço fechado. {nada_de}" + _A_FUNDO,
     )
 
 
@@ -146,24 +158,38 @@ FONTES_DE_FREELA_RAPIDO = (
 )
 
 
-def criterios_de_freelas(criterios: Criterios, plataformas_sem_conta: Sequence[str] = ()) -> Criterios:
+def criterios_de_freelas(
+    criterios: Criterios,
+    plataformas_sem_conta: Sequence[str] = (),
+    *,
+    cobertos: Sequence[str] = (),
+    plataformas_pagas: Sequence[str] = (),
+) -> Criterios:
     """Os critérios dele com as fontes de freela, as do modo e o pedido do modo na frente.
 
     Plataforma em `plataformas_sem_conta` some do texto das buscas web; hoje
-    só o PeoplePerHour e a Workana são citados nelas.
+    só o PeoplePerHour e a Workana são citados nelas. `cobertos` são os sites
+    que o Chrome da caçada leu logado nesta corrida (99Freelas, VintePila): o
+    explorador deixa de procurar neles, e volta quando o login cai. Site em
+    `plataformas_pagas` (freelancer.com.br) também sai das buscas.
     """
     dele = [fonte for fonte in criterios.fontes if fonte.tipo in TIPOS_DE_FREELA]
     nomes = {fonte.nome.casefold() for fonte in dele}
     sem_conta = {p.casefold() for p in plataformas_sem_conta}
+    logados = {c.casefold() for c in cobertos}
+    pagas = {p.casefold() for p in plataformas_pagas}
     trocas = {
         FONTES_DE_FREELA_RAPIDO.index(original): nova
         for original, nova in (
-            (_web_recentes(True), _web_recentes(WORKANA not in sem_conta)),
+            (_web_recentes(True), _web_recentes(WORKANA not in sem_conta, NOVENTA_E_NOVE not in logados)),
             (_web_internacional(True), _web_internacional(PEOPLEPERHOUR not in sem_conta)),
-            (_web_fora_das_grandes(True), _web_fora_das_grandes(WORKANA not in sem_conta)),
+            (
+                _web_fora_das_grandes(True),
+                _web_fora_das_grandes(WORKANA not in sem_conta, VINTEPILA in logados, FREELANCER_BR in pagas),
+            ),
         )
     }
     do_modo = [trocas.get(i, fonte) for i, fonte in enumerate(FONTES_DE_FREELA_RAPIDO)]
-    fontes = dele + [fonte for fonte in do_modo if fonte.nome.casefold() not in nomes]
+    fontes = dele + [fonte for fonte in do_modo if fonte is not None and fonte.nome.casefold() not in nomes]
     procuro = f"{PEDIDO_DE_FREELAS_RAPIDOS}\n\n{criterios.procuro}".rstrip()
     return replace(criterios, fontes=tuple(fontes), procuro=procuro)

@@ -187,6 +187,7 @@ class PortasDaCacada:
     navegador: Any | None = None
     registro: Any | None = None
     ler_caixa: Callable[[], Sequence[Any]] | None = None
+    navegador_logado: Any | None = None
 
     def todas(self) -> tuple[Any, ...]:
         portas = (self.perfil, self.explorador, self.triagem, self.apostas, self.preparo)
@@ -427,9 +428,6 @@ def cacar(
     agora = relogio or (lambda: datetime.now().astimezone())
     inicio_monotonico = time.monotonic()
     raiz = _vault.preparar(configuracao.vault)
-    criterios = ler_criterios(raiz)
-    if modo == MODO_FREELAS:
-        criterios = criterios_de_freelas(criterios, configuracao.cacada_plataformas_sem_conta)
 
     checkpoint = Checkpoint.abrir(pasta_do_estado, do_zero=do_zero)
     if checkpoint.retomada and _velho(checkpoint.get("inicio"), agora()):
@@ -444,6 +442,7 @@ def cacar(
             inicio=momento.isoformat(timespec="seconds"), corrida=f"{momento:%Y-%m-%d-%H%M}", etapa="perfil", modo=modo
         )
 
+    criterios = _criterios_do_modo(configuracao, raiz, modo, checkpoint.get("cobertos") or ())
     estado = _Estado(configuracao, raiz, criterios, checkpoint, pasta_do_estado)
     guarda = GuardaDoPlano(
         configuracao.cacada_teto_semanal,
@@ -486,7 +485,7 @@ def cacar(
         relatorio=caminho,
         corrida=estado.corrida,
         chances_boas=sum(1 for v in vereditos.values() if v.classe == CHANCE_BOA),
-        tentar_a_sorte=sum(1 for v in vereditos.values() if v.classe == TENTAR_A_SORTE),
+        tentar_a_sorte=len(tentar_a_sorte(estado).ficam),
         descartadas=sum(1 for v in vereditos.values() if v.classe == DESCARTADA),
         pacotes=len(estado.pacotes()),
         fontes_com_falha=dict(checkpoint.get("falhas") or {}),
@@ -501,6 +500,18 @@ def cacar(
         sobrou_plano=bool(checkpoint.get("sobrou_plano")),
         com_limite=guarda.limitada(),
         limite_batido=guarda.limite_batido,
+    )
+
+
+def _criterios_do_modo(configuracao: Configuracao, raiz: Path, modo: str, cobertos: Sequence[str]) -> Criterios:
+    criterios = ler_criterios(raiz)
+    if modo != MODO_FREELAS:
+        return criterios
+    return criterios_de_freelas(
+        criterios,
+        configuracao.cacada_plataformas_sem_conta,
+        cobertos=cobertos,
+        plataformas_pagas=configuracao.cacada_plataformas_pagas,
     )
 
 
@@ -594,6 +605,11 @@ def _etapa_da_coleta(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPl
     todas: dict[str, Oportunidade] = {o.id: o for o in coleta.todas()}
 
     perfil = estado.perfil() or Perfil(resumo="")
+    if portas.navegador_logado is not None:
+        estado.andamento("coleta", "lendo os sites logados no Chrome da caçada")
+        for oportunidade in _coleta_logada(estado, portas, perfil, lidas):
+            todas.setdefault(oportunidade.id, oportunidade)
+        criterios = estado.criterios
     for fonte in (f for f in criterios.fontes if f.tipo == "web"):
         estado.andamento("coleta", f"explorando a web: {fonte.nome}")
         vistas_agora = sorted(ja_vistas | {o.link for o in todas.values()})
@@ -625,21 +641,64 @@ def _etapa_da_coleta(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPl
     )
 
 
+def _coleta_logada(estado: _Estado, portas: PortasDaCacada, perfil: Perfil, lidas: dict[str, int]) -> list[Oportunidade]:
+    """O login de cada site para o relatório, a VintePila logada e as buscas web sem os sites cobertos.
+
+    O Chrome fecha antes do explorador: o Claude não roda com ele aberto.
+    """
+    from . import navegador_logado as _logado
+    from .fontes_da_cacada import coletar_vintepila
+
+    achadas: list[Oportunidade] = []
+    with portas.navegador_logado.abrir() as sessao:
+        pagas = set(estado.configuracao.cacada_plataformas_pagas)
+        logins = {site: _logado.estado_do_site(sessao, site) for site in _logado.NOMES if site not in pagas}
+        estado.checkpoint.guardar(logins=logins)
+        if logins.get(_logado.VINTEPILA) == _logado.LOGADO:
+            vintepila = coletar_vintepila(sessao, perfil.stack)
+            if not vintepila.aviso:
+                lidas["VintePila (logado)"] = len(vintepila.oportunidades)
+            achadas += vintepila.oportunidades
+            estado.checkpoint.guardar(vintepila_aviso=vintepila.aviso, vintepila_cheios=vintepila.cheios)
+    cobertos = [site for site in (_logado.NOVENTA_E_NOVE, _logado.VINTEPILA) if logins.get(site) == _logado.LOGADO]
+    estado.checkpoint.guardar(cobertos=cobertos)
+    estado.criterios = _criterios_do_modo(estado.configuracao, estado.raiz, estado.checkpoint.get("modo", ""), cobertos)
+    return achadas
+
+
 def _tirar_o_que_nao_da(
-    estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, oportunidades: Sequence[Oportunidade]
+    estado: _Estado,
+    portas: PortasDaCacada,
+    guarda: GuardaDoPlano,
+    oportunidades: Sequence[Oportunidade],
+    sessao: Any | None = None,
 ) -> list[Oportunidade]:
-    """Tira o que ele não consegue propor (travado na conta grátis ou já fechado) e soma no checkpoint."""
+    """Tira o que ele não consegue propor (travado na conta grátis ou já fechado) e soma no checkpoint.
+
+    Com o Chrome da caçada (`portas.navegador_logado`), a conferência nos sites em
+    que ele está logado é pela página logada; o Chrome só liga se alguma página
+    for pedida, e fecha no fim.
+    """
     from .fontes_da_cacada import filtrar_o_que_da
 
+    if sessao is None and portas.navegador_logado is not None:
+        with portas.navegador_logado.abrir() as aberta:
+            return _tirar_o_que_nao_da(estado, portas, guarda, oportunidades, aberta)
     filtrado = filtrar_o_que_da(
         oportunidades,
         estado.configuracao.cacada_usuario_freelancer,
         plataformas_sem_conta=estado.configuracao.cacada_plataformas_sem_conta,
+        plataformas_pagas=estado.configuracao.cacada_plataformas_pagas,
         rede=portas.rede,
         dormir=guarda._dormir,
         agora=guarda._relogio(),
+        sessao=sessao,
     )
     checkpoint = estado.checkpoint
+    if filtrado.lances is not None:
+        checkpoint.guardar(lances_freelancer=list(filtrado.lances))
+    if filtrado.conexoes is not None:
+        checkpoint.guardar(conexoes_99freelas=filtrado.conexoes)
     checkpoint.guardar(
         freelancer_sem_skill=int(checkpoint.get("freelancer_sem_skill") or 0) + filtrado.sem_skill,
         freelancer_so_para_quem_paga=int(checkpoint.get("freelancer_so_para_quem_paga") or 0) + filtrado.so_para_quem_paga,
@@ -647,6 +706,11 @@ def _tirar_o_que_nao_da(
         sem_conta=int(checkpoint.get("sem_conta") or 0) + filtrado.sem_conta,
         com_malware=int(checkpoint.get("com_malware") or 0) + filtrado.com_malware,
         conta_recente=int(checkpoint.get("conta_recente") or 0) + filtrado.conta_recente,
+        freelancer_so_para_selecionados=int(checkpoint.get("freelancer_so_para_selecionados") or 0)
+        + filtrado.so_para_selecionados,
+        freelancer_repetidos=int(checkpoint.get("freelancer_repetidos") or 0) + filtrado.repetidos,
+        ja_propostas=int(checkpoint.get("ja_propostas") or 0) + filtrado.ja_propostas,
+        pagas=int(checkpoint.get("pagas") or 0) + filtrado.pagas,
     )
     return list(filtrado.ficam)
 
@@ -764,7 +828,7 @@ def _etapa_extra(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano)
                 _etapa_do_preparo(estado, portas, guarda)
             _caprichar(estado, portas, guarda, sobra, CHANCE_BOA)
         _caprichar(estado, portas, guarda, sobra, CHANCE_BOA)
-        _caprichar(estado, portas, guarda, sobra, TENTAR_A_SORTE)
+        _caprichar(estado, portas, guarda, sobra, TENTAR_A_SORTE, pares=tentar_a_sorte(estado).ficam)
         estado.checkpoint.guardar(sobrou_plano=sobra())
     except JanelaEsgotada as motivo:
         _log.info("O extra da caçada de freelas encerrou: %s.", motivo)
@@ -806,13 +870,21 @@ def _rodada_extra_de_busca(
 
 
 def _caprichar(
-    estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, sobra: Callable[[], bool], classe: str
+    estado: _Estado,
+    portas: PortasDaCacada,
+    guarda: GuardaDoPlano,
+    sobra: Callable[[], bool],
+    classe: str,
+    *,
+    pares: Sequence[tuple[Oportunidade, Veredito]] | None = None,
 ) -> None:
     from .fontes_da_cacada import ler_detalhe
 
     perfil = estado.perfil() or Perfil(resumo="")
     criterios = estado.criterios
-    for oportunidade, veredito in _ordenadas(estado.oportunidades(), estado.vereditos(), classe):
+    if pares is None:
+        pares = _ordenadas(estado.oportunidades(), estado.vereditos(), classe)
+    for oportunidade, veredito in pares:
         if not sobra():
             return
         pacotes = estado.pacotes()
@@ -864,11 +936,9 @@ def _amostra(
 def _etapa_das_apostas(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano) -> None:
     if not (estado.configuracao.cacada_pacote_completo or estado.configuracao.cacada_enviar_sozinho):
         return
-    oportunidades = estado.oportunidades()
-    vereditos = estado.vereditos()
     perfil = estado.perfil() or Perfil(resumo="")
     criterios = estado.criterios
-    alvo = _ordenadas(oportunidades, vereditos, TENTAR_A_SORTE)[:MAXIMO_DE_APOSTAS]
+    alvo = tentar_a_sorte(estado).ficam[:MAXIMO_DE_APOSTAS]
     tentadas: set[str] = set(estado.checkpoint.get("apostas_tentadas") or [])
     while True:
         feitas = estado.apostas()
@@ -901,12 +971,10 @@ def _etapa_do_envio(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPla
     from .politica import pode_enviar_sozinho
 
     dados = dados_dele(configuracao, estado.criterios)
-    oportunidades = estado.oportunidades()
-    vereditos = estado.vereditos()
     apostas = estado.apostas()
     envios: dict[str, dict[str, str]] = dict(estado.checkpoint.get("envios") or {})
     feitos = sum(1 for e in envios.values() if e.get("status") == "feito")
-    for oportunidade, veredito in _ordenadas(oportunidades, vereditos, TENTAR_A_SORTE):
+    for oportunidade, veredito in tentar_a_sorte(estado).ficam:
         if feitos >= configuracao.cacada_maximo_de_envios:
             break
         if oportunidade.id in envios or oportunidade.id not in apostas:
@@ -966,6 +1034,52 @@ def _depois_da_corrida(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDo
         _log.warning("O acompanhamento das candidaturas não saiu: %s", erro)
     if guarda.plano is not None and guarda.plano.vira_sete_dias is not None:
         guardar_virada(estado.pasta, guarda.plano.vira_sete_dias)
+
+
+@dataclass
+class TentarASorte:
+    """As de tentar a sorte que ele consegue mandar: acima do encaixe mínimo e dentro do orçamento de cada site."""
+
+    ficam: list[tuple[Oportunidade, Veredito]] = field(default_factory=list)
+    abaixo: list[tuple[Oportunidade, Veredito]] = field(default_factory=list)
+    sem_orcamento: dict[str, list[tuple[Oportunidade, Veredito]]] = field(default_factory=dict)
+    sem_lances: bool = False
+
+
+def tentar_a_sorte(estado: _Estado) -> TentarASorte:
+    """Da melhor para a pior, cada site fica nas que dá para pagar.
+
+    Freelancer.com: uma por lance restante (lido logado); 99Freelas: até as
+    conexões do estoque, pelo custo de cada proposta (1 quando não se sabe).
+    Sem a leitura logada do site, não há corte.
+    """
+    from .fontes_da_cacada import custo_em_conexoes, e_da_99freelas, e_do_freelancer
+
+    minimo = estado.configuracao.cacada_encaixe_minimo_tentar
+    lances = estado.checkpoint.get("lances_freelancer")
+    conexoes = estado.checkpoint.get("conexoes_99freelas")
+    saida = TentarASorte(sem_lances=bool(lances) and int(lances[0]) == 0)
+    usados = gastas = 0
+    for par in _ordenadas(estado.oportunidades(), estado.vereditos(), TENTAR_A_SORTE):
+        oportunidade, veredito = par
+        if veredito.encaixe < minimo:
+            saida.abaixo.append(par)
+        elif lances and e_do_freelancer(oportunidade.link):
+            if usados < int(lances[0]):
+                usados += 1
+                saida.ficam.append(par)
+            else:
+                saida.sem_orcamento.setdefault("Freelancer.com", []).append(par)
+        elif conexoes is not None and e_da_99freelas(oportunidade.link):
+            custo = custo_em_conexoes(oportunidade) or 1
+            if gastas + custo <= int(conexoes):
+                gastas += custo
+                saida.ficam.append(par)
+            else:
+                saida.sem_orcamento.setdefault("99Freelas", []).append(par)
+        else:
+            saida.ficam.append(par)
+    return saida
 
 
 def _ordenadas(
@@ -1121,13 +1235,15 @@ def _escrever_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, 
 
 def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_andamento: str = "") -> str:
     from .fontes_da_cacada import ORGANIZACOES_BLOQUEADAS, fonte_sem_conta
+    from .navegador_logado import NOMES, frase_do_estado
 
     oportunidades = estado.oportunidades()
     vereditos = estado.vereditos()
     pacotes = estado.pacotes()
     apostas = estado.apostas()
     chances = _ordenadas(oportunidades, vereditos, CHANCE_BOA)
-    sorte = _ordenadas(oportunidades, vereditos, TENTAR_A_SORTE)
+    orcamento = tentar_a_sorte(estado)
+    sorte = orcamento.ficam
     descartadas = _ordenadas(oportunidades, vereditos, DESCARTADA)
     sem_veredito = [o for i, o in oportunidades.items() if i not in vereditos]
     inicio = _data(estado.checkpoint.get("inicio"))
@@ -1219,6 +1335,19 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         linhas.append("")
 
     linhas += ["## Tentar a sorte", ""]
+    fora_do_freelancer = orcamento.sem_orcamento.get("Freelancer.com", [])
+    if orcamento.sem_lances and fora_do_freelancer:
+        linhas += [
+            f"- **Freelancer.com: sem lances este mês; {len(fora_do_freelancer)} projetos ficaram de fora até a renovação.**",
+            "",
+        ]
+    for site, fora in orcamento.sem_orcamento.items():
+        if site == "Freelancer.com" and orcamento.sem_lances:
+            continue
+        falta = "lances" if site == "Freelancer.com" else "conexões"
+        linhas.append(f"> [!note]- {site}: {len(fora)} ficaram de fora, sem {falta} para todas (clique para ver)")
+        linhas += [f"> - [{_curto(o.titulo)}]({o.link}) — encaixe {v.encaixe}" for o, v in fora]
+        linhas.append("")
     if not sorte:
         linhas += ["_Nenhuma nesta caçada._", ""]
     for oportunidade, veredito in sorte:
@@ -1244,10 +1373,16 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         linhas.append("")
 
     linhas += ["## Descartadas", ""]
-    if descartadas or sem_veredito:
-        linhas.append(f"> [!note]- {len(descartadas) + len(sem_veredito)} descartadas ou sem triagem (clique para ver)")
+    if descartadas or sem_veredito or orcamento.abaixo:
+        quantas = len(descartadas) + len(sem_veredito) + len(orcamento.abaixo)
+        linhas.append(f"> [!note]- {quantas} descartadas ou sem triagem (clique para ver)")
         for oportunidade, veredito in descartadas:
             linhas.append(f"> - [{_curto(oportunidade.titulo)}]({oportunidade.link}) — {oportunidade.fonte} — {veredito.motivo}")
+        for oportunidade, veredito in orcamento.abaixo:
+            linhas.append(
+                f"> - [{_curto(oportunidade.titulo)}]({oportunidade.link}) — {oportunidade.fonte} — "
+                f"tentar a sorte com encaixe {veredito.encaixe}, abaixo do mínimo"
+            )
         for oportunidade in sem_veredito:
             linhas.append(f"> - [{_curto(oportunidade.titulo)}]({oportunidade.link}) — {oportunidade.fonte} — {MARCA_SEM_TRIAGEM}")
     else:
@@ -1280,6 +1415,15 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
             linhas.append(f"- {fonte.nome}: {lidas[fonte.nome]} lida(s)")
         else:
             linhas.append(f"- {fonte.nome}: não chegou a ser lida")
+    logins = estado.checkpoint.get("logins")
+    for site, situacao in (logins or {}).items():
+        linhas.append(f"- {frase_do_estado(site, situacao)}")
+    if logins is not None:
+        for site in (s for s in NOMES if s in estado.configuracao.cacada_plataformas_pagas):
+            linhas.append(f"- {NOMES[site]}: responder lá pede plano pago ([cacada].plataformas_pagas); nada de lá")
+    for nome, quantas in lidas.items():
+        if nome not in {fonte.nome for fonte in estado.criterios.fontes}:
+            linhas.append(f"- {nome}: {quantas} lida(s)")
     repetidas = estado.checkpoint.get("repetidas")
     if repetidas:
         linhas.append(f"- {repetidas} já tinham aparecido em caçadas anteriores e ficaram de fora.")
@@ -1296,6 +1440,21 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
             f"- {sem_conta} ficaram de fora porque vêm de site em que sua conta não está ativa ({sites}); "
             "quando a conta valer, tire o nome de [cacada].plataformas_sem_conta."
         )
+    if orcamento.abaixo:
+        linhas.append(
+            f"- {len(orcamento.abaixo)} de tentar a sorte com encaixe abaixo de "
+            f"{estado.configuracao.cacada_encaixe_minimo_tentar} ficaram de fora ([cacada].encaixe_minimo_tentar)."
+        )
+    if pagas := estado.checkpoint.get("pagas"):
+        sites = ", ".join(estado.configuracao.cacada_plataformas_pagas) or "site pago"
+        linhas.append(
+            f"- {pagas} ficaram de fora porque vêm de site em que responder pede plano pago ({sites}); "
+            "quando assinar, tire o nome de [cacada].plataformas_pagas."
+        )
+    if aviso := estado.checkpoint.get("vintepila_aviso"):
+        linhas.append(f"- VintePila: nada de lá nesta caçada — {aviso}.")
+    if cheios := estado.checkpoint.get("vintepila_cheios"):
+        linhas.append(f"- {cheios} da VintePila ficaram de fora porque já têm todos os candidatos (5 de 5).")
     if com_malware := estado.checkpoint.get("com_malware"):
         linhas.append(
             f"- {com_malware} bounties de organização com malware conhecido ({', '.join(ORGANIZACOES_BLOQUEADAS)}) "
@@ -1305,6 +1464,19 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         linhas.append(f"- {conta_recente} bounties de conta do GitHub recente ou sem histórico ficaram de fora.")
     if so_para_quem_paga := estado.checkpoint.get("freelancer_so_para_quem_paga"):
         linhas.append(f"- {so_para_quem_paga} do Freelancer.com ficaram de fora porque são só para Preferred Freelancer.")
+    if selecionados := estado.checkpoint.get("freelancer_so_para_selecionados"):
+        linhas.append(
+            f"- {selecionados} do Freelancer.com ficaram de fora porque, logado, a página diz que são só para "
+            "freelancers selecionados (pedem saldo de US$ 20)."
+        )
+    if repetidos := estado.checkpoint.get("freelancer_repetidos"):
+        linhas.append(f"- {repetidos} anúncios repetidos do Freelancer.com (mesmo cliente e mesmo título) viraram um.")
+    if ja_propostas := estado.checkpoint.get("ja_propostas"):
+        linhas.append(f"- {ja_propostas} da 99Freelas ficaram de fora porque você já mandou proposta neles.")
+    if (conexoes := estado.checkpoint.get("conexoes_99freelas")) is not None:
+        linhas.append(f"- 99Freelas: {conexoes} conexões no estoque (visto logado).")
+    if lances := estado.checkpoint.get("lances_freelancer"):
+        linhas.append(f"- Freelancer.com: {lances[0]} de {lances[1]} lances restantes este mês (visto logado).")
     for aviso in estado.criterios.avisos:
         linhas.append(f"- Aviso: {aviso}")
     linhas += ["", "O perfil usado está em [[cacada/perfil]]; os critérios, em [[cacada/criterios]].", ""]

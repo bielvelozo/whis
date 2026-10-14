@@ -10,6 +10,10 @@ Uma fonte que falha não derruba as outras: vai para `falhas` com o motivo, e o
 relatório diz qual não respondeu. Os leitores do HTML são tolerantes de
 propósito: página que mudou devolve zero itens e um motivo, nunca exceção.
 O tipo `web` não mora aqui — é o explorador, que é o Claude.
+
+A exceção é o que só se vê logado: com uma sessão do Chrome da caçada
+(`navegador_logado`), a VintePila é lida pela listagem logada e a conferência
+do Freelancer.com e da 99Freelas passa pela página logada.
 """
 
 from __future__ import annotations
@@ -21,14 +25,16 @@ import random
 import re
 import time
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
 from urllib.parse import quote_plus, urlencode, urlsplit
 
 import httpx
 
+from . import navegador_logado
 from .criterios_da_cacada import FonteDaCacada
+from .navegador_logado import SessaoLogada
 from .feeds import interpretar_feed
 from .oportunidades import FREELA, VAGA, Oportunidade, texto_limpo
 
@@ -603,17 +609,22 @@ class Filtrado:
     sem_conta: int = 0
     com_malware: int = 0
     conta_recente: int = 0
+    so_para_selecionados: int = 0
+    repetidos: int = 0
+    ja_propostas: int = 0
+    pagas: int = 0
+    lances: tuple[int, int] | None = None
+    conexoes: int | None = None
 
     def somar(self, outro: Filtrado) -> Filtrado:
-        return Filtrado(
-            outro.ficam,
-            self.sem_skill + outro.sem_skill,
-            self.so_para_quem_paga + outro.so_para_quem_paga,
-            self.fechadas + outro.fechadas,
-            self.sem_conta + outro.sem_conta,
-            self.com_malware + outro.com_malware,
-            self.conta_recente + outro.conta_recente,
-        )
+        """Os contadores somam; o que é leitura do site (lances, conexões) fica com a mais nova."""
+        somados = {}
+        for campo in fields(self):
+            if campo.name == "ficam":
+                continue
+            meu, dele = getattr(self, campo.name), getattr(outro, campo.name)
+            somados[campo.name] = meu + dele if isinstance(meu, int) and isinstance(dele, int) else (dele if dele is not None else meu)
+        return Filtrado(outro.ficam, **somados)
 
 
 def filtrar_o_que_da(
@@ -621,16 +632,23 @@ def filtrar_o_que_da(
     usuario_freelancer: str,
     *,
     plataformas_sem_conta: Sequence[str] = (),
+    plataformas_pagas: Sequence[str] = (),
     rede: httpx.BaseTransport | None = None,
     dormir: Callable[[float], None] = time.sleep,
     agora: datetime | None = None,
+    sessao: SessaoLogada | None = None,
 ) -> Filtrado:
-    """As organizações com malware, as contas do GitHub recentes, as plataformas sem conta ativa, o Freelancer.com pela API e a 99Freelas pela página, nessa ordem."""
+    """As organizações com malware, as contas do GitHub recentes, as plataformas sem conta ativa, o
+    Freelancer.com pela API (e logado, com `sessao`) e a 99Freelas pela página, nessa ordem."""
     com_malware = barrar_organizacoes_bloqueadas(oportunidades)
     recentes = com_malware.somar(barrar_contas_recentes(com_malware.ficam, rede=rede, agora=agora))
     sem_conta = recentes.somar(barrar_sem_conta(recentes.ficam, plataformas_sem_conta))
+    sem_conta = sem_conta.somar(barrar_pagas(sem_conta.ficam, plataformas_pagas))
     freelancer = sem_conta.somar(barrar_freelancer(sem_conta.ficam, usuario_freelancer, rede=rede))
-    return freelancer.somar(conferir_99freelas(freelancer.ficam, rede=rede, dormir=dormir, agora=agora))
+    if sessao is not None and any(_PROJETO_DO_FREELANCER.search(o.link) for o in freelancer.ficam):
+        if sessao.logado(navegador_logado.FREELANCER):
+            freelancer = freelancer.somar(conferir_freelancer_logado(freelancer.ficam, sessao))
+    return freelancer.somar(conferir_99freelas(freelancer.ficam, rede=rede, dormir=dormir, agora=agora, sessao=sessao))
 
 
 ORGANIZACOES_BLOQUEADAS = ("SUSU-LABS",)
@@ -730,6 +748,17 @@ def barrar_sem_conta(oportunidades: Sequence[Oportunidade], plataformas: Sequenc
     return Filtrado(ficam, sem_conta=saiu)
 
 
+def barrar_pagas(oportunidades: Sequence[Oportunidade], plataformas: Sequence[str]) -> Filtrado:
+    """Tira o que vem de site em que responder pede plano pago que ele não assinou (`[cacada].plataformas_pagas`)."""
+    nomes = {p.strip().casefold() for p in plataformas if p.strip()}
+    if not nomes:
+        return Filtrado(tuple(oportunidades))
+    ficam = tuple(o for o in oportunidades if not _de_plataforma(o.link, nomes))
+    if saiu := len(oportunidades) - len(ficam):
+        _log.info("Caçada: %d oportunidade(s) de %s ficaram de fora (responder pede plano pago).", saiu, ", ".join(sorted(nomes)))
+    return Filtrado(ficam, pagas=saiu)
+
+
 def _de_plataforma(link: str, nomes: set[str]) -> bool:
     dominio = (urlsplit(link).hostname or "").casefold()
     return any(nome in dominio.split(".") or dominio == nome or dominio.endswith("." + nome) for nome in nomes)
@@ -742,7 +771,8 @@ def barrar_freelancer(
 
     Para propor, o Freelancer.com pede uma skill do projeto que esteja no perfil;
     projeto só para Preferred Freelancer e projeto que já não está aberto também
-    saem, e o mesmo projeto com o link em outra caixa fica uma vez só. Projeto que
+    saem, e o mesmo projeto com o link em outra caixa fica uma vez só, como o
+    mesmo anúncio repostado com outro título (`_anuncio`). Projeto que
     a API não acha e erro na rede deixam tudo como está: o filtro nunca derruba a
     caçada. Sem usuário, só o que já fechou sai.
     """
@@ -760,7 +790,8 @@ def barrar_freelancer(
         _log.warning("Caçada: o perfil %s do Freelancer.com não tem skills; só o que fechou sai.", usuario)
     ficam: list[Oportunidade] = []
     vistos: set[str] = set()
-    sem_skill = so_para_quem_paga = fechadas = 0
+    anuncios: set[tuple[str, ...]] = set()
+    sem_skill = so_para_quem_paga = fechadas = repetidos = 0
     for oportunidade in oportunidades:
         slug = links.get(oportunidade.id, "").casefold()
         projeto = projetos.get(slug)
@@ -770,6 +801,12 @@ def barrar_freelancer(
         if slug in vistos:
             continue
         vistos.add(slug)
+        anuncio = _anuncio(projeto, oportunidade)
+        if anuncio is not None:
+            if anuncio in anuncios:
+                repetidos += 1
+                continue
+            anuncios.add(anuncio)
         if not _aberto_no_freelancer(projeto):
             fechadas += 1
             continue
@@ -792,7 +829,68 @@ def barrar_freelancer(
         so_para_quem_paga,
         fechadas,
     )
-    return Filtrado(tuple(ficam), sem_skill, so_para_quem_paga, fechadas)
+    return Filtrado(tuple(ficam), sem_skill, so_para_quem_paga, fechadas, repetidos=repetidos)
+
+
+DESCRICAO_DO_REPETIDO = 300
+
+
+def _anuncio(projeto: dict, oportunidade: Oportunidade) -> tuple[str, ...] | None:
+    """O que faz dois projetos do Freelancer.com serem o mesmo anúncio repostado.
+
+    A API pública devolve `owner_id` nulo e o cliente que reposta muda o título
+    (põe a data no fim), mas a descrição vem igual: o começo dela, com a moeda e
+    a faixa do orçamento, é a chave. O dono entra quando vem preenchido.
+    """
+    descricao = str(projeto.get("description") or projeto.get("preview_description") or oportunidade.descricao or "")
+    descricao = " ".join(descricao.casefold().split())[:DESCRICAO_DO_REPETIDO]
+    dono = "" if projeto.get("owner_id") is None else str(projeto["owner_id"])
+    if not descricao:
+        return (dono, _titulo_normalizado(projeto)) if dono else None
+    orcamento = projeto.get("budget") if isinstance(projeto.get("budget"), dict) else {}
+    moeda = projeto.get("currency") if isinstance(projeto.get("currency"), dict) else {}
+    return (dono, descricao, str(moeda.get("code") or ""), str(orcamento.get("minimum") or ""), str(orcamento.get("maximum") or ""))
+
+
+def _titulo_normalizado(projeto: dict) -> str:
+    return " ".join(re.sub(r"[^\w]+", " ", str(projeto.get("title") or "").casefold()).split())
+
+
+def conferir_freelancer_logado(oportunidades: Sequence[Oportunidade], sessao: SessaoLogada) -> Filtrado:
+    """Abre logado cada projeto do Freelancer.com que passou pela API.
+
+    Sai o "aberto apenas a freelancers selecionados" (pede saldo de US$ 20); o
+    número de propostas vira o visto logado (o da API anda atrasado); os lances
+    restantes da conta vêm da primeira página que os mostrar. Página que não
+    abre deixa o projeto como estava, com o aviso do saldo.
+    """
+    ficam: list[Oportunidade] = []
+    selecionados = 0
+    lances: tuple[int, int] | None = None
+    for oportunidade in oportunidades:
+        if not _PROJETO_DO_FREELANCER.search(oportunidade.link):
+            ficam.append(oportunidade)
+            continue
+        try:
+            pagina = navegador_logado.ler_freelancer(sessao.html(oportunidade.link))
+        except navegador_logado.SemNavegador as erro:
+            _log.info("Caçada: %s não abriu logado (%s); fica como está.", oportunidade.link, erro)
+            ficam.append(oportunidade)
+            continue
+        if not pagina.logado:
+            ficam.append(oportunidade)
+            continue
+        lances = lances or pagina.lances
+        if pagina.selecionados:
+            selecionados += 1
+            continue
+        partes = [p for p in oportunidade.detalhes.split(" | ") if p and not p.startswith("Propostas:")]
+        partes = [p.replace(f" {AVISO_DE_SALDO_MINIMO}", "") for p in partes]
+        if pagina.ofertas is not None:
+            partes.insert(0, f"Propostas: {pagina.ofertas} (visto logado)")
+        ficam.append(replace(oportunidade, detalhes=" | ".join(partes)))
+    _log.info("Caçada: Freelancer.com logado — %d só para selecionados ficaram de fora.", selecionados)
+    return Filtrado(tuple(ficam), so_para_selecionados=selecionados, lances=lances)
 
 
 def _aberto_no_freelancer(projeto: dict) -> bool:
@@ -806,13 +904,18 @@ def conferir_99freelas(
     rede: httpx.BaseTransport | None = None,
     dormir: Callable[[float], None] = time.sleep,
     agora: datetime | None = None,
+    sessao: SessaoLogada | None = None,
 ) -> Filtrado:
     """Abre a página de cada projeto da 99Freelas: o fechado sai, o exclusivo diz quando abre.
 
     Projeto aberto tem o botão de enviar proposta (`/project/bid/`); o fechado ou
-    em andamento não tem. Página que não abre deixa o projeto como está.
+    em andamento não tem. Página que não abre deixa o projeto como está. Com ele
+    logado no Chrome da caçada, a conferência é a logada (`conferir_99freelas_logada`).
     """
     agora = (agora or datetime.now()).astimezone()
+    if sessao is not None and any(_PROJETO_DA_99FREELAS.search(o.link) for o in oportunidades):
+        if sessao.logado(navegador_logado.NOVENTA_E_NOVE):
+            return conferir_99freelas_logada(oportunidades, sessao, dormir=dormir, agora=agora)
     ficam: list[Oportunidade] = []
     fechadas = 0
     lidas = 0
@@ -843,6 +946,82 @@ def conferir_99freelas(
     return Filtrado(tuple(ficam), fechadas=fechadas)
 
 
+def conferir_99freelas_logada(
+    oportunidades: Sequence[Oportunidade],
+    sessao: SessaoLogada,
+    *,
+    dormir: Callable[[float], None] = time.sleep,
+    agora: datetime | None = None,
+) -> Filtrado:
+    """A 99Freelas pela página logada: sai o cancelado, o em andamento (freelancer escolhido), o
+    fechado e o que ele já propôs; do aberto, o formulário de proposta diz quantas conexões custa.
+
+    O exclusivo de assinante segue a regra de sempre: fica, com a hora em que abre para ele.
+    """
+    agora = (agora or datetime.now()).astimezone()
+    ficam: list[Oportunidade] = []
+    fechadas = ja_propostas = lidas = 0
+    conexoes: int | None = None
+    for oportunidade in oportunidades:
+        casou = _PROJETO_DA_99FREELAS.search(oportunidade.link)
+        if not casou:
+            ficam.append(oportunidade)
+            continue
+        if lidas:
+            dormir(random.uniform(*PAUSA_ENTRE_PAGINAS_S))
+        lidas += 1
+        try:
+            html = sessao.html(oportunidade.link)
+        except navegador_logado.SemNavegador as erro:
+            _log.info("Caçada: %s não abriu logado (%s); fica como está.", oportunidade.link, erro)
+            ficam.append(oportunidade)
+            continue
+        pagina = navegador_logado.ler_99freelas(html)
+        if pagina.situacao == navegador_logado.JA_PROPOS:
+            ja_propostas += 1
+            continue
+        if pagina.situacao != navegador_logado.ABERTO:
+            fechadas += 1
+            continue
+        resto = [p for p in oportunidade.detalhes.split(" | ") if p and not p.startswith((_EXCLUSIVO, "99Freelas: custa"))]
+        exclusivo = _exclusivo_da_99freelas(html, agora)
+        try:
+            proposta = navegador_logado.ler_proposta_da_99freelas(sessao.html(_link_da_proposta(casou.group(0))))
+        except navegador_logado.SemNavegador:
+            proposta = navegador_logado.PropostaDa99Freelas()
+        if proposta.exclusivo and not exclusivo:
+            exclusivo = f"{_EXCLUSIVO}: abre para quem não assina até 24 h depois de publicado"
+        custo = ""
+        if proposta.custo is not None and proposta.saldo is not None:
+            conexoes = proposta.saldo
+            custo = f"99Freelas: custa {proposta.custo} {'conexão' if proposta.custo == 1 else 'conexões'}; sobram {proposta.saldo}"
+        ficam.append(replace(oportunidade, detalhes=" | ".join(p for p in (exclusivo, custo, *resto) if p)))
+    _log.info(
+        "Caçada: 99Freelas logada — de %d projeto(s), %d fechado(s) ou com freelancer e %d já proposto(s).",
+        lidas,
+        fechadas,
+        ja_propostas,
+    )
+    return Filtrado(tuple(ficam), fechadas=fechadas, ja_propostas=ja_propostas, conexoes=conexoes)
+
+
+def _link_da_proposta(projeto: str) -> str:
+    return "https://www." + projeto.replace("/project/", "/project/bid/", 1)
+
+
+def e_do_freelancer(link: str) -> bool:
+    return bool(_PROJETO_DO_FREELANCER.search(link)) and ".com.br" not in (urlsplit(link).hostname or "")
+
+
+def e_da_99freelas(link: str) -> bool:
+    return bool(_PROJETO_DA_99FREELAS.search(link))
+
+
+def custo_em_conexoes(oportunidade: Oportunidade) -> int | None:
+    casou = re.search(r"99Freelas: custa (\d+) conex", oportunidade.detalhes)
+    return int(casou.group(1)) if casou else None
+
+
 def _skills_do_perfil(cliente: httpx.Client, usuario: str) -> set[int]:
     url = "https://www.freelancer.com/api/users/0.1/users/?" + urlencode({"usernames[]": usuario, "jobs": "true"})
     dados = _json(cliente, url)
@@ -855,12 +1034,79 @@ def _projetos_do_freelancer(cliente: httpx.Client, seo_urls: Sequence[str]) -> d
     projetos: dict[str, dict] = {}
     for inicio in range(0, len(seo_urls), 20):
         consulta = [("seo_urls[]", s) for s in seo_urls[inicio : inicio + 20]]
-        consulta += [("job_details", "true"), ("upgrade_details", "true")]
+        consulta += [("job_details", "true"), ("upgrade_details", "true"), ("full_description", "true")]
         dados = _json(cliente, "https://www.freelancer.com/api/projects/0.1/projects/?" + urlencode(consulta))
         for projeto in _lista((dados.get("result") or {}) if isinstance(dados, dict) else {}, "projects"):
             if projeto.get("seo_url"):
                 projetos[str(projeto["seo_url"]).casefold()] = projeto
     return projetos
+
+
+# -- VintePila, pela listagem logada ------------------------------------------------------
+
+PAGINAS_DA_VINTEPILA = 3
+#: A VintePila não filtra por categoria: o que fica é o que cita uma destas (ou a stack do perfil).
+PALAVRAS_DA_VINTEPILA = (
+    "site", "sites", "landing page", "loja virtual", "e-commerce", "ecommerce", "shopify", "wordpress", "woocommerce",
+    "react", "next", "nextjs", "node", "nodejs", "javascript", "typescript", "python", "api", "integração",
+    "automação", "script", "scraping", "bot", "sistema", "aplicativo", "app", "web", "html", "css", "php",
+    "banco de dados", "planilha", "n8n", "chatbot", "programador", "programação", "desenvolvedor",
+)
+AVISO_DA_VINTEPILA_SEM_SERVICO = (
+    "crie um serviço ativo na VintePila para poder propor (sem ele, todo projeto aparece como Inelegível)"
+)
+
+
+@dataclass(frozen=True)
+class ColetaDaVintePila:
+    oportunidades: tuple[Oportunidade, ...] = ()
+    cheios: int = 0
+    aviso: str = ""
+
+
+def coletar_vintepila(
+    sessao: SessaoLogada,
+    palavras: Sequence[str] = (),
+    *,
+    paginas: int = PAGINAS_DA_VINTEPILA,
+    nome: str = "VintePila (logado)",
+) -> ColetaDaVintePila:
+    """A listagem logada da VintePila, com o que casa com as palavras e ainda tem vaga de candidato.
+
+    O "Inelegível" da conta sem serviço ativo aparece em todo projeto (até no
+    0/5): uma página de projeto é aberta sempre (a primeira que fica, ou a
+    primeira da listagem), e com o aviso a VintePila inteira fica de fora.
+    Quem chama confere o login antes.
+    """
+    termos = tuple(dict.fromkeys((*PALAVRAS_DA_VINTEPILA, *palavras)))
+    cartoes: dict[str, Oportunidade] = {}
+    for numero in range(1, paginas + 1):
+        try:
+            html = sessao.html(navegador_logado.LISTAGEM_DA_VINTEPILA.format(pagina=numero))
+        except navegador_logado.SemNavegador as erro:
+            _log.info("Caçada: a página %d da VintePila não abriu (%s).", numero, erro)
+            break
+        lidos = navegador_logado.ler_listagem_da_vintepila(html, nome)
+        if not lidos:
+            break
+        for cartao in lidos:
+            cartoes.setdefault(cartao.link, cartao)
+    casam = [c for c in cartoes.values() if navegador_logado.casa_com_palavras(c, termos)]
+    ficam = [c for c in casam if not navegador_logado.candidatos_cheios(c)]
+    cheios = len(casam) - len(ficam)
+    sonda = ficam[0] if ficam else next(iter(cartoes.values()), None)
+    if sonda is not None:
+        try:
+            primeiro = navegador_logado.ler_projeto_da_vintepila(sessao.html(sonda.link))
+        except navegador_logado.SemNavegador:
+            primeiro = None
+        if primeiro is not None and primeiro.sem_servico_ativo:
+            _log.info("Caçada: a VintePila diz que a conta não tem serviço ativo; nada de lá.")
+            return ColetaDaVintePila(aviso=AVISO_DA_VINTEPILA_SEM_SERVICO)
+        if ficam and primeiro is not None and primeiro.candidatos and primeiro.candidatos[0] >= primeiro.candidatos[1]:
+            ficam, cheios = ficam[1:], cheios + 1
+    _log.info("Caçada: VintePila logada — %d de %d projeto(s) casam e ainda aceitam candidato.", len(ficam), len(cartoes))
+    return ColetaDaVintePila(tuple(ficam), cheios)
 
 
 # -- LinkedIn, pela busca pública ---------------------------------------------------------

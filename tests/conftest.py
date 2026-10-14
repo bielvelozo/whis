@@ -125,7 +125,7 @@ def area_de_transferencia_trancada(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def navegador_trancado(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Nenhum teste abre o Chrome com a conta do X de quem roda a suíte.
+    """Nenhum teste abre o Chrome com a conta do X nem o Chrome da caçada de quem roda a suíte.
 
     O modelo de `fontes.md` tem linhas `x:`; quem chega no leitor de verdade
     abriria o perfil do Whis e navegaria no X. Quem testa o jornal injeta um
@@ -137,6 +137,13 @@ def navegador_trancado(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("teste chegou no navegador de verdade — injete um LeitorDoXFake")
 
     monkeypatch.setattr(fonte_x, "_playwright", recusar)
+
+    from whis import navegador_logado
+
+    def recusar_o_da_cacada():
+        raise AssertionError("teste chegou no Chrome da caçada de verdade — injete um NavegadorLogadoFake")
+
+    monkeypatch.setattr(navegador_logado, "_playwright", recusar_o_da_cacada)
 
 
 @pytest.fixture(autouse=True)

@@ -324,6 +324,7 @@ def montar_portas_da_cacada(configuracao: Configuracao, *, fakes: bool = False, 
 
     from .acoes import Registro
     from .corrida import pasta_da_cacada
+    from .navegador_logado import NavegadorLogado
 
     opcoes = {"modelo": configuracao.claude_modelo or None, "cli": configuracao.claude_cli or None}
     navegador = None
@@ -340,6 +341,7 @@ def montar_portas_da_cacada(configuracao: Configuracao, *, fakes: bool = False, 
         navegador=navegador,
         registro=Registro(pasta_da_cacada()),
         ler_caixa=montar_leitura_da_caixa(configuracao),
+        navegador_logado=NavegadorLogado(),
     )
 
 
@@ -1034,6 +1036,7 @@ def _comando_navegador(args: argparse.Namespace) -> int:
 
     from .fonte_x import caminho_do_chrome
     from .navegador_agente import pasta_do_perfil
+    from .navegador_logado import PAGINAS_DE_LOGIN
 
     chrome = caminho_do_chrome()
     if chrome is None:
@@ -1041,8 +1044,15 @@ def _comando_navegador(args: argparse.Namespace) -> int:
         return SAIDA_NAO_NASCEU
     perfil = pasta_do_perfil()
     perfil.mkdir(parents=True, exist_ok=True)
-    print(f"Abrindo o Chrome da caçada ({perfil}). Entre nos sites que quiser e feche a janela quando terminar.")
-    subprocess.Popen([str(chrome), f"--user-data-dir={perfil}", "--no-first-run", "--no-default-browser-check", args.url])
+    enderecos = [args.url] if args.url else list(PAGINAS_DE_LOGIN)
+    if args.url:
+        print(f"Abrindo o Chrome da caçada ({perfil}). Entre no site e feche a janela quando terminar.")
+    else:
+        print(
+            f"Abrindo o Chrome da caçada ({perfil}) com Freelancer.com, 99Freelas, VintePila e freelancer.com.br. "
+            "Entre em cada um e feche a janela quando terminar: a caçada usa esse login (com a janela fechada)."
+        )
+    subprocess.Popen([str(chrome), f"--user-data-dir={perfil}", "--no-first-run", "--no-default-browser-check", *enderecos])
     return SAIDA_COMPLETA
 
 
@@ -1721,9 +1731,14 @@ def construir_parser() -> argparse.ArgumentParser:
     candidaturas_cmd.set_defaults(funcao=_comando_candidaturas)
 
     navegador_cmd = subcomandos.add_parser(
-        "navegador", help="abre o Chrome da caçada para você entrar à mão num site (Gupy, Workana...)"
+        "navegador", help="abre o Chrome da caçada para você entrar à mão nos sites que a caçada lê logada"
     )
-    navegador_cmd.add_argument("url", nargs="?", default="https://portal.gupy.io", help="onde abrir")
+    navegador_cmd.add_argument(
+        "url",
+        nargs="?",
+        default=None,
+        help="onde abrir; sem nada, abre as abas de Freelancer.com, 99Freelas, VintePila e freelancer.com.br",
+    )
     navegador_cmd.set_defaults(funcao=_comando_navegador)
 
     linkedin_cmd = subcomandos.add_parser(
