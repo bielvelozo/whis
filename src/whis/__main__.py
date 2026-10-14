@@ -839,15 +839,20 @@ def _comando_hunt(args: argparse.Namespace) -> int:
 def _simular_coleta(configuracao: Configuracao, *, freelas: bool = False) -> int:
     """Só a coleta em Python, sem Claude e sem escrever nada além dos critérios: que fonte responde?"""
     from .criterios_da_cacada import ler_criterios
-    from .fontes_da_cacada import coletar
+    from .fontes_da_cacada import coletar, fonte_sem_conta
 
     criterios = ler_criterios(_vault.preparar(configuracao.vault))
     if freelas:
         from .freelas_rapidos import criterios_de_freelas
 
-        criterios = criterios_de_freelas(criterios)
-    coleta = coletar(criterios.fontes, datetime.now().astimezone(), ao_ler=lambda nome: print(f"lendo {nome}...", flush=True))
+        criterios = criterios_de_freelas(criterios, configuracao.cacada_plataformas_sem_conta)
+    sem_conta = configuracao.cacada_plataformas_sem_conta
+    lidas_aqui = [f for f in criterios.fontes if not fonte_sem_conta(f, sem_conta)]
+    coleta = coletar(lidas_aqui, datetime.now().astimezone(), ao_ler=lambda nome: print(f"lendo {nome}...", flush=True))
     print()
+    for fonte in criterios.fontes:
+        if fonte_sem_conta(fonte, sem_conta):
+            print(f"{fonte.nome}: pulada, sua conta nesse site não está ativa ([cacada].plataformas_sem_conta)")
     for nome, lista in coleta.por_fonte.items():
         print(f"{nome}: {len(lista)}")
         for oportunidade in lista[:3]:

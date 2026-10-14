@@ -24,7 +24,7 @@ from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime, timedelta
 from html.parser import HTMLParser
-from urllib.parse import quote_plus, urlencode
+from urllib.parse import quote_plus, urlencode, urlsplit
 
 import httpx
 
@@ -600,6 +600,8 @@ class Filtrado:
     sem_skill: int = 0
     so_para_quem_paga: int = 0
     fechadas: int = 0
+    sem_conta: int = 0
+    com_malware: int = 0
 
     def somar(self, outro: Filtrado) -> Filtrado:
         return Filtrado(
@@ -607,6 +609,8 @@ class Filtrado:
             self.sem_skill + outro.sem_skill,
             self.so_para_quem_paga + outro.so_para_quem_paga,
             self.fechadas + outro.fechadas,
+            self.sem_conta + outro.sem_conta,
+            self.com_malware + outro.com_malware,
         )
 
 
@@ -614,13 +618,66 @@ def filtrar_o_que_da(
     oportunidades: Sequence[Oportunidade],
     usuario_freelancer: str,
     *,
+    plataformas_sem_conta: Sequence[str] = (),
     rede: httpx.BaseTransport | None = None,
     dormir: Callable[[float], None] = time.sleep,
     agora: datetime | None = None,
 ) -> Filtrado:
-    """O Freelancer.com pela API e a 99Freelas pela página do projeto, nessa ordem."""
-    freelancer = barrar_freelancer(oportunidades, usuario_freelancer, rede=rede)
+    """As organizações com malware, as plataformas sem conta ativa, o Freelancer.com pela API e a 99Freelas pela página, nessa ordem."""
+    com_malware = barrar_organizacoes_bloqueadas(oportunidades)
+    sem_conta = com_malware.somar(barrar_sem_conta(com_malware.ficam, plataformas_sem_conta))
+    freelancer = sem_conta.somar(barrar_freelancer(sem_conta.ficam, usuario_freelancer, rede=rede))
     return freelancer.somar(conferir_99freelas(freelancer.ficam, rede=rede, dormir=dormir, agora=agora))
+
+
+ORGANIZACOES_BLOQUEADAS = ("SUSU-LABS",)
+
+
+def barrar_organizacoes_bloqueadas(
+    oportunidades: Sequence[Oportunidade], organizacoes: Sequence[str] = ORGANIZACOES_BLOQUEADAS
+) -> Filtrado:
+    """Tira os links do GitHub de organização cujos repositórios trazem malware.
+
+    Os da SUSU-LABS escondem no `eslint.config.js` um loader que roda via
+    `child_process` assim que a config carrega.
+    """
+    nomes = {o.casefold() for o in organizacoes}
+    ficam = tuple(o for o in oportunidades if _organizacao_no_github(o.link) not in nomes)
+    if saiu := len(oportunidades) - len(ficam):
+        _log.info("Caçada: %d oportunidade(s) de organização com malware conhecido ficaram de fora.", saiu)
+    return Filtrado(ficam, com_malware=saiu)
+
+
+def _organizacao_no_github(link: str) -> str:
+    partes = urlsplit(link)
+    if (partes.hostname or "").casefold() not in {"github.com", "www.github.com"}:
+        return ""
+    return partes.path.strip("/").split("/", 1)[0].casefold()
+
+
+def fonte_sem_conta(fonte: FonteDaCacada, plataformas: Sequence[str]) -> bool:
+    """A fonte de *Fontes* é de um site em que a conta dele não está ativa (`[cacada].plataformas_sem_conta`)."""
+    return fonte.tipo.casefold() in {p.strip().casefold() for p in plataformas}
+
+
+def barrar_sem_conta(oportunidades: Sequence[Oportunidade], plataformas: Sequence[str]) -> Filtrado:
+    """Tira o que vem de site em que a conta dele não está ativa (`[cacada].plataformas_sem_conta`).
+
+    O nome casa com um pedaço do domínio do link (`peopleperhour` pega
+    `www.peopleperhour.com`); um domínio inteiro também serve.
+    """
+    nomes = {p.strip().casefold() for p in plataformas if p.strip()}
+    if not nomes:
+        return Filtrado(tuple(oportunidades))
+    ficam = tuple(o for o in oportunidades if not _de_plataforma(o.link, nomes))
+    if saiu := len(oportunidades) - len(ficam):
+        _log.info("Caçada: %d oportunidade(s) de %s ficaram de fora (conta não ativa).", saiu, ", ".join(sorted(nomes)))
+    return Filtrado(ficam, sem_conta=saiu)
+
+
+def _de_plataforma(link: str, nomes: set[str]) -> bool:
+    dominio = (urlsplit(link).hostname or "").casefold()
+    return any(nome in dominio.split(".") or dominio == nome or dominio.endswith("." + nome) for nome in nomes)
 
 
 def barrar_freelancer(

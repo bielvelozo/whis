@@ -327,7 +327,7 @@ def cacar(
     raiz = _vault.preparar(configuracao.vault)
     criterios = ler_criterios(raiz)
     if modo == MODO_FREELAS:
-        criterios = criterios_de_freelas(criterios)
+        criterios = criterios_de_freelas(criterios, configuracao.cacada_plataformas_sem_conta)
 
     checkpoint = Checkpoint.abrir(pasta_do_estado, do_zero=do_zero)
     if checkpoint.retomada and _velho(checkpoint.get("inicio"), agora()):
@@ -460,13 +460,14 @@ def _etapa_do_perfil(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPl
 def _etapa_da_coleta(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, agora: datetime) -> None:
     if estado.checkpoint.get("coletada"):
         return
-    from .fontes_da_cacada import coletar
+    from .fontes_da_cacada import coletar, fonte_sem_conta
 
     criterios = estado.criterios
     ja_vistas = links_ja_vistos(estado.raiz, excluir=estado.corrida)
     estado.andamento("coleta", "lendo as fontes")
+    sem_conta = estado.configuracao.cacada_plataformas_sem_conta
     coleta = (portas.coletar or coletar)(
-        criterios.fontes, agora, rede=portas.rede, ao_ler=lambda nome: escrever_andamento(estado.pasta, "coleta", nome)
+        [f for f in criterios.fontes if not fonte_sem_conta(f, sem_conta)], agora, rede=portas.rede, ao_ler=lambda nome: escrever_andamento(estado.pasta, "coleta", nome)
     )
     lidas: dict[str, int] = {nome: len(lista) for nome, lista in coleta.por_fonte.items()}
     falhas: dict[str, str] = dict(coleta.falhas)
@@ -513,6 +514,7 @@ def _tirar_o_que_nao_da(
     filtrado = filtrar_o_que_da(
         oportunidades,
         estado.configuracao.cacada_usuario_freelancer,
+        plataformas_sem_conta=estado.configuracao.cacada_plataformas_sem_conta,
         rede=portas.rede,
         dormir=guarda._dormir,
         agora=guarda._relogio(),
@@ -522,6 +524,8 @@ def _tirar_o_que_nao_da(
         freelancer_sem_skill=int(checkpoint.get("freelancer_sem_skill") or 0) + filtrado.sem_skill,
         freelancer_so_para_quem_paga=int(checkpoint.get("freelancer_so_para_quem_paga") or 0) + filtrado.so_para_quem_paga,
         fechadas=int(checkpoint.get("fechadas") or 0) + filtrado.fechadas,
+        sem_conta=int(checkpoint.get("sem_conta") or 0) + filtrado.sem_conta,
+        com_malware=int(checkpoint.get("com_malware") or 0) + filtrado.com_malware,
     )
     return list(filtrado.ficam)
 
@@ -992,6 +996,8 @@ def _escrever_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, 
 
 
 def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_andamento: str = "") -> str:
+    from .fontes_da_cacada import ORGANIZACOES_BLOQUEADAS, fonte_sem_conta
+
     oportunidades = estado.oportunidades()
     vereditos = estado.vereditos()
     pacotes = estado.pacotes()
@@ -1121,8 +1127,11 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
     linhas += ["## Fontes", ""]
     lidas: dict[str, int] = estado.checkpoint.get("lidas") or {}
     falhas: dict[str, str] = estado.checkpoint.get("falhas") or {}
+    plataformas_sem_conta = estado.configuracao.cacada_plataformas_sem_conta
     for fonte in estado.criterios.fontes:
-        if fonte.nome in falhas:
+        if fonte_sem_conta(fonte, plataformas_sem_conta):
+            linhas.append(f"- {fonte.nome}: pulada, sua conta nesse site não está ativa ([cacada].plataformas_sem_conta)")
+        elif fonte.nome in falhas:
             linhas.append(f"- {fonte.nome}: **não respondeu** — {falhas[fonte.nome]}")
         elif fonte.nome in lidas:
             linhas.append(f"- {fonte.nome}: {lidas[fonte.nome]} lida(s)")
@@ -1137,6 +1146,17 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         linhas.append(
             f"- {sem_skill} do Freelancer.com ficaram de fora porque pedem skill que não está no seu perfil "
             "(a conta grátis não propõe neles)."
+        )
+    if sem_conta := estado.checkpoint.get("sem_conta"):
+        sites = ", ".join(plataformas_sem_conta) or "site sem conta ativa"
+        linhas.append(
+            f"- {sem_conta} ficaram de fora porque vêm de site em que sua conta não está ativa ({sites}); "
+            "quando a conta valer, tire o nome de [cacada].plataformas_sem_conta."
+        )
+    if com_malware := estado.checkpoint.get("com_malware"):
+        linhas.append(
+            f"- {com_malware} bounties de organização com malware conhecido ({', '.join(ORGANIZACOES_BLOQUEADAS)}) "
+            "ficaram de fora."
         )
     if so_para_quem_paga := estado.checkpoint.get("freelancer_so_para_quem_paga"):
         linhas.append(f"- {so_para_quem_paga} do Freelancer.com ficaram de fora porque são só para Preferred Freelancer.")

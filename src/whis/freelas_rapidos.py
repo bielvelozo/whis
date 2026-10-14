@@ -10,6 +10,7 @@ então a triagem e o resumo leem as regras do modo antes das dele.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 
 from .criterios_da_cacada import Criterios, FonteDaCacada
@@ -50,6 +51,53 @@ PEDIDO_DA_RODADA_EXTRA = (
     "abra páginas, filtros, categorias e sites que você ainda não abriu, e não repita nenhum link."
 )
 
+PEOPLEPERHOUR = "peopleperhour"
+WORKANA = "workana"
+
+
+def _web_recentes(com_workana: bool) -> FonteDaCacada:
+    if com_workana:
+        nome, onde = "Web · Workana e 99Freelas recentes", "na Workana e na 99Freelas"
+    else:
+        nome, onde = "Web · 99Freelas recentes", "na 99Freelas (nada da Workana: a conta dele lá não está ativa)"
+    return FonteDaCacada(
+        nome,
+        "web",
+        f"projetos de preço fechado {onde} publicados nas últimas 72 horas, com poucas "
+        "propostas, de landing page, site pequeno, Shopify, WordPress, React/Next.js, correção de bug, "
+        "integração de API ou automação, que dê para entregar em até um fim de semana. " + _A_FUNDO,
+    )
+
+
+def _web_fora_das_grandes(com_workana: bool) -> FonteDaCacada:
+    fora = "fora da Workana e da 99Freelas" if com_workana else (
+        "fora da 99Freelas e sem nada da Workana (a conta dele lá não está ativa)"
+    )
+    return FonteDaCacada(
+        "Web · freelas no Brasil fora das plataformas grandes",
+        "web",
+        "pedidos de freela de desenvolvimento web, sistema pequeno, automação ou loja virtual publicados nos "
+        f"últimos 3 dias no Brasil {fora} (GetNinjas, Freelas.com.br, Trampos, "
+        "comunidades e posts públicos), com orçamento ou preço fechado. " + _A_FUNDO,
+    )
+
+
+def _web_internacional(com_peopleperhour: bool) -> FonteDaCacada:
+    depois = "Guru and PeoplePerHour" if com_peopleperhour else "Guru"
+    pular = "Freelancer.com and Upwork (paid bids)"
+    if not com_peopleperhour:
+        pular += ", PeoplePerHour (his account there is still under review)"
+    return FonteDaCacada(
+        "Web · Contra e clientes dos EUA e da Europa",
+        "web",
+        "fixed-price freelance web development gigs posted in the last 3 days by clients in the US, Canada, "
+        f"Europe or Latin America that accept workers from Brazil: Contra projects first (no fees), then {depois}; "
+        f"skip {pular} and any project budgeted in Indian rupees. Small Shopify fixes, landing pages, "
+        "React/Next.js or Node bug fixes, API integrations, scripts and automations, doable in under 20 hours. "
+        + _A_FUNDO,
+    )
+
+
 FONTES_DE_FREELA_RAPIDO = (
     FonteDaCacada("Freelancer.com · Shopify", "freelancer", "shopify"),
     FonteDaCacada("Freelancer.com · Next.js", "freelancer", "nextjs"),
@@ -59,22 +107,8 @@ FONTES_DE_FREELA_RAPIDO = (
     FonteDaCacada("Freelancer.com · bug fix", "freelancer", "bug fix"),
     FonteDaCacada("Freelancer.com · API", "freelancer", "api integration"),
     FonteDaCacada("Freelancer.com · automação", "freelancer", "automation"),
-    FonteDaCacada(
-        "Web · Workana e 99Freelas recentes",
-        "web",
-        "projetos de preço fechado na Workana e na 99Freelas publicados nas últimas 72 horas, com poucas "
-        "propostas, de landing page, site pequeno, Shopify, WordPress, React/Next.js, correção de bug, "
-        "integração de API ou automação, que dê para entregar em até um fim de semana. " + _A_FUNDO,
-    ),
-    FonteDaCacada(
-        "Web · Contra e clientes dos EUA e da Europa",
-        "web",
-        "fixed-price freelance web development gigs posted in the last 3 days by clients in the US, Canada, "
-        "Europe or Latin America that accept workers from Brazil: Contra projects first (no fees), then Guru "
-        "and PeoplePerHour; skip Freelancer.com and Upwork (paid bids) and any project budgeted in Indian "
-        "rupees. Small Shopify fixes, landing pages, React/Next.js or Node bug fixes, API integrations, scripts "
-        "and automations, doable in under 20 hours. " + _A_FUNDO,
-    ),
+    _web_recentes(com_workana=True),
+    _web_internacional(com_peopleperhour=True),
     FonteDaCacada(
         "Web · Shopify",
         "web",
@@ -89,7 +123,8 @@ FONTES_DE_FREELA_RAPIDO = (
         "publicados nos últimos 14 dias, de US$ 50 para cima, no Algora, Opire, IssueHunt, BountySource ou "
         "issues do GitHub com label de bounty, que dê para resolver em poucas horas. Abra a issue de cada "
         "bounty e diga em detalhes quantas propostas e comentários ela já tem, se alguém foi designado e se "
-        "já há PR; prefira as que ainda não têm proposta nenhuma. " + _A_FUNDO,
+        "já há PR; prefira as que ainda não têm proposta nenhuma. Nunca traga bounty de repositório da "
+        "organização SUSU-LABS no GitHub: os repositórios dela escondem malware no eslint.config.js. " + _A_FUNDO,
     ),
     FonteDaCacada(
         "Web · posts de quem contrata no Brasil",
@@ -107,20 +142,28 @@ FONTES_DE_FREELA_RAPIDO = (
         "LinkedIn e no Instagram, comunidades de Shopify no Brasil, agências parceiras da Shopify que "
         "terceirizam tema, seção, app ou migração, e lojas que anunciam vaga freela. " + _A_FUNDO,
     ),
-    FonteDaCacada(
-        "Web · freelas no Brasil fora das plataformas grandes",
-        "web",
-        "pedidos de freela de desenvolvimento web, sistema pequeno, automação ou loja virtual publicados nos "
-        "últimos 3 dias no Brasil fora da Workana e da 99Freelas (GetNinjas, Freelas.com.br, Trampos, "
-        "comunidades e posts públicos), com orçamento ou preço fechado. " + _A_FUNDO,
-    ),
+    _web_fora_das_grandes(com_workana=True),
 )
 
 
-def criterios_de_freelas(criterios: Criterios) -> Criterios:
-    """Os critérios dele com as fontes de freela, as do modo e o pedido do modo na frente."""
+def criterios_de_freelas(criterios: Criterios, plataformas_sem_conta: Sequence[str] = ()) -> Criterios:
+    """Os critérios dele com as fontes de freela, as do modo e o pedido do modo na frente.
+
+    Plataforma em `plataformas_sem_conta` some do texto das buscas web; hoje
+    só o PeoplePerHour e a Workana são citados nelas.
+    """
     dele = [fonte for fonte in criterios.fontes if fonte.tipo in TIPOS_DE_FREELA]
     nomes = {fonte.nome.casefold() for fonte in dele}
-    fontes = dele + [fonte for fonte in FONTES_DE_FREELA_RAPIDO if fonte.nome.casefold() not in nomes]
+    sem_conta = {p.casefold() for p in plataformas_sem_conta}
+    trocas = {
+        FONTES_DE_FREELA_RAPIDO.index(original): nova
+        for original, nova in (
+            (_web_recentes(True), _web_recentes(WORKANA not in sem_conta)),
+            (_web_internacional(True), _web_internacional(PEOPLEPERHOUR not in sem_conta)),
+            (_web_fora_das_grandes(True), _web_fora_das_grandes(WORKANA not in sem_conta)),
+        )
+    }
+    do_modo = [trocas.get(i, fonte) for i, fonte in enumerate(FONTES_DE_FREELA_RAPIDO)]
+    fontes = dele + [fonte for fonte in do_modo if fonte.nome.casefold() not in nomes]
     procuro = f"{PEDIDO_DE_FREELAS_RAPIDOS}\n\n{criterios.procuro}".rstrip()
     return replace(criterios, fontes=tuple(fontes), procuro=procuro)

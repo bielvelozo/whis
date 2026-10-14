@@ -35,6 +35,8 @@ VARIAVEL_DE_AMBIENTE = "WHIS_CONFIG"
 #: Nome do arquivo dentro de `%APPDATA%\whis\`.
 NOME_DO_ARQUIVO = "config.toml"
 
+PLATAFORMAS_SEM_CONTA = ("peopleperhour", "workana")
+
 #: As chaves aceitas em `[daily].horarios`, na ordem em que a semana anda.
 #: Sem acento de propósito: é o que se digita num TOML sem pensar em escape.
 DIAS_DA_SEMANA = ("segunda", "terca", "quarta", "quinta", "sexta", "sabado", "domingo")
@@ -113,6 +115,7 @@ cpf = ""                     # CPF, só para os formulários que exigem (Gupy); 
 nascimento = ""              # data de nascimento (DD/MM/AAAA), só para os formulários que exigem
 hora_do_lembrete = "20:00"   # quando a tarefa do lembrete olha se a semana do plano vira nas próximas 30 h (whis windows --hunt)
 usuario_freelancer = ""      # seu usuário no Freelancer.com (freelancer.com/u/<usuário>): a caçada só traz projeto com alguma skill do seu perfil, porque a conta grátis não propõe nos outros; vazio = sem esse filtro
+plataformas_sem_conta = ["peopleperhour", "workana"]  # sites em que sua conta não está ativa (em análise ou reprovada): a caçada não lê a fonte, não procura lá e tira o que vier deles; quando a conta valer, apague o nome daqui (ex.: [])
 
 [linkedin]
 client_id = ""               # Client ID do seu app no LinkedIn Developers (produtos Share on LinkedIn e Sign In with LinkedIn using OpenID Connect)
@@ -200,6 +203,7 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "nascimento", "cacada_nascimento", Tipo.TEXTO),
     Chave("cacada", "hora_do_lembrete", "cacada_hora_do_lembrete", Tipo.HORA),
     Chave("cacada", "usuario_freelancer", "cacada_usuario_freelancer", Tipo.TEXTO),
+    Chave("cacada", "plataformas_sem_conta", "cacada_plataformas_sem_conta", Tipo.LISTA),
     Chave("linkedin", "client_id", "linkedin_client_id", Tipo.TEXTO),
     Chave("linkedin", "client_secret", "linkedin_client_secret", Tipo.SEGREDO),
     Chave("linkedin", "exportacao", "linkedin_exportacao", Tipo.CAMINHO),
@@ -301,6 +305,7 @@ class Configuracao:
     cacada_nascimento: str = ""
     cacada_hora_do_lembrete: str = "20:00"
     cacada_usuario_freelancer: str = ""
+    cacada_plataformas_sem_conta: tuple[str, ...] = PLATAFORMAS_SEM_CONTA
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
     linkedin_exportacao: Path | None = None
@@ -431,6 +436,9 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         cacada_nascimento=str(cacada.get("nascimento", "")).strip(),
         cacada_hora_do_lembrete=_hora(cacada.get("hora_do_lembrete", "20:00"), "[cacada].hora_do_lembrete", arquivo),
         cacada_usuario_freelancer=str(cacada.get("usuario_freelancer", "")).strip().strip("/").rsplit("/", 1)[-1],
+        cacada_plataformas_sem_conta=tuple(
+            p.strip().casefold() for p in _textos(cacada.get("plataformas_sem_conta", PLATAFORMAS_SEM_CONTA)) if p.strip()
+        ),
         linkedin_client_id=str(linkedin.get("client_id", "")).strip(),
         linkedin_client_secret=str(linkedin.get("client_secret", "")).strip(),
         linkedin_exportacao=Path(exportacao) if exportacao else None,

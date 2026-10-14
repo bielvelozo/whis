@@ -17,10 +17,12 @@ from whis.cacada_claude import (
     Plano,
     _oportunidade_no_pedido,
 )
-from whis.configuracao import Configuracao
+from whis.configuracao import Configuracao, carregar
 from whis.corrida import Checkpoint
 from whis.criterios_da_cacada import Criterios, FonteDaCacada
 from whis.fakes_da_cacada import coleta_fake, portas_fake
+from whis.fontes_da_cacada import barrar_organizacoes_bloqueadas, barrar_sem_conta
+from whis.oportunidades import FREELA, Oportunidade
 from whis.freelas_rapidos import FONTES_DE_FREELA_RAPIDO, PEDIDO_DE_FREELAS_RAPIDOS, criterios_de_freelas
 
 
@@ -220,3 +222,123 @@ def test_bounty_ja_disputado_nao_e_freela_rapido():
     assert "bounty" in regra and "proposta" in regra and "responsável" in regra
     [bounties] = [f for f in FONTES_DE_FREELA_RAPIDO if "bount" in f.nome.casefold()]
     assert "detalhes" in bounties.argumento and "comentários" in bounties.argumento
+
+
+def _web_internacional(criterios: Criterios) -> str:
+    [fonte] = [f for f in criterios.fontes if f.nome.startswith("Web · Contra")]
+    return fonte.argumento
+
+
+def test_com_a_conta_do_peopleperhour_em_analise_a_busca_web_nao_procura_la():
+    em_analise = _web_internacional(criterios_de_freelas(_criterios(), ("PeoplePerHour",)))
+    aprovada = _web_internacional(criterios_de_freelas(_criterios(), ()))
+
+    assert "then Guru;" in em_analise and "PeoplePerHour (his account there is still under review)" in em_analise
+    assert "then Guru and PeoplePerHour;" in aprovada and "under review" not in aprovada
+
+
+def test_o_que_vem_de_plataforma_sem_conta_sai_e_o_resto_fica():
+    def freela(link: str) -> Oportunidade:
+        return Oportunidade.nova(tipo=FREELA, fonte="Web", titulo=link, link=link)
+
+    oportunidades = [
+        freela("https://www.peopleperhour.com/freelance-jobs/technology/landing-123"),
+        freela("https://peopleperhour.com/job/456"),
+        freela("https://www.workana.com/job/site"),
+        freela("https://blog.naopeopleperhour.com/post"),
+    ]
+
+    filtrado = barrar_sem_conta(oportunidades, ["peopleperhour"])
+
+    assert [o.titulo for o in filtrado.ficam] == [oportunidades[2].link, oportunidades[3].link]
+    assert filtrado.sem_conta == 2
+    assert barrar_sem_conta(oportunidades, []).ficam == tuple(oportunidades)
+
+
+def test_por_padrao_a_caçada_tira_peopleperhour_e_workana_e_conta_no_relatorio(configuracao: Configuracao, tmp_path: Path):
+    assert configuracao.cacada_plataformas_sem_conta == ("peopleperhour", "workana")
+    pph = Oportunidade.nova(
+        tipo=FREELA, fonte="Web · PPH", titulo="Fix Shopify theme", link="https://www.peopleperhour.com/freelance-jobs/x-1"
+    )
+    workana = Oportunidade.nova(
+        tipo=FREELA, fonte="Web · BR", titulo="Site para padaria", link="https://www.workana.com/job/site-para-padaria"
+    )
+    lidas: list[str] = []
+
+    def coletar(fontes, agora, **opcoes):
+        lidas.extend(f.nome for f in fontes)
+        coleta = coleta_fake(fontes, agora, **opcoes)
+        coleta.por_fonte["Web · PPH"] = (pph, workana)
+        return coleta
+
+    portas = portas_fake()
+    portas.coletar = coletar
+
+    resultado = cacar(configuracao, portas, pasta_do_estado=tmp_path / "estado", modo="freelas")
+
+    relatorio = (Path(configuracao.vault) / resultado.relatorio).read_text(encoding="utf-8")
+    assert "Fix Shopify theme" not in relatorio and "Site para padaria" not in relatorio
+    assert "- 2 ficaram de fora porque vêm de site em que sua conta não está ativa (peopleperhour, workana)" in relatorio
+    assert lidas and not any(n.startswith("Workana") for n in lidas)
+    assert "- Workana · TI e programação: pulada, sua conta nesse site não está ativa" in relatorio
+    assert "Web · 99Freelas recentes" in relatorio and "Web · Workana e 99Freelas recentes" not in relatorio
+
+
+def test_a_chave_vazia_libera_o_peopleperhour(tmp_path: Path):
+    arquivo = tmp_path / "config.toml"
+    arquivo.write_text(f'vault = "{tmp_path.as_posix()}"\n\n[cacada]\nplataformas_sem_conta = []\n', encoding="utf-8")
+
+    assert carregar(arquivo).cacada_plataformas_sem_conta == ()
+
+
+def test_com_a_workana_sem_conta_as_buscas_web_nao_mandam_procurar_la():
+    sem_conta = {f.nome: f.argumento for f in criterios_de_freelas(_criterios(), ("Workana",)).fontes}
+    com_conta = {f.nome: f.argumento for f in criterios_de_freelas(_criterios(), ()).fontes}
+
+    assert "Web · Workana e 99Freelas recentes" not in sem_conta
+    assert sem_conta["Web · 99Freelas recentes"].startswith("projetos de preço fechado na 99Freelas (nada da Workana")
+    fora = sem_conta["Web · freelas no Brasil fora das plataformas grandes"]
+    assert "fora da 99Freelas e sem nada da Workana" in fora
+    assert "Web · 99Freelas recentes" not in com_conta
+    assert "na Workana e na 99Freelas" in com_conta["Web · Workana e 99Freelas recentes"]
+    assert "fora da Workana e da 99Freelas (" in com_conta["Web · freelas no Brasil fora das plataformas grandes"]
+
+
+def test_bounty_da_susu_labs_sai_e_o_resto_do_github_fica():
+    def bounty(link: str) -> Oportunidade:
+        return Oportunidade.nova(tipo=FREELA, fonte="Web · bounties pagos", titulo=link, link=link)
+
+    oportunidades = [
+        bounty("https://github.com/SUSU-LABS/dashboard/issues/12"),
+        bounty("https://www.github.com/susu-labs/app/issues/3"),
+        bounty("https://github.com/outra-org/SUSU-LABS/issues/1"),
+        bounty("https://algora.io/SUSU-LABS-fa/bounties"),
+    ]
+
+    filtrado = barrar_organizacoes_bloqueadas(oportunidades)
+
+    assert [o.link for o in filtrado.ficam] == [oportunidades[2].link, oportunidades[3].link]
+    assert filtrado.com_malware == 2
+
+
+def test_a_caçada_conta_os_bounties_da_susu_labs_no_relatorio(configuracao: Configuracao, tmp_path: Path):
+    perigoso = Oportunidade.nova(
+        tipo=FREELA, fonte="Web · bounties pagos", titulo="Fix login bug ($200 bounty)",
+        link="https://github.com/SUSU-LABS/painel/issues/7",
+    )
+
+    def coletar(fontes, agora, **opcoes):
+        coleta = coleta_fake(fontes, agora, **opcoes)
+        coleta.por_fonte["Web · bounties pagos"] = (perigoso,)
+        return coleta
+
+    portas = portas_fake()
+    portas.coletar = coletar
+
+    resultado = cacar(configuracao, portas, pasta_do_estado=tmp_path / "estado", modo="freelas")
+
+    relatorio = (Path(configuracao.vault) / resultado.relatorio).read_text(encoding="utf-8")
+    assert "Fix login bug" not in relatorio
+    assert "- 1 bounties de organização com malware conhecido (SUSU-LABS) ficaram de fora." in relatorio
+    [bounties] = [f for f in FONTES_DE_FREELA_RAPIDO if "bount" in f.nome.casefold()]
+    assert "SUSU-LABS" in bounties.argumento

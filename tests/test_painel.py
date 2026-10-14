@@ -86,7 +86,7 @@ def test_campos_cobrem_toda_chave_do_modelo_e_nenhuma_a_mais():
     do_modelo |= {"[daily].ativa", "[daily].horarios"}
 
     assert {campo.caminho for campo in CAMPOS} == do_modelo
-    assert len(CAMPOS) == 46
+    assert len(CAMPOS) == 47
 
 
 def test_os_oito_segredos_os_tres_caminhos_e_as_listas_tem_o_tipo_certo():
@@ -97,6 +97,7 @@ def test_os_oito_segredos_os_tres_caminhos_e_as_listas_tem_o_tipo_certo():
     assert por_tipo[Tipo.LISTA] == {
         "[privacidade].excluir", "[privacidade].pastas_privadas",
         "[git].excluir", "[git].autores", "[slack].conversas_excluidas", "[slack].so_com_mencao",
+        "[cacada].plataformas_sem_conta",
     }
     assert por_tipo[Tipo.HORARIOS] == {"[daily].horarios"}
     assert por_tipo[Tipo.BOOLEANO] == {

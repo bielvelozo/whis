@@ -248,7 +248,7 @@ def _portas_com_envio(tmp_path: Path):
 
 def test_com_envio_ligado_so_a_vaga_da_gupy_sai_e_o_relatorio_diz(configuracao: Configuracao, tmp_path: Path):
     portas, navegador = _portas_com_envio(tmp_path)
-    ligado = replace(configuracao, cacada_enviar_sozinho=True)
+    ligado = replace(configuracao, cacada_enviar_sozinho=True, cacada_plataformas_sem_conta=())
 
     resultado = cacar(ligado, portas, pasta_do_estado=tmp_path / "estado")
 
