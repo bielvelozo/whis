@@ -602,6 +602,7 @@ class Filtrado:
     fechadas: int = 0
     sem_conta: int = 0
     com_malware: int = 0
+    conta_recente: int = 0
 
     def somar(self, outro: Filtrado) -> Filtrado:
         return Filtrado(
@@ -611,6 +612,7 @@ class Filtrado:
             self.fechadas + outro.fechadas,
             self.sem_conta + outro.sem_conta,
             self.com_malware + outro.com_malware,
+            self.conta_recente + outro.conta_recente,
         )
 
 
@@ -623,9 +625,10 @@ def filtrar_o_que_da(
     dormir: Callable[[float], None] = time.sleep,
     agora: datetime | None = None,
 ) -> Filtrado:
-    """As organizações com malware, as plataformas sem conta ativa, o Freelancer.com pela API e a 99Freelas pela página, nessa ordem."""
+    """As organizações com malware, as contas do GitHub recentes, as plataformas sem conta ativa, o Freelancer.com pela API e a 99Freelas pela página, nessa ordem."""
     com_malware = barrar_organizacoes_bloqueadas(oportunidades)
-    sem_conta = com_malware.somar(barrar_sem_conta(com_malware.ficam, plataformas_sem_conta))
+    recentes = com_malware.somar(barrar_contas_recentes(com_malware.ficam, rede=rede, agora=agora))
+    sem_conta = recentes.somar(barrar_sem_conta(recentes.ficam, plataformas_sem_conta))
     freelancer = sem_conta.somar(barrar_freelancer(sem_conta.ficam, usuario_freelancer, rede=rede))
     return freelancer.somar(conferir_99freelas(freelancer.ficam, rede=rede, dormir=dormir, agora=agora))
 
@@ -646,6 +649,58 @@ def barrar_organizacoes_bloqueadas(
     if saiu := len(oportunidades) - len(ficam):
         _log.info("Caçada: %d oportunidade(s) de organização com malware conhecido ficaram de fora.", saiu)
     return Filtrado(ficam, com_malware=saiu)
+
+
+IDADE_MINIMA_DA_CONTA = timedelta(days=90)
+REPOSITORIOS_DE_CONTA_VAZIA = 2
+
+
+def barrar_contas_recentes(
+    oportunidades: Sequence[Oportunidade],
+    *,
+    rede: httpx.BaseTransport | None = None,
+    agora: datetime | None = None,
+) -> Filtrado:
+    """Tira o bounty do GitHub cuja conta dona (organização ou usuário) é recente ou não tem histórico.
+
+    É o jeito das iscas com malware: conta criada há menos de 90 dias, ou com
+    até 2 repositórios públicos e nenhum seguidor. Só freela (vaga em repositório
+    do GitHub é quadro de vagas, não bounty). Cada conta é consultada uma vez na
+    API pública (`/users/<login>`); conta que a API não responde, ou responde
+    sem esses campos, fica.
+    """
+    agora = (agora or datetime.now()).astimezone()
+    logins = {o.id: login for o in oportunidades if o.tipo == FREELA and (login := _organizacao_no_github(o.link))}
+    if not logins:
+        return Filtrado(tuple(oportunidades))
+    barrados: set[str] = set()
+    try:
+        with httpx.Client(transport=rede, timeout=TEMPO_LIMITE_S, follow_redirects=True, headers=CABECALHOS) as cliente:
+            for login in sorted(set(logins.values())):
+                try:
+                    conta = _json(cliente, f"https://api.github.com/users/{quote_plus(login)}")
+                except Exception as erro:  # noqa: BLE001 — sem a conta, o bounty fica
+                    _log.info("Caçada: a conta %s do GitHub não respondeu (%s); fica como está.", login, _motivo(erro))
+                    continue
+                if isinstance(conta, dict) and _conta_suspeita(conta, agora):
+                    barrados.add(login)
+    except Exception as erro:  # noqa: BLE001 — sem o filtro, a caçada segue com tudo
+        _log.warning("Caçada: o filtro de contas do GitHub não rodou: %s", _motivo(erro))
+        return Filtrado(tuple(oportunidades))
+    ficam = tuple(o for o in oportunidades if logins.get(o.id) not in barrados)
+    if saiu := len(oportunidades) - len(ficam):
+        _log.info("Caçada: %d bounty(s) de conta do GitHub recente ou sem histórico ficaram de fora.", saiu)
+    return Filtrado(ficam, conta_recente=saiu)
+
+
+def _conta_suspeita(conta: dict, agora: datetime) -> bool:
+    criada = _data(conta.get("created_at"))
+    if criada is not None and agora - criada < IDADE_MINIMA_DA_CONTA:
+        return True
+    repositorios, seguidores = conta.get("public_repos"), conta.get("followers")
+    if isinstance(repositorios, int) and isinstance(seguidores, int):
+        return repositorios <= REPOSITORIOS_DE_CONTA_VAZIA and seguidores == 0
+    return False
 
 
 def _organizacao_no_github(link: str) -> str:

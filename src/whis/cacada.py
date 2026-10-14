@@ -20,7 +20,9 @@ existe está no vault, e a próxima chamada retoma de onde parou.
 
 O plano manda no ritmo: a janela de 5 h que bate **pausa** a corrida até ela
 abrir (com o PC acordado); a semanal no teto (100%, o padrão), ou a menos de 5 min de
-virar, **encerra** — a semana nova é a do trabalho dele.
+virar, **encerra** — a semana nova é a do trabalho dele. Longe da virada (mais
+de 24 h), o `LimiteDaCacada` também encerra: tantos minutos ou tantos pontos do
+plano gastos nesta chamada, e a próxima retoma.
 """
 
 from __future__ import annotations
@@ -74,10 +76,49 @@ PAUSAS_POR_CHAMADA = 3
 RODADAS_EXTRAS_DE_BUSCA = 30
 RODADAS_EXTRAS_MINIMAS = 3
 IDADE_MAXIMA_DA_RETOMADA = timedelta(days=4)
+PERTO_DA_VIRADA = timedelta(hours=24)
 
 
 class Parada(RuntimeError):
     """A corrida encerra antes do fim, com o que já tem: o motivo vai para o relatório."""
+
+
+class LimiteBatido(Parada):
+    """O limite de tempo ou de plano desta corrida bateu: ela para entre chamadas e fica retomável."""
+
+
+@dataclass(frozen=True)
+class LimiteDaCacada:
+    """Quanto esta corrida pode durar (`minutos`) e gastar do plano semanal (`plano`, em pontos); 0 = sem esse limite.
+
+    `automatico`: com a virada da semana do plano a menos de 24 h do início, nenhum
+    dos dois vale — a madrugada antes da virada é para gastar o que sobrou.
+    """
+
+    minutos: int = 0
+    plano: int = 0
+    automatico: bool = False
+
+    @property
+    def algum(self) -> bool:
+        return bool(self.minutos or self.plano)
+
+    @classmethod
+    def escolher(
+        cls, configuracao: Configuracao, *, minutos: int | None = None, plano: int | None = None, sem_limite: bool = False
+    ) -> LimiteDaCacada:
+        """O da linha de comando por cima do `[cacada]`; qualquer opção dada desliga o automático."""
+        if sem_limite:
+            return cls()
+        return cls(
+            minutos=configuracao.cacada_limite_minutos if minutos is None else minutos,
+            plano=configuracao.cacada_limite_plano if plano is None else plano,
+            automatico=minutos is None and plano is None,
+        )
+
+    def descrever(self) -> str:
+        partes = [f"{self.minutos} min" if self.minutos else "", f"{self.plano} pontos do plano semanal" if self.plano else ""]
+        return " ou ".join(p for p in partes if p)
 
 
 class JanelaEsgotada(RuntimeError):
@@ -172,6 +213,8 @@ class ResultadoDaCacada:
     enviadas: int = 0
     precisam_de_voce: int = 0
     sobrou_plano: bool = False
+    com_limite: bool = False
+    limite_batido: str = ""
 
     @property
     def completa(self) -> bool:
@@ -188,6 +231,13 @@ class GuardaDoPlano:
     da semana ou no teto semanal da véspera, espera a semana virar e segue, uma
     vez só. `fim_do_extra` (modo freelas, no extra): nada passa desta hora, e o
     plano acabando encerra o extra com `JanelaEsgotada` em vez de parar a corrida.
+
+    `limite` (`LimiteDaCacada`) conta desde a criação da guarda, isto é, desta
+    chamada de `hunt` (retomar ganha limite novo), e as pausas da janela de 5 h
+    contam no tempo. O automático decide uma vez só, quando a virada fica
+    conhecida (`virada_conhecida`, ou o primeiro plano lido): decidir de novo
+    com a virada chegando mudaria a regra no meio da corrida. Sem virada
+    conhecida, os limites valem.
     """
 
     def __init__(
@@ -197,6 +247,8 @@ class GuardaDoPlano:
         relogio: Callable[[], datetime],
         dormir: Callable[[float], None],
         ao_pausar: Callable[[str], None] | None = None,
+        limite: LimiteDaCacada | None = None,
+        virada_conhecida: datetime | None = None,
     ) -> None:
         self.teto_semanal = teto_semanal
         self._relogio = relogio
@@ -208,6 +260,11 @@ class GuardaDoPlano:
         self.atravessa_virada = False
         self.virada_atravessada = False
         self.fim_do_extra: datetime | None = None
+        self.limite = limite or LimiteDaCacada()
+        self.inicio = relogio()
+        self.limite_batido = ""
+        self._virada_conhecida = virada_conhecida
+        self._sem_limite_pela_virada: bool | None = None if self.limite.automatico else False
 
     def agora(self) -> datetime:
         return self._relogio()
@@ -224,8 +281,50 @@ class GuardaDoPlano:
             return min(self.teto_semanal, TETO_FORA_DA_VESPERA)
         return self.teto_semanal
 
-    def conferir(self) -> None:
-        """Levanta `Parada` quando a semana passou do teto ou está para virar."""
+    def limitada(self) -> bool:
+        if not self.limite.algum:
+            return False
+        if self._sem_limite_pela_virada is None:
+            vira = (self.plano.vira_sete_dias if self.plano else None) or self._virada_conhecida
+            if vira is not None:
+                self._sem_limite_pela_virada = vira - self.inicio < PERTO_DA_VIRADA
+        return not self._sem_limite_pela_virada
+
+    def plano_gasto(self) -> int | None:
+        if self.primeiro is None or self.plano is None or self.primeiro.sete_dias is None or self.plano.sete_dias is None:
+            return None
+        return max(0, self.plano.sete_dias - self.primeiro.sete_dias)
+
+    def fim_pelo_limite(self) -> datetime | None:
+        if not self.limitada() or not self.limite.minutos:
+            return None
+        return self.inicio + timedelta(minutes=self.limite.minutos)
+
+    def limite_estourado(self) -> str:
+        """O motivo, quando o limite desta corrida já bateu; vazio quando não."""
+        if not self.limitada():
+            return ""
+        fim = self.fim_pelo_limite()
+        if fim is not None and self._relogio() >= fim:
+            correu = int((self._relogio() - self.inicio).total_seconds() // 60)
+            return f"o limite de tempo desta caçada bateu: correu {correu} min (o limite é {self.limite.minutos} min)"
+        gasto = self.plano_gasto()
+        if self.limite.plano and gasto is not None and gasto >= self.limite.plano:
+            antes = self.primeiro.sete_dias if self.primeiro else None
+            agora = self.plano.sete_dias if self.plano else None
+            return (
+                f"o limite de plano desta caçada bateu: gastou {gasto} pontos do plano semanal, "
+                f"de {antes}% a {agora}% (o limite é {self.limite.plano})"
+            )
+        return ""
+
+    def conferir(self, *, limite: bool = True) -> None:
+        """Levanta `Parada` quando a semana passou do teto ou está para virar, e `LimiteBatido` no limite da corrida."""
+        if limite and (motivo := self.limite_estourado()):
+            self.limite_batido = motivo
+            if self.fim_do_extra is not None:
+                raise JanelaEsgotada(motivo)
+            raise LimiteBatido(motivo)
         if self.plano is None:
             return
         semanal = self.plano.sete_dias
@@ -266,13 +365,14 @@ class GuardaDoPlano:
                 continue
             self.ler(porta)
             if self.fim_do_extra is None:
-                self.conferir()
+                self.conferir(limite=False)
             return resultado
         raise Parada("a janela de 5 h não abriu")
 
     def _pode_atravessar(self, vira: datetime | None) -> bool:
         return (
             self.atravessa_virada
+            and not self.limitada()
             and not self.virada_atravessada
             and vira is not None
             and vira - self._relogio() <= VESPERA
@@ -317,10 +417,12 @@ def cacar(
     relogio: Callable[[], datetime] | None = None,
     dormir: Callable[[float], None] = time.sleep,
     ao_pausar: Callable[[str], None] | None = None,
+    limite: LimiteDaCacada | None = None,
 ) -> ResultadoDaCacada:
     """A corrida inteira, retomando do checkpoint quando há um inacabado e recente do mesmo modo.
 
-    `modo="freelas"` é a caçada de freelas rápidos (`freelas_rapidos`).
+    `modo="freelas"` é a caçada de freelas rápidos (`freelas_rapidos`). `limite`
+    ausente é sem limite; o `hunt` passa o de `LimiteDaCacada.escolher`.
     """
     agora = relogio or (lambda: datetime.now().astimezone())
     inicio_monotonico = time.monotonic()
@@ -343,7 +445,14 @@ def cacar(
         )
 
     estado = _Estado(configuracao, raiz, criterios, checkpoint, pasta_do_estado)
-    guarda = GuardaDoPlano(configuracao.cacada_teto_semanal, relogio=agora, dormir=dormir, ao_pausar=ao_pausar)
+    guarda = GuardaDoPlano(
+        configuracao.cacada_teto_semanal,
+        relogio=agora,
+        dormir=dormir,
+        ao_pausar=ao_pausar,
+        limite=limite,
+        virada_conhecida=_virada_conhecida(pasta_do_estado, agora()) if limite and limite.automatico else None,
+    )
     guarda.atravessa_virada = modo == MODO_FREELAS
     parada = ""
     try:
@@ -355,7 +464,8 @@ def cacar(
         _escrever_relatorio(estado, guarda, parada="", em_andamento="escrevendo as mensagens de tentar a sorte")
         _etapa_das_apostas(estado, portas, guarda)
         if estado.checkpoint.get("modo") == MODO_FREELAS:
-            _escrever_relatorio(estado, guarda, parada="", em_andamento="usando o que sobra do plano até a virada da semana")
+            sobra = "o que sobra do limite desta caçada" if guarda.limitada() else "o que sobra do plano até a virada da semana"
+            _escrever_relatorio(estado, guarda, parada="", em_andamento=f"usando {sobra}")
             _etapa_extra(estado, portas, guarda)
         guarda.atravessa_virada = False
         _etapa_do_envio(estado, portas, guarda)
@@ -389,7 +499,17 @@ def cacar(
         plano_antes=guarda.primeiro.sete_dias if guarda.primeiro else None,
         plano_depois=guarda.plano.sete_dias if guarda.plano else None,
         sobrou_plano=bool(checkpoint.get("sobrou_plano")),
+        com_limite=guarda.limitada(),
+        limite_batido=guarda.limite_batido,
     )
+
+
+def _virada_conhecida(pasta: Path, agora: datetime) -> datetime | None:
+    from .corrida import ler_virada
+    from .lembrete import proxima_virada
+
+    lida = ler_virada(pasta)
+    return proxima_virada(lida, agora) if lida is not None else None
 
 
 class _Estado:
@@ -526,6 +646,7 @@ def _tirar_o_que_nao_da(
         fechadas=int(checkpoint.get("fechadas") or 0) + filtrado.fechadas,
         sem_conta=int(checkpoint.get("sem_conta") or 0) + filtrado.sem_conta,
         com_malware=int(checkpoint.get("com_malware") or 0) + filtrado.com_malware,
+        conta_recente=int(checkpoint.get("conta_recente") or 0) + filtrado.conta_recente,
     )
     return list(filtrado.ficam)
 
@@ -624,9 +745,11 @@ def _etapa_extra(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano)
         fim = plano.vira_cinco_horas
     else:
         fim = guarda.agora() + timedelta(hours=5)
+    if (pelo_limite := guarda.fim_pelo_limite()) is not None:
+        fim = min(fim, pelo_limite)
 
     def sobra() -> bool:
-        return guarda.agora() < fim
+        return guarda.agora() < fim and not guarda.limite_estourado()
 
     guarda.fim_do_extra = fim
     try:
@@ -647,6 +770,7 @@ def _etapa_extra(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano)
         _log.info("O extra da caçada de freelas encerrou: %s.", motivo)
     finally:
         guarda.fim_do_extra = None
+        guarda.limite_batido = guarda.limite_batido or guarda.limite_estourado()
 
 
 def _rodada_extra_de_busca(
@@ -1029,7 +1153,14 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         _frase_do_envio(estado),
         "",
     ]
-    if parada:
+    if parada and parada == guarda.limite_batido:
+        linhas += [
+            "> [!warning] A caçada parou no limite desta corrida",
+            f"> {parada}. O que está aqui vale; rode `hunt` de novo para continuar de onde parou "
+            "(com `--sem-limite`, ela vai até o plano acabar).",
+            "",
+        ]
+    elif parada:
         linhas += [
             "> [!warning] A caçada parou antes do fim",
             f"> {parada}. O que está aqui vale; rode `hunt` de novo (na véspera da virada da semana) para continuar de onde parou.",
@@ -1037,6 +1168,18 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         ]
     elif em_andamento:
         linhas += [f"> [!info] A caçada ainda está correndo: {em_andamento}. Esta nota é reescrita ao fim de cada etapa.", ""]
+    elif guarda.limite_batido:
+        linhas += [
+            "> [!info] O extra parou no limite desta corrida",
+            f"> {guarda.limite_batido}. A caçada principal terminou inteira.",
+            "",
+        ]
+    if guarda.limitada():
+        porque = "a semana do plano não vira nas próximas 24 h" if guarda.limite.automatico else "pedido na linha de comando"
+        linhas += [
+            f"- Limite desta corrida: {guarda.limite.descrever()} ({porque}; `hunt --sem-limite` vai até o plano acabar).",
+            "",
+        ]
     for pausa in guarda.pausas:
         linhas.append(f"- Ficou {pausa}.")
     if guarda.pausas:
@@ -1158,6 +1301,8 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
             f"- {com_malware} bounties de organização com malware conhecido ({', '.join(ORGANIZACOES_BLOQUEADAS)}) "
             "ficaram de fora."
         )
+    if conta_recente := estado.checkpoint.get("conta_recente"):
+        linhas.append(f"- {conta_recente} bounties de conta do GitHub recente ou sem histórico ficaram de fora.")
     if so_para_quem_paga := estado.checkpoint.get("freelancer_so_para_quem_paga"):
         linhas.append(f"- {so_para_quem_paga} do Freelancer.com ficaram de fora porque são só para Preferred Freelancer.")
     for aviso in estado.criterios.avisos:

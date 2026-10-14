@@ -13,7 +13,7 @@ para as reuniões da Granola::
     python -m whis daily [--anotar TEXTO] [--simular] [--fakes] [--agendada]
     python -m whis news [--agendada] [--fakes] [--simular]
     python -m whis meetings [--agendada] [--fakes]
-    python -m whis hunt [--simular] [--fakes] [--do-zero] [--freelas]
+    python -m whis hunt [--simular] [--fakes] [--do-zero] [--freelas] [--limite-minutos N] [--limite-plano N] [--sem-limite]
     python -m whis linkedin [--fakes] | linkedin-login | linkedin-publicar <nota>
     python -m whis contas [--so SITE] [--senha SITE] | navegador [url]
     python -m whis lembrete [--agendada] | candidaturas
@@ -756,7 +756,7 @@ def _relatar_reunioes(resultado: ResultadoDasReunioes) -> None:
 CODIGOS_DA_CACADA = f"""\
 códigos de saída:
   {SAIDA_COMPLETA}  a caçada terminou: o relatório em cacada/ está inteiro
-  {SAIDA_PARCIAL}  a caçada parou antes do fim (o plano do Claude, ou uma etapa falhou): o relatório
+  {SAIDA_PARCIAL}  a caçada parou antes do fim (o plano do Claude, o limite da corrida, ou uma etapa falhou): o relatório
      tem o que deu, e rodar de novo continua de onde parou
   {SAIDA_NAO_NASCEU}  não rodou: outra caçada está correndo, ou a configuração é inválida
   2  erro de uso (argumento inválido)
@@ -770,13 +770,19 @@ def _comando_hunt(args: argparse.Namespace) -> int:
     palheta não fica presa horas e o toast do fim é o sinal de que acabou.
     """
     from . import corrida as _corrida
-    from .cacada import cacar
+    from .cacada import LimiteDaCacada, cacar
     from .freelas_rapidos import MODO_FREELAS
 
+    if args.sem_limite and (args.limite_minutos is not None or args.limite_plano is not None):
+        print("Use --sem-limite sozinho, ou --limite-minutos/--limite-plano: os dois juntos se contradizem.", file=sys.stderr)
+        return 2
     configuracao = _configuracao(args)
     _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
     if args.simular:
         return _simular_coleta(configuracao, freelas=args.freelas)
+    limite = LimiteDaCacada.escolher(
+        configuracao, minutos=args.limite_minutos, plano=args.limite_plano, sem_limite=args.sem_limite
+    )
 
     pasta = _corrida.pasta_da_cacada()
     if args.fakes:
@@ -813,8 +819,9 @@ def _comando_hunt(args: argparse.Namespace) -> int:
                     do_zero=args.do_zero,
                     modo=MODO_FREELAS if args.freelas else "",
                     ao_pausar=ao_pausar,
+                    limite=limite,
                 )
-                if args.freelas and resultado.completa and resultado.sobrou_plano:
+                if args.freelas and resultado.completa and resultado.sobrou_plano and not resultado.com_limite:
                     _relatar_cacada(resultado)
                     print("Os freelas acabaram e ainda sobra plano antes da virada: emendando a caçada de vagas.", flush=True)
                     resultado = cacar(
@@ -879,6 +886,8 @@ def _relatar_cacada(resultado) -> None:
         print(f"Não respondeu: {nome} — {motivo}")
     if resultado.parada:
         print(f"Parou antes do fim: {resultado.parada}. Rode de novo para continuar.")
+    elif resultado.limite_batido:
+        print(f"O extra parou: {resultado.limite_batido}.")
 
 
 # -- lembrete e candidaturas -------------------------------------------------
@@ -1433,6 +1442,23 @@ def _data_iso(texto: str) -> date:
         ) from None
 
 
+def _inteiro_nao_negativo(texto: str) -> int:
+    try:
+        numero = int(texto)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"{texto!r} não é um número inteiro.") from None
+    if numero < 0:
+        raise argparse.ArgumentTypeError(f"{numero} é negativo; use 0 para sem limite.")
+    return numero
+
+
+def _pontos_do_plano(texto: str) -> int:
+    numero = _inteiro_nao_negativo(texto)
+    if numero > 100:
+        raise argparse.ArgumentTypeError(f"{numero} passa de 100 pontos do plano semanal.")
+    return numero
+
+
 def _configuracao(args: argparse.Namespace) -> Configuracao:
     configuracao = carregar(args.config)
     _log.info("Configuração lida de %s", configuracao.origem)
@@ -1624,7 +1650,9 @@ def construir_parser() -> argparse.ArgumentParser:
             "Lê as fontes de cacada/criterios.md (APIs de vaga, Workana, 99Freelas, a busca pública do "
             "LinkedIn, a web pelo Claude), monta o seu perfil, faz a triagem e prepara as chances boas: "
             "proposta pronta, preço, como enviar e, no freela web, uma amostra. Pausa quando a janela de "
-            "5 h do plano bate e para perto do teto semanal. Rodar de novo retoma de onde parou."
+            "5 h do plano bate e para perto do teto semanal. Fora da véspera da virada da semana do plano "
+            "(mais de 24 h), para também no limite de [cacada].limite_minutos e [cacada].limite_plano. "
+            "Rodar de novo retoma de onde parou."
         ),
         epilog=CODIGOS_DA_CACADA,
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -1648,6 +1676,23 @@ def construir_parser() -> argparse.ArgumentParser:
             "modo freelas rápidos: só freela pequeno de preço fechado que paga logo e casa com você; "
             "lê só as fontes de freela e vasculha a web a fundo por vários lados"
         ),
+    )
+    hunt_cmd.add_argument(
+        "--limite-minutos",
+        type=_inteiro_nao_negativo,
+        metavar="N",
+        help="para depois de N minutos, perto da virada ou não (0 = sem limite de tempo); vale no lugar de [cacada].limite_minutos",
+    )
+    hunt_cmd.add_argument(
+        "--limite-plano",
+        type=_pontos_do_plano,
+        metavar="N",
+        help="para depois de gastar N pontos do plano semanal, perto da virada ou não (0 = sem limite de plano); vale no lugar de [cacada].limite_plano",
+    )
+    hunt_cmd.add_argument(
+        "--sem-limite",
+        action="store_true",
+        help="vai até o plano acabar, mesmo longe da virada (no modo freelas, atravessa a virada e emenda a caçada de vagas)",
     )
     hunt_cmd.set_defaults(funcao=_comando_hunt)
 

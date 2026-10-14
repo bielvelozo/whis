@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import httpx
 from claude_agent_sdk import ResultMessage
 
 from whis.cacada import cacar
@@ -21,7 +22,7 @@ from whis.configuracao import Configuracao, carregar
 from whis.corrida import Checkpoint
 from whis.criterios_da_cacada import Criterios, FonteDaCacada
 from whis.fakes_da_cacada import coleta_fake, portas_fake
-from whis.fontes_da_cacada import barrar_organizacoes_bloqueadas, barrar_sem_conta
+from whis.fontes_da_cacada import barrar_contas_recentes, barrar_organizacoes_bloqueadas, barrar_sem_conta
 from whis.oportunidades import FREELA, Oportunidade
 from whis.freelas_rapidos import FONTES_DE_FREELA_RAPIDO, PEDIDO_DE_FREELAS_RAPIDOS, criterios_de_freelas
 
@@ -342,3 +343,91 @@ def test_a_caçada_conta_os_bounties_da_susu_labs_no_relatorio(configuracao: Con
     assert "- 1 bounties de organização com malware conhecido (SUSU-LABS) ficaram de fora." in relatorio
     [bounties] = [f for f in FONTES_DE_FREELA_RAPIDO if "bount" in f.nome.casefold()]
     assert "SUSU-LABS" in bounties.argumento
+
+
+def _contas_do_github(contas: dict[str, object], pedidos: list[str]) -> httpx.MockTransport:
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        if pedido.url.host != "api.github.com" or not pedido.url.path.startswith("/users/"):
+            return httpx.Response(404)
+        login = pedido.url.path.removeprefix("/users/")
+        pedidos.append(login)
+        conta = contas.get(login)
+        if isinstance(conta, int):
+            return httpx.Response(conta)
+        return httpx.Response(200, json=conta) if conta is not None else httpx.Response(404)
+
+    return httpx.MockTransport(responder)
+
+
+AGORA_DAS_CONTAS = datetime(2026, 10, 14, 12, 0, tzinfo=UTC)
+
+
+def test_bounty_de_conta_do_github_recente_ou_sem_historico_sai():
+    """Recente: criada há menos de 90 dias. Sem histórico: até 2 repositórios públicos e nenhum seguidor."""
+
+    def bounty(link: str, tipo: str = FREELA) -> Oportunidade:
+        return Oportunidade.nova(tipo=tipo, fonte="Web · bounties pagos", titulo=link, link=link)
+
+    contas = {
+        "nova-org": {"created_at": "2026-09-01T00:00:00Z", "public_repos": 12, "followers": 30},
+        "vazia": {"created_at": "2023-01-01T00:00:00Z", "public_repos": 2, "followers": 0},
+        "expensify": {"created_at": "2011-06-01T00:00:00Z", "public_repos": 150, "followers": 900},
+        "pouca-mas-seguida": {"created_at": "2020-01-01T00:00:00Z", "public_repos": 1, "followers": 4},
+        "fora-do-ar": 500,
+        "estranha": ["não", "é", "conta"],
+    }
+    oportunidades = [
+        bounty("https://github.com/nova-org/app/issues/1"),
+        bounty("https://github.com/nova-org/api/issues/9"),
+        bounty("https://github.com/vazia/site/issues/2"),
+        bounty("https://github.com/Expensify/App/issues/103488"),
+        bounty("https://github.com/pouca-mas-seguida/lib/issues/3"),
+        bounty("https://github.com/fora-do-ar/x/issues/4"),
+        bounty("https://github.com/estranha/y/issues/5"),
+        bounty("https://github.com/nova-org/vagas/issues/7", tipo="vaga"),
+        bounty("https://algora.io/nova-org/bounties"),
+    ]
+    pedidos: list[str] = []
+
+    filtrado = barrar_contas_recentes(oportunidades, rede=_contas_do_github(contas, pedidos), agora=AGORA_DAS_CONTAS)
+
+    assert filtrado.conta_recente == 3
+    assert [o.link for o in filtrado.ficam] == [o.link for o in oportunidades[3:]]
+    assert sorted(pedidos) == sorted(["nova-org", "vazia", "expensify", "pouca-mas-seguida", "fora-do-ar", "estranha"])
+
+
+def test_sem_rede_o_bounty_do_github_fica():
+    def sem_rede(pedido: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("sem rede", request=pedido)
+
+    oportunidades = [Oportunidade.nova(tipo=FREELA, fonte="Web", titulo="b", link="https://github.com/nova-org/app/issues/1")]
+
+    filtrado = barrar_contas_recentes(oportunidades, rede=httpx.MockTransport(sem_rede), agora=AGORA_DAS_CONTAS)
+
+    assert filtrado.ficam == tuple(oportunidades) and filtrado.conta_recente == 0
+
+
+def test_a_caçada_conta_os_bounties_de_conta_recente_no_relatorio(configuracao: Configuracao, tmp_path: Path):
+    isca = Oportunidade.nova(
+        tipo=FREELA, fonte="Web · bounties pagos", titulo="Fix wallet connect ($300 bounty)",
+        link="https://github.com/nova-org/painel/issues/7",
+    )
+
+    def coletar(fontes, agora, **opcoes):
+        coleta = coleta_fake(fontes, agora, **opcoes)
+        coleta.por_fonte["Web · bounties pagos"] = (isca,)
+        return coleta
+
+    portas = portas_fake()
+    portas.coletar = coletar
+    pedidos: list[str] = []
+    portas.rede = _contas_do_github(
+        {"nova-org": {"created_at": datetime.now(UTC).isoformat(), "public_repos": 3, "followers": 1}}, pedidos
+    )
+
+    resultado = cacar(configuracao, portas, pasta_do_estado=tmp_path / "estado", modo="freelas", dormir=lambda _s: None)
+
+    relatorio = (Path(configuracao.vault) / resultado.relatorio).read_text(encoding="utf-8")
+    assert "Fix wallet connect" not in relatorio
+    assert "- 1 bounties de conta do GitHub recente ou sem histórico ficaram de fora." in relatorio
+    assert pedidos == ["nova-org"]
