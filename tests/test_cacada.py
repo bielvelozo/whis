@@ -633,7 +633,7 @@ def test_a_proposta_e_a_mensagem_seguem_o_mesmo_jeito_de_escrever():
     assert "3 passos" not in SISTEMA_DO_PREPARO, "passos numerados na carta soam como CV colado"
 
 
-def test_o_resumo_pede_so_quatro_campos_curtos_e_nao_faz_amostra():
+def test_o_resumo_pede_so_os_campos_curtos_e_a_peca_do_portfolio_e_nao_faz_amostra():
     from whis.cacada_claude import PreparoClaude
 
     freela = oportunidades_de_exemplo()[1]
@@ -649,7 +649,7 @@ def test_o_resumo_pede_so_quatro_campos_curtos_e_nao_faz_amostra():
     )
     assert pacote.proposta == "" and pacote.amostra_html == "" and len(preparo.pedidos) == 1
     (_, opcoes), = preparo.pedidos
-    assert set(opcoes.output_format["schema"]["required"]) == {"resumo", "por_que_casa", "ponto_fraco", "salario"}
+    assert set(opcoes.output_format["schema"]["required"]) == {"resumo", "por_que_casa", "ponto_fraco", "salario", "prova"}
 
 
 def _preparar(preparo, oportunidade):

@@ -74,7 +74,7 @@ def ler_mandadas(vault: Path) -> list[Mandada]:
             chave, _, valor = linha.partition(":")
             campos[chave.strip()] = valor.strip().strip('"')
         link, status = campos.get("link", ""), campos.get("status", "")
-        if not _de_freela(link) or not status.casefold().startswith(_MANDADA):
+        if not de_plataforma_de_freela(link) or not status.casefold().startswith(_MANDADA):
             continue
         saida.append(
             Mandada(
@@ -162,7 +162,7 @@ def _no_freelancer(pagina: str) -> str:
     return f"{situacao}, sua proposta em {posicao.group(1)}º de {posicao.group(2)}"
 
 
-def _de_freela(link: str) -> bool:
+def de_plataforma_de_freela(link: str) -> bool:
     return any(re.search(rf"(?<![\w-]){re.escape(dominio)}(?:[/:]|$)", link, re.I) for dominio in PLATAFORMAS_DE_FREELA)
 
 

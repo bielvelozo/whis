@@ -191,6 +191,25 @@ Das que ainda estão `enviada`, o Chrome da caçada abre o projeto no fim da cor
 "aberto, esperando o cliente" ou "o cliente já escolheu um freelancer"; no Freelancer.com, "sua
 proposta em 60º de 98". Quando o cliente responder, troque o `status:` (o Whis não lê a conversa).
 
+## Passo 7a — O que os clientes pedem e as agências do mês
+
+```
+python -m whis o-que-pedem
+```
+
+**Sucesso:** "N anúncios de shopify em M caçadas" e uma linha por pedido (montar a loja, checkout e frete,
+tema e seção, app e integração...), com a mediana do teto do orçamento em dólar; a nota sai em
+`cacada/o-que-pedem.md`, com os exemplos de cada pedido e os que nenhuma regra reconheceu.
+
+```
+python -m whis agencias --fakes
+```
+
+**Sucesso:** "Agências do mês: 1 agência nova" (a fictícia; a Aloft, que já está na lista, sai). Sem
+`--fakes` ela usa o Claude, uma vez por mês (`--forcar` repete), e acrescenta a seção do mês em
+`cacada/agencias-shopify-novas.md`. A caçada de freelas inteira faz isso sozinha quando o mês ainda não foi
+feito. Nada é enviado a ninguém.
+
 ## Passo 7b — A vigia de freelas
 
 ```

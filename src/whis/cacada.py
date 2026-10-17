@@ -57,6 +57,7 @@ from .oportunidades import (
     link_canonico,
 )
 from .precos import conferir_piso, pedido_do_piso
+from .prova_do_portfolio import conferir_prova, pedido_do_portfolio
 
 _log = logging.getLogger("whis.cacada")
 
@@ -510,6 +511,8 @@ def _criterios_do_modo(configuracao: Configuracao, raiz: Path, modo: str, cobert
     criterios = ler_criterios(raiz)
     if configuracao.cacada_piso_freela > 0:
         criterios = replace(criterios, procuro=f"{criterios.procuro.rstrip()}\n{pedido_do_piso(configuracao.cacada_piso_freela)}")
+    if criterios.portfolio:
+        criterios = replace(criterios, procuro=f"{criterios.procuro.rstrip()}\n{pedido_do_portfolio(criterios.portfolio)}")
     if modo != MODO_FREELAS:
         return criterios
     return criterios_de_freelas(
@@ -928,9 +931,14 @@ def _caprichar(
 
 
 def _com_piso(estado: _Estado, oportunidade: Oportunidade, pacote: Pacote) -> Pacote:
+    """O piso de preço e a peça do portfólio conferidos em Python: só no freela."""
     if oportunidade.tipo != FREELA:
         return pacote
-    return replace(pacote, preco=conferir_piso(pacote.preco, oportunidade.faixa, estado.configuracao.cacada_piso_freela))
+    return replace(
+        pacote,
+        preco=conferir_piso(pacote.preco, oportunidade.faixa, estado.configuracao.cacada_piso_freela),
+        prova=conferir_prova(pacote.prova, oportunidade, estado.criterios.portfolio),
+    )
 
 
 def _amostra(
@@ -1245,6 +1253,8 @@ def montar_pacote(
         pacote.por_que_casa or "—",
         "",
     ]
+    if pacote.prova:
+        linhas += ["## Prova para citar", "", pacote.prova, ""]
     if pacote.o_que_estica:
         linhas += ["## Ponto fraco", "", pacote.o_que_estica, ""]
     if not completo:

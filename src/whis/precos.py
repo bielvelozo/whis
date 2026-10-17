@@ -16,13 +16,13 @@ EM_REAIS = {
     "€": 6.0, "EUR": 6.0,
     "£": 7.0, "GBP": 7.0,
     "₹": 0.065, "INR": 0.065,
-    "AUD": 3.5, "CAD": 3.9,
+    "AUD": 3.5, "CAD": 3.9, "NZD": 3.2, "SGD": 4.2,
 }
 
 _VALOR = re.compile(r"(R\$|US\$|BRL|USD|EUR|GBP|INR|AUD|CAD|[$€£₹])\s?(\d[\d.,]*\d|\d)")
 
 
-def _numero(texto: str) -> float | None:
+def numero_do_texto(texto: str) -> float | None:
     if "," in texto and "." in texto:
         decimal = "," if texto.rfind(",") > texto.rfind(".") else "."
     elif "," in texto:
@@ -50,7 +50,7 @@ def pedido_do_piso(piso: int) -> str:
 
 def valores(texto: str) -> list[tuple[str, float]]:
     """Os valores com moeda do texto, na ordem, como (moeda, número)."""
-    lidos = ((moeda, _numero(numero)) for moeda, numero in _VALOR.findall(texto))
+    lidos = ((moeda, numero_do_texto(numero)) for moeda, numero in _VALOR.findall(texto))
     return [(moeda, numero) for moeda, numero in lidos if numero is not None]
 
 

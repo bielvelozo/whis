@@ -29,6 +29,7 @@ SECAO_PROCURO = "O que eu procuro"
 SECAO_SOBRE_MIM = "Sobre mim"
 SECAO_FONTES = "Fontes"
 SECAO_CONTAS = "Contas"
+SECAO_PORTFOLIO = "Portfólio"
 
 #: O que cada tipo de fonte lê, e o argumento que aceita.
 TIPOS_DE_FONTE = {
@@ -115,6 +116,10 @@ Uma fonte por linha: `- Nome: tipo argumento`. Apague a linha para desligar a fo
 - Web · freelas e vagas fora das listas: web vagas remotas de desenvolvedor web que aceitem brasileiros, e freelas de sites e sistemas web por projeto, publicados nos últimos 7 dias, fora dos sites já listados acima
 - Web · games e áudio: web vagas ou freelas de desenvolvimento de games ou de software de áudio (plugins, DAW, web audio) que aceitem brasileiro remoto, publicados nos últimos 14 dias
 
+## Portfólio
+
+As peças que a proposta de freela cita, uma por linha: `- Nome: link — o que ela mostra`. Em cada freela, o resumo diz qual peça citar e põe o link. Sem nenhuma linha, o resumo não sugere peça.
+
 ## Contas
 
 Os sites onde o Whis cria conta para você com o Gmail dedicado (`whis contas`, com você no PC), uma linha por site: `- Nome: endereço`. CAPTCHA, telefone e documento ficam com você.
@@ -149,6 +154,18 @@ class Conta:
 
 
 @dataclass(frozen=True)
+class PecaDoPortfolio:
+    """Uma linha de *Portfólio*: a peça que a proposta de freela cita, o link e o que ela mostra."""
+
+    nome: str
+    link: str
+    mostra: str = ""
+
+    def como_prova(self) -> str:
+        return f"{self.nome}: {self.link}" + (f" — {self.mostra}" if self.mostra else "")
+
+
+@dataclass(frozen=True)
 class Criterios:
     """A nota lida: o texto das regras, o de *Sobre mim*, as fontes e os avisos de leitura."""
 
@@ -157,6 +174,7 @@ class Criterios:
     fontes: tuple[FonteDaCacada, ...]
     avisos: tuple[str, ...] = field(default_factory=tuple)
     contas: tuple[Conta, ...] = field(default_factory=tuple)
+    portfolio: tuple[PecaDoPortfolio, ...] = field(default_factory=tuple)
 
     def em_sobre_mim(self, comeco: str) -> str:
         """A resposta de um item de *Sobre mim* que começa com `comeco` (sem diferenciar maiúsculas)."""
@@ -177,6 +195,7 @@ class Criterios:
 
 
 _LINHA_DE_FONTE = re.compile(r"^-\s*(?P<nome>[^:]+?):\s*(?P<tipo>[\w-]+)\b\s*(?P<argumento>.*)$")
+_LINHA_DO_PORTFOLIO = re.compile(r"^-\s*(?P<nome>[^:]+?):\s*(?P<link>https?://\S+)\s*(?:[—–-]\s*(?P<mostra>.*))?$")
 
 
 def interpretar_criterios(texto: str) -> Criterios:
@@ -216,7 +235,19 @@ def interpretar_criterios(texto: str) -> Criterios:
         if casou:
             contas.append(Conta(casou["nome"].strip(), casou["endereco"].strip()))
 
+    portfolio: list[PecaDoPortfolio] = []
+    for linha in secoes.get(SECAO_PORTFOLIO.casefold(), []):
+        texto_da_linha = linha.strip()
+        if not texto_da_linha.startswith("-"):
+            continue
+        casou = _LINHA_DO_PORTFOLIO.match(texto_da_linha)
+        if casou is None:
+            _avisar(avisos, f"Peça do portfólio ignorada (falta o link): {texto_da_linha}")
+            continue
+        portfolio.append(PecaDoPortfolio(casou["nome"].strip(), casou["link"], (casou["mostra"] or "").strip()))
+
     return Criterios(
+        portfolio=tuple(portfolio),
         contas=tuple(contas),
         procuro=_texto(secoes.get(SECAO_PROCURO.casefold(), [])),
         sobre_mim=_texto(secoes.get(SECAO_SOBRE_MIM.casefold(), [])),

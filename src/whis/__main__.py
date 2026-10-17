@@ -18,6 +18,7 @@ para as reuniões da Granola::
     python -m whis contas [--so SITE] [--senha SITE] | navegador [url]
     python -m whis lembrete [--agendada] | candidaturas
     python -m whis vigia-freelas [--agendada] [--fakes]
+    python -m whis o-que-pedem [--nicho NICHO] | agencias [--forcar] [--fakes]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -824,6 +825,8 @@ def _comando_hunt(args: argparse.Namespace) -> int:
                     ao_pausar=ao_pausar,
                     limite=limite,
                 )
+                if args.freelas and resultado.completa:
+                    _agencias_do_mes(configuracao, fakes=args.fakes)
                 if args.freelas and resultado.completa and resultado.sobrou_plano and not resultado.com_limite:
                     _relatar_cacada(resultado)
                     print("Os freelas acabaram e ainda sobra plano antes da virada: emendando a caçada de vagas.", flush=True)
@@ -978,6 +981,66 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
             print(f"Avisado: {oportunidade.titulo} — {oportunidade.link}")
     else:
         print(f"Nada novo de {nicho} desde a última rodada.")
+    return SAIDA_COMPLETA
+
+
+def _comando_o_que_pedem(args: argparse.Namespace) -> int:
+    """Junta os freelas do nicho de todas as caçadas no vault e conta o que os clientes pedem."""
+    from .o_que_pedem import atualizar
+
+    configuracao = _configuracao(args)
+    nicho = (args.nicho or configuracao.cacada_nicho_freela).strip().casefold()
+    if not nicho:
+        print("Diga o nicho: --nicho shopify, ou [cacada].nicho_freela no config.toml.")
+        return SAIDA_NAO_NASCEU
+    anuncios, linhas, caminho = atualizar(_vault.preparar(configuracao.vault), nicho)
+    cacadas = len({a.cacada for a in anuncios})
+    print(f"{len(anuncios)} anúncios de {nicho} em {cacadas} caçadas, sem repetir.")
+    for linha in linhas:
+        mediana = f"mediana do teto US$ {linha.mediana:,.0f}" if linha.mediana is not None else "sem orçamento"
+        print(f"  {linha.anuncios:3d}  {linha.parte:4.0%}  {linha.pedido} ({mediana})")
+    print(f"Nota: {caminho}")
+    return SAIDA_COMPLETA
+
+
+def _comando_agencias(args: argparse.Namespace) -> int:
+    """A busca do mês de agências Shopify do Brasil: só leitura na web, a lista para ele contatar à mão."""
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    return _agencias_do_mes(configuracao, fakes=args.fakes, forcar=args.forcar)
+
+
+def _agencias_do_mes(configuracao: Configuracao, *, fakes: bool = False, forcar: bool = False) -> int:
+    from .agencias import CAMINHO_DA_LISTA, AgenciasClaude, AgenciasFake, buscar_agencias, caminho_do_estado
+    from .cacada_claude import ErroDaCacada, LimiteDoPlano
+
+    if fakes:
+        import tempfile
+
+        temporaria = Path(tempfile.mkdtemp(prefix="whis-agencias-"))
+        vault, estado, porta = temporaria / "vault", temporaria / "agencias.json", AgenciasFake()
+        lista = Path(configuracao.vault) / CAMINHO_DA_LISTA
+        (vault / CAMINHO_DA_LISTA).parent.mkdir(parents=True)
+        (vault / CAMINHO_DA_LISTA).write_text(
+            lista.read_text(encoding="utf-8") if lista.is_file() else "**1. Aloft** · Criciúma/SC · https://aloftagencia.com\n",
+            encoding="utf-8",
+        )
+        print(f"Modo de teste: uma cópia da lista em {vault}, sem Claude.")
+    else:
+        vault, estado = _vault.preparar(configuracao.vault), caminho_do_estado()
+        porta = AgenciasClaude(cli=configuracao.claude_cli or None)
+    try:
+        resultado = buscar_agencias(vault, porta, estado=estado, forcar=forcar)
+    except (ErroDaCacada, LimiteDoPlano) as erro:
+        print(f"A busca de agências do mês não saiu ({erro}); a próxima caçada tenta de novo.")
+        return SAIDA_NAO_NASCEU
+    if resultado.ja_feita:
+        print(f"A busca de agências deste mês já foi feita: {resultado.caminho} (use --forcar para fazer de novo).")
+        return SAIDA_COMPLETA
+    plural = "agência nova" if len(resultado.novas) == 1 else "agências novas"
+    print(f"Agências do mês: {len(resultado.novas)} {plural} em {resultado.caminho}; {len(resultado.repetidas)} já estavam na lista.")
+    for agencia in resultado.novas:
+        print(f"  {agencia.nome} · {agencia.cidade} · {agencia.site}")
     return SAIDA_COMPLETA
 
 
@@ -1800,6 +1863,23 @@ def construir_parser() -> argparse.ArgumentParser:
         "--fakes", action="store_true", help="um projeto falso e um estado temporário: só para ver o toast chegar"
     )
     vigia_freelas_cmd.set_defaults(funcao=_comando_vigia_freelas)
+
+    o_que_pedem_cmd = subcomandos.add_parser(
+        "o-que-pedem",
+        help="conta o que os clientes do nicho pedem em todas as caçadas do vault e escreve cacada/o-que-pedem.md",
+    )
+    _acrescentar_config(o_que_pedem_cmd)
+    o_que_pedem_cmd.add_argument("--nicho", default="", help="o nicho a contar; sem ele, [cacada].nicho_freela")
+    o_que_pedem_cmd.set_defaults(funcao=_comando_o_que_pedem)
+
+    agencias_cmd = subcomandos.add_parser(
+        "agencias",
+        help="uma vez por mês, busca na web agências Shopify do Brasil que ainda não estão em cacada/agencias-shopify.md (só leitura)",
+    )
+    _acrescentar_config(agencias_cmd)
+    agencias_cmd.add_argument("--forcar", action="store_true", help="busca de novo mesmo que este mês já tenha sido feito")
+    agencias_cmd.add_argument("--fakes", action="store_true", help="uma agência fictícia num vault temporário, sem Claude")
+    agencias_cmd.set_defaults(funcao=_comando_agencias)
 
     candidaturas_cmd = subcomandos.add_parser(
         "candidaturas", help="atualiza cacada/candidaturas.md: pacotes, o que o Whis enviou e as respostas no Gmail"

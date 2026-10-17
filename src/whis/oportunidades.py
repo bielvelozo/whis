@@ -147,6 +147,7 @@ class Pacote:
     amostra_html: str = ""
     amostra_titulo: str = ""
     formulario: tuple[str, ...] = ()
+    prova: str = ""
 
     def para_json(self) -> dict[str, Any]:
         dados = asdict(self)
@@ -177,6 +178,7 @@ class Pacote:
             amostra_html=str(dados.get("amostra_html", "")),
             amostra_titulo=str(dados.get("amostra_titulo", "")),
             formulario=lista("formulario"),
+            prova=str(dados.get("prova", "")),
         )
 
 
