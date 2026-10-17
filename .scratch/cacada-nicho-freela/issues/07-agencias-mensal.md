@@ -7,3 +7,5 @@ Status: resolved
 ## Comments
 
 Feito em 2026-10-17 (test_agencias.py), sem rodar o Claude de verdade (a caçada usava o plano). `whis agencias --fakes` só mostra o caminho. A primeira busca real acontece no fim da próxima caçada de freelas inteira, ou com `whis agencias`.
+
+Rodado de verdade em 17/10 05:08 (como ele, pela tarefa descartável): 4 novas (Raquel Aderne Design Studio, rm17, Vou de Click, Figi), nenhuma repetida, nenhum e-mail com nome de pessoa; 59 ferramentas, uns 4 min, plano de 88% a 88%. O mês 2026-10 ficou marcado no estado real.

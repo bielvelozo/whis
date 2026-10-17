@@ -89,7 +89,41 @@ def test_junta_os_anuncios_do_nicho_de_todas_as_cacadas_sem_repetir(tmp_path: Pa
     assert loja.faixa == "USD 250 – 750 por projeto" and "Montar a loja" in loja.texto
 
 
+def test_o_mesmo_anuncio_com_sufixo_no_titulo_e_link_em_outra_caixa_fica_um_so(tmp_path: Path):
+    pasta = tmp_path / "cacada"
+    pasta.mkdir(parents=True)
+    bloco = (
+        "---\ntipo: cacada\n---\n\n## Tentar a sorte\n\n### {titulo}\n\n"
+        "Freela · Freelancer.com · Shopify · {faixa} · encaixe 50 · [Abrir]({link})\n\nLigar a loja Shopify ao Faire.\n"
+    )
+    (pasta / "2026-10-10-0114.md").write_text(bloco.format(
+        titulo="Shopify Store Linkage and Optimization for Wholesale Sales", faixa="USD 22 – 45 por projeto",
+        link="https://www.freelancer.com/projects/ecommerce/Shopify-Store-Linkage-Optimization-for",
+    ), encoding="utf-8")
+    (pasta / "2026-10-17-0104.md").write_text(bloco.format(
+        titulo="Shopify Store Linkage and Optimization for Wholesale Sales (Faire + Shopify)",
+        faixa="US$ 22,50–45 (média dos lances ~US$ 49)",
+        link="https://www.freelancer.com/projects/ecommerce/shopify-store-linkage-optimization-for",
+    ), encoding="utf-8")
+
+    [anuncio] = ler_anuncios(tmp_path, "shopify")
+
+    assert teto_em_dolar(anuncio.faixa) == 45
+
+
+def test_loja_completa_que_cita_seo_nao_e_cadastro_nem_marketing():
+    from whis.o_que_pedem import Anuncio
+
+    loja = Anuncio("Modern Shopify Store Build", "https://x.com/1", "", "Loja Shopify completa (tema, apps, SEO)", "c")
+    cadastro = Anuncio("24-Hour Shopify Product Upload", "https://x.com/2", "", "Cadastro de 35 produtos", "c")
+
+    linhas = {linha.pedido: linha.anuncios for linha in contar([loja, cadastro])}
+
+    assert linhas["Cadastro, gestão e marketing da loja (não é dev)"] == 1
+
+
 def test_o_teto_do_orcamento_vira_dolar():
+    assert teto_em_dolar("US$ 22,50–45 (média dos lances ~US$ 49)") == 45, "a média dos lances não é o orçamento"
     assert teto_em_dolar("USD 250 – 750 por projeto") == 750
     assert teto_em_dolar("INR 12.500 – 37.500 por projeto") == pytest.approx(37_500 * 0.065 / 5.4)
     assert teto_em_dolar("£100–300 GBP") == pytest.approx(300 * 7.0 / 5.4)

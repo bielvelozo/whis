@@ -49,8 +49,8 @@ PEDIDOS = (
     ("Migração para a plataforma", r"migra|move from|transfer", ""),
     (
         "Cadastro, gestão e marketing da loja (não é dev)",
-        r"cadastr|upload|listing|cat[aá]logo de produtos|gest[aã]o|management|operations|opera[cç][oõ]es|marketing|meta ads|an[uú]ncios|ads\b|seo\b",
         "",
+        r"cadastr|upload|listing|cat[aá]logo de produtos|gest[aã]o|management|operations|opera[cç][oõ]es|marketing|meta ads|an[uú]ncios|ads\b|seo\b",
     ),
 )
 
@@ -64,6 +64,7 @@ _FALA_DELE = re.compile(
 _FRONTMATTER = re.compile(r"\A---\r?\n(?P<campos>.*?)\r?\n---", re.S)
 _ABRIR = re.compile(r"\[Abrir\]\((?P<link>https?://[^)\s]+)\)")
 _DESCARTADA = re.compile(r"^>\s*-\s*\[(?P<titulo>.+?)\]\((?P<link>https?://[^)\s]+)\)\s*—\s*(?P<resto>.*)$")
+_ENTRE_PARENTESES = re.compile(r"\([^)]*\)")
 _MOEDA = re.compile(r"R\$|US\$|BRL|USD|EUR|GBP|INR|AUD|CAD|NZD|SGD|[$€£₹]")
 
 
@@ -100,7 +101,7 @@ def ler_anuncios(vault: Path, nicho: str) -> list[Anuncio]:
             oportunidade = Oportunidade.nova(tipo=FREELA, fonte="", titulo=anuncio.titulo, link=anuncio.link, descricao=anuncio.texto)
             if not do_nicho(oportunidade, nicho):
                 continue
-            chave = link_canonico(anuncio.link)
+            chave = link_canonico(anuncio.link).casefold()
             mesma = titulos.get(_normalizado(anuncio.titulo))
             chave = mesma or chave
             if chave in por_chave:
@@ -114,6 +115,8 @@ def ler_anuncios(vault: Path, nicho: str) -> list[Anuncio]:
 
 
 def teto_em_dolar(faixa: str) -> float | None:
+    """O fim da faixa, em dólar; o que vem entre parênteses (a média dos lances) não é orçamento."""
+    faixa = _ENTRE_PARENTESES.sub(" ", faixa)
     moeda = _MOEDA.search(faixa)
     if moeda is None:
         return None
@@ -226,7 +229,8 @@ def _do_bloco(linhas: list[str], indice: int, cacada: str) -> Anuncio | None:
 
 
 def _normalizado(titulo: str) -> str:
-    return " ".join(re.findall(r"[a-z0-9]+", _sem_acento(titulo)))
+    """O título sem acento, sem caixa e sem o que vem entre parênteses, que a caçada às vezes acrescenta."""
+    return " ".join(re.findall(r"[a-z0-9]+", _sem_acento(_ENTRE_PARENTESES.sub(" ", titulo))))
 
 
 def _sem_acento(texto: str) -> str:
