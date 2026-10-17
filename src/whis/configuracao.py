@@ -37,6 +37,7 @@ NOME_DO_ARQUIVO = "config.toml"
 
 PLATAFORMAS_SEM_CONTA = ("peopleperhour", "workana")
 PLATAFORMAS_PAGAS = ("freelancer.com.br",)
+HORARIOS_DA_VIGIA_DE_FREELAS = ("08:00", "11:00", "14:00", "17:00", "20:00", "23:00")
 
 #: As chaves aceitas em `[daily].horarios`, na ordem em que a semana anda.
 #: Sem acento de propósito: é o que se digita num TOML sem pensar em escape.
@@ -121,6 +122,9 @@ limite_plano = 15            # fora da véspera, a caçada para depois de gastar
 encaixe_minimo_tentar = 40   # tentar a sorte com encaixe abaixo disto (0 a 100) sai do relatório e das mensagens prontas
 plataformas_sem_conta = ["peopleperhour", "workana"]  # sites em que sua conta não está ativa (em análise ou reprovada): a caçada não lê a fonte, não procura lá e tira o que vier deles; quando a conta valer, apague o nome daqui (ex.: [])
 plataformas_pagas = ["freelancer.com.br"]  # sites em que responder a um projeto pede plano pago que você não assinou: a caçada tira o que vier deles e não procura lá; quando assinar, apague o nome daqui
+nicho_freela = ""            # o nicho do freela (ex.: shopify): no hunt --freelas, chance boa só do nicho ou de e-commerce muito perto, o resto no máximo tentar a sorte, e as buscas do Freelancer.com fora dele saem; vazio = qualquer freela
+piso_freela = 0              # o menor preço de freela que você aceita, em R$: a caçada nunca sugere abaixo disso (o resumo avisa quando o Claude sugeriu menos); 0 = sem piso
+horarios_da_vigia_de_freelas = ["08:00", "11:00", "14:00", "17:00", "20:00", "23:00"]  # quando a tarefa Whis-Vigia-Freelas (whis windows --vigia-freelas) olha a 99Freelas e o Freelancer.com e avisa por toast o projeto novo do nicho
 
 [linkedin]
 client_id = ""               # Client ID do seu app no LinkedIn Developers (produtos Share on LinkedIn e Sign In with LinkedIn using OpenID Connect)
@@ -213,6 +217,9 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "encaixe_minimo_tentar", "cacada_encaixe_minimo_tentar", Tipo.INTEIRO),
     Chave("cacada", "plataformas_sem_conta", "cacada_plataformas_sem_conta", Tipo.LISTA),
     Chave("cacada", "plataformas_pagas", "cacada_plataformas_pagas", Tipo.LISTA),
+    Chave("cacada", "nicho_freela", "cacada_nicho_freela", Tipo.TEXTO),
+    Chave("cacada", "piso_freela", "cacada_piso_freela", Tipo.INTEIRO),
+    Chave("cacada", "horarios_da_vigia_de_freelas", "cacada_horarios_da_vigia_de_freelas", Tipo.LISTA),
     Chave("linkedin", "client_id", "linkedin_client_id", Tipo.TEXTO),
     Chave("linkedin", "client_secret", "linkedin_client_secret", Tipo.SEGREDO),
     Chave("linkedin", "exportacao", "linkedin_exportacao", Tipo.CAMINHO),
@@ -319,6 +326,9 @@ class Configuracao:
     cacada_encaixe_minimo_tentar: int = 40
     cacada_plataformas_sem_conta: tuple[str, ...] = PLATAFORMAS_SEM_CONTA
     cacada_plataformas_pagas: tuple[str, ...] = PLATAFORMAS_PAGAS
+    cacada_nicho_freela: str = ""
+    cacada_piso_freela: int = 0
+    cacada_horarios_da_vigia_de_freelas: tuple[str, ...] = HORARIOS_DA_VIGIA_DE_FREELAS
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
     linkedin_exportacao: Path | None = None
@@ -459,6 +469,13 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         ),
         cacada_plataformas_pagas=tuple(
             p.strip().casefold() for p in _textos(cacada.get("plataformas_pagas", PLATAFORMAS_PAGAS)) if p.strip()
+        ),
+        cacada_nicho_freela=str(cacada.get("nicho_freela", "")).strip().casefold(),
+        cacada_piso_freela=_inteiro_entre(cacada.get("piso_freela", 0), "[cacada].piso_freela", 0, 100_000, arquivo),
+        cacada_horarios_da_vigia_de_freelas=tuple(
+            _hora(hora, "[cacada].horarios_da_vigia_de_freelas", arquivo)
+            for hora in _textos(cacada.get("horarios_da_vigia_de_freelas", HORARIOS_DA_VIGIA_DE_FREELAS))
+            if str(hora).strip()
         ),
         linkedin_client_id=str(linkedin.get("client_id", "")).strip(),
         linkedin_client_secret=str(linkedin.get("client_secret", "")).strip(),

@@ -53,7 +53,15 @@ _Avoid_: dossiê, kit
 
 **Candidaturas**:
 `cacada/candidaturas.md`, regenerada no fim de cada **Caçada** (ou por `whis candidaturas`): as chances boas pelo `status:` do **Pacote** — `preparada`, `enviada`, `entrevista`, `proposta`, `recusada`, `fechado`, que só ele muda, no Obsidian —, as que o Whis enviou sozinho (do **Registro de ações**) e os e-mails do Gmail dedicado que parecem resposta da empresa.
-_Avoid_: pipeline, CRM, funil
+_Avoid_: pipeline, CRM
+
+**Funil**:
+A seção do relatório da **Caçada** com as propostas de freela que ele mandou, contadas por semana do envio: mandadas, respondidas e fechadas. Mandada é a nota de `cacada/` com link de plataforma de freela e `status:` de quem já mandou (o **Pacote** ou a nota de `*-propostas/`, que traz a data em "enviada em AAAA-MM-DD"); respondida e fechada vêm do `status:` que ele escreve. Das que esperam resposta, o Chrome da caçada lê, depois da corrida, o que o site mostra: na 99Freelas, se o projeto segue aberto, foi cancelado ou o cliente já escolheu alguém; no Freelancer.com, a posição da proposta. A resposta do cliente na conversa não é lida (não há marcador conhecido). As **Candidaturas** não mostram freela; o funil, sim.
+_Avoid_: pipeline, CRM
+
+**Nicho do freela**:
+`[cacada].nicho_freela` ("shopify" desde 2026-10-17; vazio é qualquer freela). Na caçada de freelas rápidos, chance boa é só freela do nicho ou de e-commerce muito perto; o resto fica no máximo em **tentar a sorte**, e isso é conferido em Python depois da triagem, porque o pedido sozinho deixou passar 8 de 9 propostas fora do nicho (14/10). As buscas do modo no Freelancer.com fora do nicho saem (as dele em `criterios.md` ficam), e o perfil desse modo abre pelo nicho e mora em `cacada/perfil-freelas.md`; o de vaga continua full stack em `cacada/perfil.md`. `[cacada].piso_freela` é o menor preço de freela, em R$: o pedido manda nunca sugerir abaixo, e o preço do resumo que fica abaixo ganha o aviso.
+_Avoid_: especialidade, foco
 
 **Registro de ações**:
 `%LOCALAPPDATA%\whis\cacada\acoes.jsonl`: tudo o que o Whis fez fora do PC em nome dele — conta criada, e-mail confirmado, perfil completado, candidatura enviada. Só acrescenta; cada ação nasce como intenção, gravada antes de agir, e ganha o desfecho depois. Intenção sem desfecho nunca é refeita sozinha, e nada é feito duas vezes (ADR 0004).
@@ -90,6 +98,10 @@ _Avoid_: snippet, template
 **Vigia**:
 Uma tarefa agendada fora do Whis (`Whis-Vigia`, um script PowerShell autossuficiente) que consulta o Agendador e a lista de processos e dispara um toast quando uma peça não subiu — a daily ou o jornal não nasceu, a puxada das reuniões da Granola falhou, a bandeja não está no ar. Existe porque quem avisa que o Whis caiu não pode ser o Whis.
 _Avoid_: watchdog, healthcheck
+
+**Vigia de freelas**:
+`whis vigia-freelas` e a tarefa `Whis-Vigia-Freelas` (`whis windows --vigia-freelas`, nas horas de `[cacada].horarios_da_vigia_de_freelas`): lê a listagem da 99Freelas e a API pública do Freelancer.com com a busca do **nicho do freela**, fica com o que é do nicho e avisa por toast, com o link, o projeto novo publicado nas últimas 24 h. Existe porque a **Caçada** é semanal e chega quando o projeto já tem 80 propostas; ele escreve a proposta à mão na hora. Não chama o Claude nem abre o Chrome da caçada. O que já viu fica em `%LOCALAPPDATA%\whis\cacada\vigia-de-freelas.json`, e a primeira rodada só guarda, sem avisar. Não é o **Vigia**.
+_Avoid_: vigia (sozinho), alerta, monitor
 
 **Tracer bullet**:
 A primeira fatia construível de ponta a ponta: "aperto um botão durante a reunião → nota transcrita/resumida aparece no vault". Histórico: a gravação saiu do Whis em 2026-09-30 (ADR 0002).

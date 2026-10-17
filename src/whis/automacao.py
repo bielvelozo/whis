@@ -20,6 +20,8 @@ Este módulo faz poucas coisas, todas **explícitas e reversíveis**:
   navegador para o login da Granola);
 - `agendar_vigia()` registra `Whis-Vigia`, um script PowerShell autossuficiente
   que consulta o Agendador e dispara toast quando uma peça do Whis não subiu;
+- `agendar_vigia_de_freelas()` registra `Whis-Vigia-Freelas`, que várias vezes
+  por dia roda `whis vigia-freelas --agendada` e avisa o projeto novo do nicho;
 - `remover_legado()` tira da máquina o atalho e as tarefas que chamam um
   módulo ou um comando que não existe mais.
 
@@ -61,6 +63,7 @@ NOME_DA_TAREFA_DO_VIGIA = "Whis-Vigia"
 NOME_DA_TAREFA_DO_JORNAL = "Whis-Noticias"
 NOME_DA_TAREFA_DAS_REUNIOES = "Whis-Reunioes"
 NOME_DA_TAREFA_DO_LEMBRETE = "Whis-Lembrete-Cacada"
+NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS = "Whis-Vigia-Freelas"
 
 #: O script que registra uma tarefa pelo módulo `ScheduledTasks`, com os
 #: gatilhos como `Dia=HH:MM` (dia em inglês, ou `Daily`) separados por vírgula.
@@ -522,6 +525,30 @@ def agendar_lembrete(configuracao: Configuracao, *, executar: Executor = _rodar)
 
 def desagendar_lembrete(*, executar: Executor = _rodar) -> bool:
     return _desregistrar_tarefa(NOME_DA_TAREFA_DO_LEMBRETE, executar=executar)
+
+
+def agendar_vigia_de_freelas(configuracao: Configuracao, *, executar: Executor = _rodar) -> str:
+    """Registra `Whis-Vigia-Freelas`: um gatilho diário em cada hora de `[cacada].horarios_da_vigia_de_freelas`.
+
+    São vários gatilhos diários, e não uma repetição, porque o
+    `agendar_tarefa.ps1` só sabe `Dia=HH:MM`; de madrugada ela não acorda o PC à toa.
+    """
+    _registrar_tarefa(
+        NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS,
+        executavel=str(interpretador_sem_console()),
+        argumentos=_argumentos_do_whis("vigia-freelas --agendada", configuracao.origem or caminho_padrao()),
+        gatilhos=[f"Daily={hora}" for hora in configuracao.cacada_horarios_da_vigia_de_freelas],
+        executar=executar,
+    )
+    return NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS
+
+
+def desagendar_vigia_de_freelas(*, executar: Executor = _rodar) -> bool:
+    return _desregistrar_tarefa(NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS, executar=executar)
+
+
+def vigia_de_freelas_agendada(*, executar: Executor = _rodar) -> bool:
+    return _tarefa_agendada(NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS, executar=executar)
 
 
 def _depois(hora: str, atraso: timedelta) -> str:

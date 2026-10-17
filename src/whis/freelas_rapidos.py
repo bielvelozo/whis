@@ -10,26 +10,81 @@ então a triagem e o resumo leem as regras do modo antes das dele.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 from .criterios_da_cacada import Criterios, FonteDaCacada
+from .navegador_logado import casa_com_palavras
+from .oportunidades import CHANCE_BOA, TENTAR_A_SORTE, Oportunidade, Veredito
 
 MODO_FREELAS = "freelas"
 
+#: O que faz um freela ser do nicho: o nome dele, no título ou na descrição; nicho
+#: fora da tabela casa só pelo próprio nome.
+PALAVRAS_DO_NICHO = {"shopify": ("shopify", "liquid")}
+
+#: O e-commerce muito perto do nicho, só no título: na descrição, "e-commerce" aparece
+#: de passagem em vaga de marketing e site de imobiliária (simulação de 17/10).
+PERTO_DO_NICHO = {
+    "shopify": (
+        "e-commerce", "ecommerce", "loja virtual", "loja online", "online store", "woocommerce", "nuvemshop",
+        "vtex", "bigcommerce", "magento",
+    ),
+}
+
+
+def palavras_do_nicho(nicho: str) -> tuple[str, ...]:
+    nicho = nicho.strip().casefold()
+    return PALAVRAS_DO_NICHO.get(nicho, (nicho,)) if nicho else ()
+
+
+def do_nicho(oportunidade: Oportunidade, nicho: str) -> bool:
+    """Sem nicho, tudo é; com ele, o nicho no título ou na descrição, ou o e-commerce perto dele no título."""
+    if not nicho.strip():
+        return True
+    if casa_com_palavras(oportunidade, palavras_do_nicho(nicho)):
+        return True
+    so_o_titulo = replace(oportunidade, descricao="")
+    return casa_com_palavras(so_o_titulo, PERTO_DO_NICHO.get(nicho.strip().casefold(), ()))
+
+
+def rebaixar_fora_do_nicho(
+    vereditos: Sequence[Veredito], oportunidades: Mapping[str, Oportunidade], nicho: str
+) -> tuple[Veredito, ...]:
+    """A chance boa que não é do nicho vira tentar a sorte: o pedido sozinho não segurou (14/10, 8 de 9)."""
+    saida = []
+    for veredito in vereditos:
+        oportunidade = oportunidades.get(veredito.id)
+        if veredito.classe == CHANCE_BOA and oportunidade is not None and not do_nicho(oportunidade, nicho):
+            veredito = replace(veredito, classe=TENTAR_A_SORTE, motivo=f"fora do nicho ({nicho}): {veredito.motivo}")
+        saida.append(veredito)
+    return tuple(saida)
+
 TIPOS_DE_FREELA = frozenset({"workana", "99freelas", "freelancer"})
 
-PEDIDO_DE_FREELAS_RAPIDOS = """\
+_INICIO_DO_PEDIDO = """\
 NESTA CAÇADA (modo freelas rápidos), estas regras valem antes das outras:
 - Só freela. Vaga de emprego, CLT, PJ fixo ou contrato contínuo é "descartada", por melhor que seja.
 - O que ele quer é dinheiro rápido: freela pequeno de preço fechado (ou por marco) que ele entrega com \
 IA em algumas horas ou num fim de semana, até umas 20 horas de trabalho, e que paga na entrega pela \
-plataforma (escrow, marco) ou por bounty.
+plataforma (escrow, marco) ou por bounty."""
+
+_CHANCE_SEM_NICHO = """\
 - "chance_boa" é o freela rápido que casa forte com o que ele já fez: ajuste ou seção de tema Shopify, \
 app ou checkout Shopify, landing page, site pequeno, correção de bug em React/Next.js/Node, integração \
 de API ou webhook, automação ou script em Python ou Node, scraping, painel simples, integração com LLM. \
 Quanto mais novo o anúncio (até 3 dias) e menos propostas, maior o encaixe.
-- "tentar_a_sorte" é o freela rápido de encaixe médio, ou o bom que já tem muita proposta.
+- "tentar_a_sorte" é o freela rápido de encaixe médio, ou o bom que já tem muita proposta."""
+
+#: O trabalho do nicho que casa com o que ele já fez, para o pedido dizer o que é chance boa.
+TRABALHO_DO_NICHO = {
+    "shopify": (
+        "ajuste ou seção de tema, Liquid, app ou checkout, montar ou configurar a loja, velocidade, rastreio "
+        "(Pixel, GA4, Merchant Center) ou integração na loja"
+    ),
+}
+
+_FIM_DO_PEDIDO = """\
 - Bounty de issue (GitHub, Algora, Opire) é disputado em minutos: ganha quem posta a proposta logo que \
 a issue abre. Bounty com proposta já postada, PR aberto ou mais de uns 5 comentários nunca é \
 "chance_boa": no máximo "tentar_a_sorte". Bounty com responsável designado, PR já aceito ou issue \
@@ -40,6 +95,32 @@ fechada é "descartada". Sem "detalhes" que mostrem a concorrência, bounty tamb
 - Freela grande (semanas de trabalho), sem orçamento nenhum e sem escopo, ou com prazo curto demais \
 para quem trabalha de dia é "descartada". Freela por hora avulso continua "descartada".
 - No resumo do freela, diga quantas horas ele leva com IA e o preço que faz sentido pedir."""
+
+
+def _chance_do_nicho(nicho: str) -> str:
+    nome = nicho.strip().title()
+    trabalho = TRABALHO_DO_NICHO.get(nicho.strip().casefold())
+    do_nicho = f"de {nome} ({trabalho})" if trabalho else f"de {nome}"
+    return (
+        f'- "chance_boa" é só o freela rápido {do_nicho}, ou de e-commerce muito perto dele (loja virtual em outra '
+        "plataforma, com o mesmo tipo de trabalho), que casa forte com o que ele já fez. Quanto mais novo o anúncio "
+        "(até 3 dias) e menos propostas, maior o encaixe.\n"
+        f'- "tentar_a_sorte" é o freela rápido do nicho de encaixe médio ou com muita proposta, e o de fora do nicho '
+        f'que casa com ele: fora do nicho nunca é "chance_boa", por melhor que seja o encaixe (é em {nome} que ele '
+        "tem prova de trabalho).\n"
+        f"- O perfil desta caçada é o de freela de {nome}: o resumo e a stack abrem pelo que ele já fez em {nome} "
+        "(só o que tem evidência), e o full stack vem depois. No resumo de cada freela, o porquê casa começa pelo "
+        f"trabalho dele em {nome}."
+    )
+
+
+def pedido_de_freelas(nicho: str = "") -> str:
+    """As regras do modo; com `nicho`, chance boa é só dele ou de e-commerce muito perto."""
+    chance = _chance_do_nicho(nicho) if nicho.strip() else _CHANCE_SEM_NICHO
+    return f"{_INICIO_DO_PEDIDO}\n{chance}\n{_FIM_DO_PEDIDO}"
+
+
+PEDIDO_DE_FREELAS_RAPIDOS = pedido_de_freelas()
 
 _A_FUNDO = (
     "Vasculhe a fundo: abra várias listagens e páginas, confira se cada projeto ainda está aberto e "
@@ -158,12 +239,21 @@ FONTES_DE_FREELA_RAPIDO = (
 )
 
 
+def _buscas_do_freelancer_no_nicho(fontes: Sequence[FonteDaCacada | None], nicho: str) -> list[FonteDaCacada | None]:
+    nicho = nicho.strip().casefold()
+    ficam = [f for f in fontes if f is None or f.tipo != "freelancer" or nicho in f.argumento.casefold()]
+    if not any(f is not None and f.tipo == "freelancer" for f in ficam):
+        ficam.insert(0, FonteDaCacada(f"Freelancer.com · {nicho.title()}", "freelancer", nicho))
+    return ficam
+
+
 def criterios_de_freelas(
     criterios: Criterios,
     plataformas_sem_conta: Sequence[str] = (),
     *,
     cobertos: Sequence[str] = (),
     plataformas_pagas: Sequence[str] = (),
+    nicho: str = "",
 ) -> Criterios:
     """Os critérios dele com as fontes de freela, as do modo e o pedido do modo na frente.
 
@@ -171,7 +261,9 @@ def criterios_de_freelas(
     só o PeoplePerHour e a Workana são citados nelas. `cobertos` são os sites
     que o Chrome da caçada leu logado nesta corrida (99Freelas, VintePila): o
     explorador deixa de procurar neles, e volta quando o login cai. Site em
-    `plataformas_pagas` (freelancer.com.br) também sai das buscas.
+    `plataformas_pagas` (freelancer.com.br) também sai das buscas. Com `nicho`,
+    das buscas do modo no Freelancer.com só fica a do nicho; as dele em
+    `criterios.md` ficam todas.
     """
     dele = [fonte for fonte in criterios.fontes if fonte.tipo in TIPOS_DE_FREELA]
     nomes = {fonte.nome.casefold() for fonte in dele}
@@ -190,6 +282,8 @@ def criterios_de_freelas(
         )
     }
     do_modo = [trocas.get(i, fonte) for i, fonte in enumerate(FONTES_DE_FREELA_RAPIDO)]
+    if nicho.strip():
+        do_modo = _buscas_do_freelancer_no_nicho(do_modo, nicho)
     fontes = dele + [fonte for fonte in do_modo if fonte is not None and fonte.nome.casefold() not in nomes]
-    procuro = f"{PEDIDO_DE_FREELAS_RAPIDOS}\n\n{criterios.procuro}".rstrip()
+    procuro = f"{pedido_de_freelas(nicho)}\n\n{criterios.procuro}".rstrip()
     return replace(criterios, fontes=tuple(fontes), procuro=procuro)

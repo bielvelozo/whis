@@ -43,7 +43,7 @@ from .cacada_claude import ErroDaCacada, LimiteDoPlano, Plano
 from .configuracao import Configuracao
 from .corrida import Checkpoint, escrever_andamento
 from .criterios_da_cacada import CAMINHO_DOS_CRITERIOS, PASTA_CACADA, Criterios, FonteDaCacada, ler_criterios
-from .freelas_rapidos import MODO_FREELAS, PEDIDO_DA_RODADA_EXTRA, criterios_de_freelas
+from .freelas_rapidos import MODO_FREELAS, PEDIDO_DA_RODADA_EXTRA, criterios_de_freelas, rebaixar_fora_do_nicho
 from .oportunidades import (
     CHANCE_BOA,
     DESCARTADA,
@@ -56,10 +56,12 @@ from .oportunidades import (
     Veredito,
     link_canonico,
 )
+from .precos import conferir_piso, pedido_do_piso
 
 _log = logging.getLogger("whis.cacada")
 
 CAMINHO_DO_PERFIL = f"{PASTA_CACADA}/perfil.md"
+CAMINHO_DO_PERFIL_DE_FREELAS = f"{PASTA_CACADA}/perfil-freelas.md"
 ZONAS_DA_CACADA = (PASTA_CACADA,)
 
 LOTE_DA_TRIAGEM = 20
@@ -473,6 +475,7 @@ def cacar(
         parada = str(motivo)
         _log.warning("A caçada parou antes do fim: %s.", parada)
 
+    _etapa_do_funil(estado, portas)
     if not parada:
         checkpoint.guardar(etapa="terminada")
         checkpoint.terminar()
@@ -505,6 +508,8 @@ def cacar(
 
 def _criterios_do_modo(configuracao: Configuracao, raiz: Path, modo: str, cobertos: Sequence[str]) -> Criterios:
     criterios = ler_criterios(raiz)
+    if configuracao.cacada_piso_freela > 0:
+        criterios = replace(criterios, procuro=f"{criterios.procuro.rstrip()}\n{pedido_do_piso(configuracao.cacada_piso_freela)}")
     if modo != MODO_FREELAS:
         return criterios
     return criterios_de_freelas(
@@ -512,6 +517,7 @@ def _criterios_do_modo(configuracao: Configuracao, raiz: Path, modo: str, cobert
         configuracao.cacada_plataformas_sem_conta,
         cobertos=cobertos,
         plataformas_pagas=configuracao.cacada_plataformas_pagas,
+        nicho=configuracao.cacada_nicho_freela,
     )
 
 
@@ -585,7 +591,11 @@ def _etapa_do_perfil(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPl
         _log.warning("O perfil não saiu (%s): a caçada segue com Sobre mim.", erro)
         perfil = Perfil(resumo=f"(o perfil automático não saiu: {erro}) Ver Sobre mim.")
     estado.checkpoint.guardar(perfil=perfil.para_json())
-    estado.escrever(CAMINHO_DO_PERFIL, montar_nota_do_perfil(perfil, estado.corrida))
+    if estado.checkpoint.get("modo") == MODO_FREELAS:
+        nota = montar_nota_do_perfil(perfil, estado.corrida, freelas=True, nicho=estado.configuracao.cacada_nicho_freela)
+        estado.escrever(CAMINHO_DO_PERFIL_DE_FREELAS, nota)
+    else:
+        estado.escrever(CAMINHO_DO_PERFIL, montar_nota_do_perfil(perfil, estado.corrida))
 
 
 def _etapa_da_coleta(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, agora: datetime) -> None:
@@ -732,6 +742,8 @@ def _etapa_da_triagem(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoP
         except ErroDaCacada as erro:
             _log.warning("Um lote da triagem falhou: %s", erro)
             novos = ()
+        if estado.checkpoint.get("modo") == MODO_FREELAS:
+            novos = rebaixar_fora_do_nicho(novos, oportunidades, estado.configuracao.cacada_nicho_freela)
         recebidos = {v.id for v in novos}
         sem_resposta = []
         for oportunidade in lote:
@@ -781,6 +793,7 @@ def _etapa_do_preparo(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoP
             pacotes[oportunidade.id] = {"falha": str(erro)[:300]}
             estado.checkpoint.guardar(pacotes=pacotes)
             continue
+        pacote = _com_piso(estado, oportunidade, pacote)
         caminho = caminho_do_pacote(estado.corrida, oportunidade)
         amostra = _amostra(estado, portas, oportunidade, pacote, caminho) if pacote.amostra_html else {}
         estado.escrever(caminho, montar_pacote(oportunidade, veredito, pacote, amostra, completo=completo))
@@ -901,6 +914,7 @@ def _caprichar(
         except ErroDaCacada as erro:
             _log.warning("O pacote completo de %s não saiu: %s", oportunidade.link, erro)
             continue
+        pacote = _com_piso(estado, oportunidade, pacote)
         caminho = atual.get("caminho") or caminho_do_pacote(estado.corrida, oportunidade)
         amostra = _amostra(estado, portas, oportunidade, pacote, caminho) if pacote.amostra_html else {}
         estado.escrever(caminho, montar_pacote(oportunidade, veredito, pacote, amostra))
@@ -911,6 +925,12 @@ def _caprichar(
             "completo": True,
         }
         estado.checkpoint.guardar(pacotes=pacotes)
+
+
+def _com_piso(estado: _Estado, oportunidade: Oportunidade, pacote: Pacote) -> Pacote:
+    if oportunidade.tipo != FREELA:
+        return pacote
+    return replace(pacote, preco=conferir_piso(pacote.preco, oportunidade.faixa, estado.configuracao.cacada_piso_freela))
 
 
 def _amostra(
@@ -1021,6 +1041,27 @@ def _etapa_da_caixa(estado: _Estado, portas: PortasDaCacada) -> None:
     estado.checkpoint.guardar(caixa={"mensagens": lista})
 
 
+def _etapa_do_funil(estado: _Estado, portas: PortasDaCacada) -> None:
+    """O que os sites mostram das propostas de freela que esperam resposta; só com a corrida já sem Claude."""
+    from .funil import ler_mandadas, situacao_nos_sites
+
+    esperando = [m for m in ler_mandadas(estado.raiz) if m.esperando]
+    if not esperando:
+        return
+    if portas.navegador_logado is None:
+        estado.checkpoint.guardar(funil={"motivo": "sem o Chrome da caçada nesta corrida"})
+        return
+    estado.andamento("funil", "lendo nos sites as propostas que esperam resposta")
+    try:
+        with portas.navegador_logado.abrir() as sessao:
+            situacoes = situacao_nos_sites(esperando, sessao)
+            motivo = sessao.motivo
+    except Exception as erro:  # noqa: BLE001 — o funil não derruba a caçada
+        _log.warning("O funil não leu os sites: %s", erro)
+        situacoes, motivo = {}, f"o Chrome da caçada falhou ({erro})"
+    estado.checkpoint.guardar(funil={"situacoes": situacoes, "motivo": f"sem o Chrome da caçada: {motivo}" if motivo else ""})
+
+
 def _depois_da_corrida(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano) -> None:
     """O acompanhamento das candidaturas e a hora da virada semanal, para o lembrete da véspera."""
     from . import acompanhamento
@@ -1104,7 +1145,7 @@ def links_ja_vistos(vault: Path, *, excluir: str = "") -> set[str]:
         return vistos
     for arquivo in pasta.rglob("*.md"):
         relativo = arquivo.relative_to(vault).as_posix()
-        if relativo in (CAMINHO_DOS_CRITERIOS, CAMINHO_DO_PERFIL) or (excluir and excluir in relativo):
+        if relativo in (CAMINHO_DOS_CRITERIOS, CAMINHO_DO_PERFIL, CAMINHO_DO_PERFIL_DE_FREELAS) or (excluir and excluir in relativo):
             continue
         try:
             texto = arquivo.read_text(encoding="utf-8", errors="replace")
@@ -1128,14 +1169,18 @@ def caminho_do_pacote(corrida: str, oportunidade: Oportunidade) -> str:
     return f"{PASTA_CACADA}/{corrida}/{_vault._slug(oportunidade.titulo, 'oportunidade')[:50]}-{oportunidade.id[:6]}.md"
 
 
-def montar_nota_do_perfil(perfil: Perfil, corrida: str) -> str:
+def montar_nota_do_perfil(perfil: Perfil, corrida: str, *, freelas: bool = False, nicho: str = "") -> str:
+    if freelas:
+        titulo = f"# O perfil da caçada de freela de {nicho.strip().title()}" if nicho.strip() else "# O perfil da caçada de freelas"
+    else:
+        titulo = "# O perfil que a caçada usa"
     linhas = [
         "---",
         "tipo: perfil-da-cacada",
         f'corrida: "{corrida}"',
         "---",
         "",
-        "# O perfil que a caçada usa",
+        titulo,
         "",
         "Montado pelo Whis a cada caçada, a partir do git, do vault e de *Sobre mim* em [[cacada/criterios]]. "
         "Para corrigir, escreva em *Sobre mim*: esta nota é regenerada.",
@@ -1401,6 +1446,13 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         else:
             linhas.append("_Nada nos últimos 14 dias._")
         linhas.append("")
+
+    from .funil import ler_mandadas, montar_funil
+
+    mandadas = ler_mandadas(estado.raiz)
+    if mandadas:
+        funil = estado.checkpoint.get("funil") or {}
+        linhas += montar_funil(mandadas, funil.get("situacoes") or {}, motivo=funil.get("motivo", ""))
 
     linhas += ["## Fontes", ""]
     lidas: dict[str, int] = estado.checkpoint.get("lidas") or {}

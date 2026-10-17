@@ -8,7 +8,7 @@ para as reuniões da Granola::
 
     python -m whis init
     python -m whis bandeja
-    python -m whis windows [--daily] [--news] [--meetings] [--remover] [--remover-legado]
+    python -m whis windows [--daily] [--news] [--meetings] [--hunt] [--vigia-freelas] [--remover] [--remover-legado]
     python -m whis diario [YYYY-MM-DD] [--simular]
     python -m whis daily [--anotar TEXTO] [--simular] [--fakes] [--agendada]
     python -m whis news [--agendada] [--fakes] [--simular]
@@ -17,6 +17,7 @@ para as reuniões da Granola::
     python -m whis linkedin [--fakes] | linkedin-login | linkedin-publicar <nota>
     python -m whis contas [--so SITE] [--senha SITE] | navegador [url]
     python -m whis lembrete [--agendada] | candidaturas
+    python -m whis vigia-freelas [--agendada] [--fakes]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -850,20 +851,34 @@ def _simular_coleta(configuracao: Configuracao, *, freelas: bool = False) -> int
     from .criterios_da_cacada import ler_criterios
     from .fontes_da_cacada import coletar, fonte_sem_conta
 
-    criterios = ler_criterios(_vault.preparar(configuracao.vault))
-    if freelas:
-        from .freelas_rapidos import criterios_de_freelas
+    from .freelas_rapidos import criterios_de_freelas, do_nicho
 
-        criterios = criterios_de_freelas(criterios, configuracao.cacada_plataformas_sem_conta)
+    dele = ler_criterios(_vault.preparar(configuracao.vault))
+    criterios = dele
+    nicho = configuracao.cacada_nicho_freela if freelas else ""
+    if freelas:
+        opcoes = {"plataformas_pagas": configuracao.cacada_plataformas_pagas}
+        criterios = criterios_de_freelas(dele, configuracao.cacada_plataformas_sem_conta, nicho=nicho, **opcoes)
     sem_conta = configuracao.cacada_plataformas_sem_conta
     lidas_aqui = [f for f in criterios.fontes if not fonte_sem_conta(f, sem_conta)]
     coleta = coletar(lidas_aqui, datetime.now().astimezone(), ao_ler=lambda nome: print(f"lendo {nome}...", flush=True))
     print()
+    if nicho:
+        print(f"Nicho: {nicho} — só o que cita o nicho ou e-commerce perto dele pode ser chance boa; o resto fica no máximo em tentar a sorte.")
+        ficaram = {f.nome for f in criterios.fontes}
+        sairam = [
+            f.nome
+            for f in criterios_de_freelas(dele, sem_conta, **opcoes).fontes
+            if f.tipo == "freelancer" and f.nome not in ficaram
+        ]
+        if sairam:
+            print(f"Fora do nicho, saíram do Freelancer.com: {', '.join(sairam)}")
     for fonte in criterios.fontes:
         if fonte_sem_conta(fonte, sem_conta):
             print(f"{fonte.nome}: pulada, sua conta nesse site não está ativa ([cacada].plataformas_sem_conta)")
     for nome, lista in coleta.por_fonte.items():
-        print(f"{nome}: {len(lista)}")
+        no_nicho = f" ({sum(do_nicho(o, nicho) for o in lista)} do nicho)" if nicho else ""
+        print(f"{nome}: {len(lista)}{no_nicho}")
         for oportunidade in lista[:3]:
             print(f"    {oportunidade.titulo[:90]} — {oportunidade.link}")
     for nome, motivo in coleta.falhas.items():
@@ -871,6 +886,11 @@ def _simular_coleta(configuracao: Configuracao, *, freelas: bool = False) -> int
     web = [fonte.nome for fonte in criterios.fontes if fonte.tipo == "web"]
     if web:
         print(f"Fontes do explorador (só na caçada de verdade, pelo Claude): {', '.join(web)}")
+    if nicho:
+        podem = [o for o in coleta.todas() if do_nicho(o, nicho)]
+        print(f"\nPodem ser chance boa (do nicho): {len(podem)} de {len(coleta.todas())}")
+        for oportunidade in podem[:20]:
+            print(f"    {oportunidade.titulo[:90]} — {oportunidade.link}")
     print(f"Total: {len(coleta.todas())} oportunidade(s) únicas. Nada foi enviado ao Claude.")
     return SAIDA_COMPLETA if coleta.por_fonte else SAIDA_NAO_NASCEU
 
@@ -929,6 +949,35 @@ def _comando_lembrete(args: argparse.Namespace) -> int:
     print(texto)
     _palheta.avisar_resultado(configuracao, _palheta.Resultado("Véspera da virada do plano", texto))
     marcar_lembrado(pasta, virada)
+    return SAIDA_COMPLETA
+
+
+def _comando_vigia_freelas(args: argparse.Namespace) -> int:
+    """A vigia de freelas: avisa por toast o projeto novo do nicho na 99Freelas e no Freelancer.com, sem Claude."""
+    from .vigia_de_freelas import projeto_de_teste, vigiar
+
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    nicho = configuracao.cacada_nicho_freela or ("shopify" if args.fakes else "")
+    if not nicho:
+        print("A vigia de freelas precisa de um nicho: escreva [cacada].nicho_freela no config.toml (ex.: \"shopify\").")
+        return SAIDA_NAO_NASCEU
+    opcoes = {}
+    if args.fakes:
+        import tempfile
+
+        estado = Path(tempfile.mkdtemp(prefix="whis-vigia-")) / "vigia-de-freelas.json"
+        estado.write_text("{}", encoding="utf-8")
+        opcoes = {"ler": lambda _nicho: [projeto_de_teste()], "estado": estado}
+        print(f"Modo de teste: um projeto falso e o estado em {estado}.")
+    rodada = vigiar(nicho, **opcoes)
+    if rodada.guardados:
+        print(f"Primeira rodada: {rodada.guardados} projeto(s) de {nicho} já abertos guardados sem aviso; a próxima avisa o que for novo.")
+    elif rodada.avisados:
+        for oportunidade in rodada.avisados:
+            print(f"Avisado: {oportunidade.titulo} — {oportunidade.link}")
+    else:
+        print(f"Nada novo de {nicho} desde a última rodada.")
     return SAIDA_COMPLETA
 
 
@@ -1258,13 +1307,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
     from . import automacao
 
     precisa_da_configuracao = bool(args.config) or (
-        (args.daily or args.news or args.meetings or args.hunt) and not args.remover
+        (args.daily or args.news or args.meetings or args.hunt or args.vigia_freelas) and not args.remover
     )
     configuracao = _configuracao(args) if precisa_da_configuracao else None
     origem = (configuracao.origem if configuracao else None) or caminho_padrao()
     feitos: list[str] = []
     so_remover_legado = args.remover_legado and not (
-        args.atendente or args.daily or args.news or args.meetings or args.hunt
+        args.atendente or args.daily or args.news or args.meetings or args.hunt or args.vigia_freelas
     )
 
     if args.daily and not args.remover and not configuracao.daily_horarios:
@@ -1316,6 +1365,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"Tarefa '{automacao.NOME_DA_TAREFA_DO_VIGIA}' removida do Agendador."
                     if removido
                     else "Não havia vigia agendado."
+                )
+            if args.vigia_freelas:
+                removida = automacao.desagendar_vigia_de_freelas()
+                feitos.append(
+                    f"Tarefa '{automacao.NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS}' removida do Agendador."
+                    if removida
+                    else "Não havia vigia de freelas agendada."
                 )
             if args.news:
                 removida = automacao.desagendar_noticias()
@@ -1391,6 +1447,14 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"Lembrete da caçada agendado como '{automacao.NOME_DA_TAREFA_DO_LEMBRETE}': todo dia às "
                     f"{configuracao.cacada_hora_do_lembrete} ele olha se a semana do plano vira nas próximas 30 h "
                     f"e avisa por toast, uma vez por virada. A caçada continua só quando você chama."
+                )
+            if args.vigia_freelas:
+                automacao.agendar_vigia_de_freelas(configuracao)
+                feitos.append(
+                    f"Vigia de freelas agendada como '{automacao.NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS}': todo dia às "
+                    f"{', '.join(configuracao.cacada_horarios_da_vigia_de_freelas)} ela olha a 99Freelas e o "
+                    f"Freelancer.com e avisa por toast o projeto novo de "
+                    f"{configuracao.cacada_nicho_freela or '[cacada].nicho_freela (ainda vazio: ela não roda sem ele)'}."
                 )
             if args.meetings:
                 automacao.agendar_reunioes(configuracao)
@@ -1724,6 +1788,19 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     lembrete_cmd.set_defaults(funcao=_comando_lembrete)
 
+    vigia_freelas_cmd = subcomandos.add_parser(
+        "vigia-freelas",
+        help="olha a 99Freelas e o Freelancer.com e avisa por toast o projeto novo de [cacada].nicho_freela (sem Claude)",
+    )
+    _acrescentar_config(vigia_freelas_cmd)
+    vigia_freelas_cmd.add_argument(
+        "--agendada", action="store_true", help="é como a tarefa Whis-Vigia-Freelas chama"
+    )
+    vigia_freelas_cmd.add_argument(
+        "--fakes", action="store_true", help="um projeto falso e um estado temporário: só para ver o toast chegar"
+    )
+    vigia_freelas_cmd.set_defaults(funcao=_comando_vigia_freelas)
+
     candidaturas_cmd = subcomandos.add_parser(
         "candidaturas", help="atualiza cacada/candidaturas.md: pacotes, o que o Whis enviou e as respostas no Gmail"
     )
@@ -1831,6 +1908,14 @@ def construir_parser() -> argparse.ArgumentParser:
         help=(
             "também agenda o lembrete da véspera da caçada todo dia em [cacada].hora_do_lembrete "
             "(tarefa Whis-Lembrete-Cacada); a caçada em si continua só quando você chama"
+        ),
+    )
+    windows_cmd.add_argument(
+        "--vigia-freelas",
+        action="store_true",
+        help=(
+            "também agenda a vigia de freelas nas horas de [cacada].horarios_da_vigia_de_freelas "
+            "(tarefa Whis-Vigia-Freelas): o projeto novo de [cacada].nicho_freela vira toast"
         ),
     )
     windows_cmd.add_argument(

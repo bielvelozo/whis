@@ -399,6 +399,8 @@ interna — este texto vai ser lido por quem escreve as propostas.
 - "senioridade": júnior, pleno ou sênior, com uma frase do porquê.
 - "perguntas": o que SÓ ELE sabe e falta para julgar vagas e escrever candidaturas, que "Sobre mim" \
 ainda não responde (até 8, curtas, diretas). Não pergunte o que já está respondido.
+Se "O que ele procura" disser que o perfil é de um nicho (freela de Shopify, por exemplo), o resumo e a \
+stack abrem pelo que ele já fez nesse nicho, e o resto vem depois.
 Não invente: o que não tem evidência vira pergunta."""
 
 ESQUEMA_DO_PERFIL = {

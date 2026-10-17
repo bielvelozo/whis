@@ -123,6 +123,15 @@ antes da virada da semana do plano, o andamento mostra a etapa `extra`
 resumo" para "Abrir o pacote"; se a virada chegar no meio do principal, chega
 o toast de pausa até a virada e ela continua sozinha depois.
 
+Com `[cacada].nicho_freela = "shopify"` no config, o `--simular --freelas` diz
+"Nicho: shopify", lista as buscas do Freelancer.com que saíram por estar fora
+do nicho e termina com *Podem ser chance boa (do nicho)*: só o que cita Shopify
+(ou e-commerce perto, no título) pode virar chance boa; o resto fica no máximo
+em tentar a sorte, com o motivo "fora do nicho (shopify)". O perfil desse modo
+sai em `cacada/perfil-freelas.md`, e `cacada/perfil.md` (o de vaga) não muda.
+Com `[cacada].piso_freela` (em R$), o preço de resumo abaixo do piso termina
+com "Abaixo do seu piso: peça pelo menos R$ N."
+
 **Sucesso:** o toast *A caçada começou*. Ela leva horas: perfil (1 a 3 min),
 fontes (5 a 15 min), o explorador na web (10 a 40 min por linha `web`),
 triagem (1 min a cada 20 oportunidades), pacotes (2 a 5 min cada, até 20) e
@@ -174,6 +183,32 @@ Depois de enviar uma chance boa, abra o pacote e troque `status: preparada` por 
 depois `entrevista`, `proposta`, `recusada` ou `fechado`). No fim de cada caçada — ou na hora, com
 `python -m whis candidaturas` — `cacada/candidaturas.md` junta os seus pacotes, o que o Whis enviou
 sozinho e, com o Gmail configurado, os e-mails que parecem ser resposta da empresa.
+
+Freela tem o **Funil** no relatório: as notas de `cacada/` com link de plataforma de freela e
+`status:` começando por `enviada` (ou `respondida`, `entrevista`, `proposta`, `fechado`, `recusada`)
+contam por semana do envio. A data vem de "enviada em AAAA-MM-DD" no `status:`; sem ela, da pasta.
+Das que ainda estão `enviada`, o Chrome da caçada abre o projeto no fim da corrida: na 99Freelas,
+"aberto, esperando o cliente" ou "o cliente já escolheu um freelancer"; no Freelancer.com, "sua
+proposta em 60º de 98". Quando o cliente responder, troque o `status:` (o Whis não lê a conversa).
+
+## Passo 7b — A vigia de freelas
+
+```
+python -m whis vigia-freelas --fakes
+```
+
+**Sucesso:** um toast *Freela de Shopify novo: Ajuste no tema da loja Shopify (teste)* com o botão
+"Abrir o projeto". Depois, com `[cacada].nicho_freela` no config:
+
+```
+python -m whis windows --vigia-freelas
+```
+
+**Sucesso:** "Vigia de freelas agendada como 'Whis-Vigia-Freelas'", nas horas de
+`[cacada].horarios_da_vigia_de_freelas`. A primeira rodada só guarda o que já está aberto; dali em
+diante, cada projeto novo de Shopify na 99Freelas ou no Freelancer.com vira um toast (até três por
+rodada, e um "Mais N"). Atenção: `whis windows --remover --vigia-freelas`, como os outros
+`--remover`, também tira a bandeja do logon.
 
 ## Passo 8 — O lembrete da véspera
 
