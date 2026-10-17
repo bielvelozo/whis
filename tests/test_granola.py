@@ -81,6 +81,21 @@ def test_reuniao_sem_resumo_vem_com_resumo_vazio():
     assert retrospectiva.participantes == ()
 
 
+@pytest.mark.parametrize("marcador", ["No summary", "  no summary.  "])
+def test_no_summary_da_granola_e_resumo_vazio(marcador: str):
+    texto = (
+        '<meetings_data from="Oct 14, 2026" to="Oct 14, 2026" count="1">\n'
+        '<meeting id="22222222-2222-4222-8222-222222222222" title="Daily" date="Oct 14, 2026 10:30 AM GMT-3">\n'
+        f"  <summary>\n{marcador}\n  </summary>\n"
+        "</meeting>\n"
+        "</meetings_data>"
+    )
+
+    (daily,) = ler_reunioes(texto)
+
+    assert daily.resumo == ""
+
+
 def test_tag_desconhecida_e_ignorada():
     daily, _ = ler_reunioes(amostra("detalhes.txt"))
 

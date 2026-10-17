@@ -63,6 +63,9 @@ _REUNIAO = re.compile(r"<meeting\b([^>]*)>(.*?)</meeting>", re.S)
 _ATRIBUTO = re.compile(r'(\w+)="([^"]*)"')
 _PARTICIPANTES = re.compile(r"<known_participants>(.*?)</known_participants>", re.S)
 _RESUMO = re.compile(r"<summary>(.*?)</summary>", re.S)
+#: O que a Granola põe no `<summary>` enquanto o resumo não ficou pronto (visto em 14/10/2026):
+#: vale como resumo vazio, senão a nota nasce só com isso e nunca é reescrita.
+_SEM_RESUMO = re.compile(r"\s*no summary\.?\s*", re.I)
 
 
 # -- a leitura -----------------------------------------------------------------------
@@ -86,11 +89,16 @@ def ler_reunioes(texto: str) -> tuple[Reuniao, ...]:
                 titulo=atributos.get("title", ""),
                 inicio=ler_data(atributos["date"]),
                 participantes=ler_participantes(participantes[1]) if participantes else (),
-                resumo=html.unescape(resumo[1]).strip() if resumo else "",
+                resumo=_ler_resumo(resumo[1]) if resumo else "",
                 url=atributos.get("url", ""),
             )
         )
     return tuple(reunioes)
+
+
+def _ler_resumo(texto: str) -> str:
+    resumo = html.unescape(texto).strip()
+    return "" if _SEM_RESUMO.fullmatch(resumo) else resumo
 
 
 def ler_data(texto: str) -> datetime:
