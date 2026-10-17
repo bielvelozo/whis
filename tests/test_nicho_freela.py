@@ -86,6 +86,19 @@ def test_com_nicho_a_chance_boa_fora_dele_vira_tentar_a_sorte(configuracao: Conf
     assert vereditos[landing.id]["classe"] == TENTAR_A_SORTE
 
 
+def test_com_nicho_as_buscas_web_procuram_so_o_nicho_e_os_bounties_saem():
+    com_nicho = criterios_de_freelas(_criterios(), nicho="shopify")
+    sem_nicho = criterios_de_freelas(_criterios())
+
+    web = {f.nome: f.argumento for f in com_nicho.fontes if f.tipo == "web"}
+    assert not any("bount" in nome.casefold() for nome in web)
+    assert all("Shopify" in argumento for argumento in web.values()), web
+    assert "landing page" not in web["Web · Workana e 99Freelas recentes"]
+    assert "scripts and automations" not in web["Web · Contra e clientes dos EUA e da Europa"]
+    assert any("bount" in f.nome.casefold() for f in sem_nicho.fontes)
+    assert "landing page" in {f.nome: f.argumento for f in sem_nicho.fontes}["Web · Workana e 99Freelas recentes"]
+
+
 def test_e_commerce_citado_de_passagem_na_descricao_nao_e_do_nicho():
     def freela(titulo: str, descricao: str) -> Oportunidade:
         return Oportunidade.nova(tipo=FREELA, fonte="Freelancer.com · Shopify", titulo=titulo, link=f"https://example.com/{titulo}", descricao=descricao)

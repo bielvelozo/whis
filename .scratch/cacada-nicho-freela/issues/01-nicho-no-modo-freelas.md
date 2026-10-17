@@ -14,3 +14,5 @@ Vazio é como hoje.
 ## Comments
 
 Feito em 2026-10-17 (test_nicho_freela.py). A simulação real mostrou "e-commerce" de passagem na descrição de vaga de marketing e de site de imobiliária; ficou assim: o nome do nicho (shopify, liquid) vale no título ou na descrição, e o e-commerce perto (loja virtual, woocommerce, nuvemshop...) só no título. `hunt --simular --freelas` com nicho: 7 buscas do modo saíram, 39 de 134 podem ser chance boa.
+
+Em 17/10 ~06:10 (o follow-up proposto, feito aqui com a caçada rodando): com nicho, as quatro buscas web genéricas (recentes, fora das grandes, internacional, posts de quem contrata) pedem só o nicho, e a de bounties sai. O explorador fica com 6 linhas web em vez de 7.

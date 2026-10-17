@@ -139,7 +139,48 @@ VINTEPILA = "vintepila"
 FREELANCER_BR = "freelancer.com.br"
 
 
-def _web_recentes(com_workana: bool, com_99freelas: bool = True) -> FonteDaCacada | None:
+_RECENTES = (
+    "de landing page, site pequeno, Shopify, WordPress, React/Next.js, correção de bug, integração de API ou automação"
+)
+_FORA_DAS_GRANDES = "de desenvolvimento web, sistema pequeno, automação ou loja virtual"
+_INTERNACIONAL = (
+    "Small Shopify fixes, landing pages, React/Next.js or Node bug fixes, API integrations, scripts and automations"
+)
+_POSTS = "de site, loja, automação, integração ou correção de bug"
+
+#: Bounty de open-source nunca é do nicho e custa até 1 h por rodada: com nicho, a busca sai.
+NOME_DOS_BOUNTIES = "Web · bounties pagos"
+
+#: O que as buscas web genéricas pedem quando há nicho (recentes, fora das grandes, internacional, posts).
+BUSCAS_DO_NICHO = {
+    "shopify": (
+        "de Shopify (ajuste ou seção de tema, Liquid, montar ou configurar a loja, app, checkout, velocidade) ou de "
+        "loja virtual em outra plataforma",
+        "de loja Shopify ou de loja virtual em outra plataforma",
+        "Shopify work only: theme and section fixes, Liquid, store setup, Shopify apps and integrations, checkout, speed",
+        "de loja Shopify (tema, seção, app, checkout, montar a loja)",
+    ),
+}
+
+
+def _buscas_do_nicho(nicho: str) -> tuple[str, str, str, str]:
+    nome = nicho.strip().title()
+    return BUSCAS_DO_NICHO.get(nicho.strip().casefold(), (f"de {nome}", f"de {nome}", f"{nome} work only", f"de {nome}"))
+
+
+def _web_posts(o_que: str = _POSTS) -> FonteDaCacada:
+    return FonteDaCacada(
+        "Web · posts de quem contrata no Brasil",
+        "web",
+        "posts públicos dos últimos 3 dias de brasileiros procurando freelancer ou dev para um trabalho pago: "
+        "LinkedIn (\"procuro freelancer\", \"preciso de um dev\", \"freela de site\", \"freela Shopify\"), X/Twitter "
+        "(\"freela dev\", \"procuro programador\"), grupos e comunidades públicas (Discord, Telegram, Facebook, "
+        f"Reddit r/brdev e r/programacao), {o_que}. Traga o "
+        "post com o link dele e como falar com quem postou. " + _A_FUNDO,
+    )
+
+
+def _web_recentes(com_workana: bool, com_99freelas: bool = True, o_que: str = _RECENTES) -> FonteDaCacada | None:
     if com_workana and com_99freelas:
         nome, onde = "Web · Workana e 99Freelas recentes", "na Workana e na 99Freelas"
     elif com_99freelas:
@@ -152,12 +193,13 @@ def _web_recentes(com_workana: bool, com_99freelas: bool = True) -> FonteDaCacad
         nome,
         "web",
         f"projetos de preço fechado {onde} publicados nas últimas 72 horas, com poucas "
-        "propostas, de landing page, site pequeno, Shopify, WordPress, React/Next.js, correção de bug, "
-        "integração de API ou automação, que dê para entregar em até um fim de semana. " + _A_FUNDO,
+        f"propostas, {o_que}, que dê para entregar em até um fim de semana. " + _A_FUNDO,
     )
 
 
-def _web_fora_das_grandes(com_workana: bool, sem_vintepila: bool = False, sem_freelancer_br: bool = False) -> FonteDaCacada:
+def _web_fora_das_grandes(
+    com_workana: bool, sem_vintepila: bool = False, sem_freelancer_br: bool = False, o_que: str = _FORA_DAS_GRANDES
+) -> FonteDaCacada:
     fora = "fora da Workana e da 99Freelas" if com_workana else (
         "fora da 99Freelas e sem nada da Workana (a conta dele lá não está ativa)"
     )
@@ -169,13 +211,13 @@ def _web_fora_das_grandes(com_workana: bool, sem_vintepila: bool = False, sem_fr
     return FonteDaCacada(
         "Web · freelas no Brasil fora das plataformas grandes",
         "web",
-        "pedidos de freela de desenvolvimento web, sistema pequeno, automação ou loja virtual publicados nos "
+        f"pedidos de freela {o_que} publicados nos "
         f"últimos 3 dias no Brasil {fora} (GetNinjas, Freelas.com.br, Trampos, "
         f"comunidades e posts públicos), com orçamento ou preço fechado. {nada_de}" + _A_FUNDO,
     )
 
 
-def _web_internacional(com_peopleperhour: bool) -> FonteDaCacada:
+def _web_internacional(com_peopleperhour: bool, o_que: str = _INTERNACIONAL) -> FonteDaCacada:
     depois = "Guru and PeoplePerHour" if com_peopleperhour else "Guru"
     pular = "Freelancer.com and Upwork (paid bids)"
     if not com_peopleperhour:
@@ -185,9 +227,7 @@ def _web_internacional(com_peopleperhour: bool) -> FonteDaCacada:
         "web",
         "fixed-price freelance web development gigs posted in the last 3 days by clients in the US, Canada, "
         f"Europe or Latin America that accept workers from Brazil: Contra projects first (no fees), then {depois}; "
-        f"skip {pular} and any project budgeted in Indian rupees. Small Shopify fixes, landing pages, "
-        "React/Next.js or Node bug fixes, API integrations, scripts and automations, doable in under 20 hours. "
-        + _A_FUNDO,
+        f"skip {pular} and any project budgeted in Indian rupees. {o_que}, doable in under 20 hours. " + _A_FUNDO,
     )
 
 
@@ -210,7 +250,7 @@ FONTES_DE_FREELA_RAPIDO = (
         "loja; em fóruns, Reddit (r/shopify, r/ShopifyeCommerce), Upwork, Shopify Community e grupos. " + _A_FUNDO,
     ),
     FonteDaCacada(
-        "Web · bounties pagos",
+        NOME_DOS_BOUNTIES,
         "web",
         "bounties pagos e abertos em projetos open-source de TypeScript, JavaScript, React, Node ou Python, "
         "publicados nos últimos 14 dias, de US$ 50 para cima, no Algora, Opire, IssueHunt, BountySource ou "
@@ -219,15 +259,7 @@ FONTES_DE_FREELA_RAPIDO = (
         "já há PR; prefira as que ainda não têm proposta nenhuma. Nunca traga bounty de repositório da "
         "organização SUSU-LABS no GitHub: os repositórios dela escondem malware no eslint.config.js. " + _A_FUNDO,
     ),
-    FonteDaCacada(
-        "Web · posts de quem contrata no Brasil",
-        "web",
-        "posts públicos dos últimos 3 dias de brasileiros procurando freelancer ou dev para um trabalho pago: "
-        "LinkedIn (\"procuro freelancer\", \"preciso de um dev\", \"freela de site\", \"freela Shopify\"), X/Twitter "
-        "(\"freela dev\", \"procuro programador\"), grupos e comunidades públicas (Discord, Telegram, Facebook, "
-        "Reddit r/brdev e r/programacao), de site, loja, automação, integração ou correção de bug. Traga o "
-        "post com o link dele e como falar com quem postou. " + _A_FUNDO,
-    ),
+    _web_posts(),
     FonteDaCacada(
         "Web · Shopify no Brasil",
         "web",
@@ -270,20 +302,24 @@ def criterios_de_freelas(
     sem_conta = {p.casefold() for p in plataformas_sem_conta}
     logados = {c.casefold() for c in cobertos}
     pagas = {p.casefold() for p in plataformas_pagas}
+    recentes, fora, internacional, posts = (
+        _buscas_do_nicho(nicho) if nicho.strip() else (_RECENTES, _FORA_DAS_GRANDES, _INTERNACIONAL, _POSTS)
+    )
     trocas = {
         FONTES_DE_FREELA_RAPIDO.index(original): nova
         for original, nova in (
-            (_web_recentes(True), _web_recentes(WORKANA not in sem_conta, NOVENTA_E_NOVE not in logados)),
-            (_web_internacional(True), _web_internacional(PEOPLEPERHOUR not in sem_conta)),
+            (_web_recentes(True), _web_recentes(WORKANA not in sem_conta, NOVENTA_E_NOVE not in logados, recentes)),
+            (_web_internacional(True), _web_internacional(PEOPLEPERHOUR not in sem_conta, internacional)),
             (
                 _web_fora_das_grandes(True),
-                _web_fora_das_grandes(WORKANA not in sem_conta, VINTEPILA in logados, FREELANCER_BR in pagas),
+                _web_fora_das_grandes(WORKANA not in sem_conta, VINTEPILA in logados, FREELANCER_BR in pagas, fora),
             ),
+            (_web_posts(), _web_posts(posts)),
         )
     }
     do_modo = [trocas.get(i, fonte) for i, fonte in enumerate(FONTES_DE_FREELA_RAPIDO)]
     if nicho.strip():
-        do_modo = _buscas_do_freelancer_no_nicho(do_modo, nicho)
+        do_modo = [f for f in _buscas_do_freelancer_no_nicho(do_modo, nicho) if f is None or f.nome != NOME_DOS_BOUNTIES]
     fontes = dele + [fonte for fonte in do_modo if fonte is not None and fonte.nome.casefold() not in nomes]
     procuro = f"{pedido_de_freelas(nicho)}\n\n{criterios.procuro}".rstrip()
     return replace(criterios, fontes=tuple(fontes), procuro=procuro)
