@@ -15,3 +15,7 @@ Os passos novos de `docs/smoke-jornal.md`, feitos por ele:
 
 Se o ticket 01 não conseguiu provar a escrita pela página (passo 4 da sonda), o passo 1 aqui é
 essa prova.
+
+## Comments
+
+- 2026-10-08 — Passo 1 provado: ele tocou nas três aulas de 07/10 no celular e o banco da página guardou (lido de volta pela leitura headless). Passo 2 falhou na edição de 08/10 por um defeito no leitor (ticket 04, corrigido no mesmo dia); a prova do passo 2 fica para a próxima edição.

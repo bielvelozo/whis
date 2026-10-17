@@ -76,6 +76,13 @@ def test_tres_leituras_reais_viram_documentos_sem_cursor():
     assert [d["id"] for d in pagina.documentos] == ["2026-10-06-carros-1", "2026-10-06-carros-2", "2026-10-06-negocios"]
 
 
+def test_leituras_gravadas_pela_pagina_vem_com_aviso_antes_e_valem():
+    pagina = interpretar_resultado(fixture("leituras-gravadas-pela-pagina.txt"))
+
+    assert pagina.colecao == "leituras" and pagina.cursor is None
+    assert leituras_de(pagina.documentos).keys() == {"2026-10-07-carros-1", "2026-10-07-carros-2", "2026-10-07-negocios"}
+
+
 def test_so_a_aula_marcada_como_lida_conta():
     documentos = interpretar_resultado(fixture("leituras-tres.txt")).documentos
 

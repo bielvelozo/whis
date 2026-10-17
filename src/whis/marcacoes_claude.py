@@ -35,12 +35,15 @@ LIMITE_POR_PAGINA = 1000
 COLECAO_DAS_LEITURAS = "leituras"
 COLECAO_DAS_RESPOSTAS = "respostas"
 
-_VAZIA = re.compile(r'\ANo documents matched in collection "(?P<colecao>[^"]+)"\.\s*\Z')
+#: Linhas, não começo do texto: quando foi a página quem gravou (o toque dele), a ferramenta põe
+#: antes `<artifact-content-authored-by-others/>` e um aviso de conteúdo de terceiros.
+_VAZIA = re.compile(r'^No documents matched in collection "(?P<colecao>[^"]+)"\.\s*\Z', re.M)
 _SEM_BANCO = re.compile(
-    r"\Adb read failed \(invalid-argument\): this artifact's current published version does not "
-    r"declare the database capability"
+    r"^db read failed \(invalid-argument\): this artifact's current published version does not "
+    r"declare the database capability",
+    re.M,
 )
-_CABECALHO = re.compile(r'\A\d+ documents? from collection "(?P<colecao>[^"]+)":')
+_CABECALHO = re.compile(r'^\d+ documents? from collection "(?P<colecao>[^"]+)":', re.M)
 _INICIO = "=== BEGIN ARTIFACT DB"
 _FIM = "=== END ARTIFACT DB"
 _CURSOR = re.compile(r'^next_cursor: "(?P<cursor>[^"]+)"', re.M)
@@ -62,13 +65,13 @@ class PaginaDoBanco:
 def interpretar_resultado(texto: str) -> PaginaDoBanco:
     """Lê um resultado da `ArtifactData`. Levanta `ErroDeMarcacoes` fora do formato."""
     texto = (texto or "").strip()
-    if _SEM_BANCO.match(texto):
+    if _SEM_BANCO.search(texto):
         return PaginaDoBanco(None)
-    vazia = _VAZIA.match(texto)
+    vazia = _VAZIA.search(texto)
     if vazia:
         return PaginaDoBanco(vazia["colecao"])
-    cabecalho = _CABECALHO.match(texto)
-    if not cabecalho or _INICIO not in texto or _FIM not in texto:
+    cabecalho = _CABECALHO.search(texto)
+    if not cabecalho or _INICIO not in texto[cabecalho.end():] or _FIM not in texto:
         raise ErroDeMarcacoes(f"A leitura do banco voltou fora do formato: {texto[:200]!r}")
     miolo = texto.split(_INICIO, 1)[1].split("\n", 1)[1].split(_FIM, 1)[0]
     documentos = []
