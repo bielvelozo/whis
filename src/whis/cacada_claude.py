@@ -337,6 +337,9 @@ Como enviar, por site:
 proposta por ~15 dias). A amostra vai como anexo (print ou PDF), não como link.
 - 99Freelas: link externo só para mostrar portfólio/amostra, sem contato. Projeto novo fica 24 h só \
 para assinantes.
+- Freelancer.com: lance pelo formulário do projeto; no texto, nem contato nem link externo. A peça do \
+portfólio entra pelo nome ("the Inkly demo store in my portfolio"), porque ela está nos itens de \
+portfólio do perfil dele no site.
 - Upwork: link de portfólio/amostra pode; contato fora da plataforma antes do contrato, não. Cliente \
 que pede amostra grátis é alerta.
 - LinkedIn: ele mesmo se candidata, nunca automático; ele não quer nada que os colegas vejam.
@@ -726,8 +729,8 @@ diz que ele já mostra nos perfis públicos.
 semana; vaga: vazio.
 - "proposta": a proposta ou carta pronta para colar, no idioma da oportunidade, 100 a 180 palavras: \
 abre citando o pedido; mostra que entendeu o problema; conta em prosa como começaria; uma prova real \
-do perfil (no freela, a peça de "prova" com o link); preço e prazo (freela); fecha com UMA pergunta. \
-Sem link de contato.
+do perfil (no freela, a peça de "prova", com o link onde o site deixa e só pelo nome no Freelancer.com \
+e na Workana); preço e prazo (freela); fecha com UMA pergunta. Sem link de contato.
 - "prova": {_PROVA}
 - "formulario": as respostas prontas para as perguntas que o formulário desta candidatura deve fazer, \
 no idioma da oportunidade, uma por linha no formato "Pergunta: resposta", cada resposta inteira numa \
