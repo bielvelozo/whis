@@ -236,3 +236,8 @@ def test_a_chave_do_botao_cabe_no_telegram():
     chave = agencias_email.chave_do_toque("comercial@checkcommerce.com.br")
 
     assert chave.startswith(agencias_email.PREFIXO_DO_TOQUE) and len(chave.encode()) <= 64
+
+
+
+def test_o_pedido_do_email_lembra_do_site_do_portfolio():
+    assert "Site do portfólio" in agencias_email.SISTEMA_DO_EMAIL

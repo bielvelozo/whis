@@ -407,7 +407,8 @@ que oferece). Nada inventado.
 - Apresenta ele numa frase, como nos exemplos: desenvolvedor Shopify em Matão (SP) que, desde março, cuida do tema \
 de uma loja Shopify Plus. Nunca diga o nome da loja nem da empresa em que ele trabalha.
 - Liga a peça do PORTFÓLIO que mais casa com a agência, com o link copiado exatamente (o vídeo e o GitHub dos \
-exemplos também valem).
+exemplos também valem). Quando fizer sentido mostrar o todo, ponha também o "Site do portfólio" da lista, que \
+reúne as peças com vídeo.
 - Diz que ele trabalha à noite e nos fins de semana, com o escopo combinado antes.
 - Termina com UMA pergunta: se eles terceirizam esse tipo de trabalho. Assina, cada um numa linha: "Abraço,", \
 "Gabriel Velozo", "github.com/bielvelozo".

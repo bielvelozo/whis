@@ -1013,6 +1013,12 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
             _log.exception("O lembrete às agências falhou nesta rodada.")
             print(f"O lembrete às agências falhou nesta rodada: {erro}")
             saida = SAIDA_PARCIAL
+        try:
+            _lances_do_freelancer(configuracao, lidas)
+        except Exception as erro:  # noqa: BLE001 — os lances são olhados de novo na próxima hora
+            _log.exception("A vigia dos lances do Freelancer.com falhou nesta rodada.")
+            print(f"A vigia dos lances do Freelancer.com falhou nesta rodada: {erro}")
+            saida = SAIDA_PARCIAL
     return saida
 
 
@@ -1028,6 +1034,37 @@ def _lembrete_das_agencias(configuracao: Configuracao) -> None:
     )
     for enviado in lembradas:
         print(f"Lembrete de follow-up da {enviado.nome} ({enviado.email}) no celular.")
+
+
+def _lances_do_freelancer(configuracao: Configuracao, lidas) -> None:
+    """Uma vez por dia, os lances que sobram no Freelancer.com, num projeto que a vigia acabou de ler; quando voltam, o celular avisa."""
+    from . import celular, lances_do_freelancer
+    from .corrida import cacada_correndo, pasta_da_cacada
+    from .fontes_da_cacada import e_do_freelancer
+    from .instancia import OutraInstancia, Trava
+    from .navegador_logado import NavegadorLogado
+    from .propostas_auto import NOME_DA_TRAVA
+
+    projeto = next((oportunidade.link for oportunidade in lidas if e_do_freelancer(oportunidade.link)), "")
+    if not projeto or cacada_correndo(pasta_da_cacada()):
+        return
+    trava = Trava(pasta_da_cacada() / NOME_DA_TRAVA)
+    try:
+        trava.adquirir()
+    except OutraInstancia:
+        return
+    try:
+        lances = lances_do_freelancer.conferir(
+            abrir_sessao=lambda: NavegadorLogado().abrir(),
+            estado=lances_do_freelancer.caminho_do_estado(),
+            celular=lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes),
+            projeto=projeto,
+            pasta_do_formulario=lances_do_freelancer.pasta_do_formulario(),
+        )
+    finally:
+        trava.liberar()
+    if lances is not None:
+        print(f"Lances do Freelancer.com: {lances[0]} de {lances[1]}.")
 
 
 def _emails_das_agencias(configuracao: Configuracao) -> None:
