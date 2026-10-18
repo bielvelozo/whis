@@ -21,6 +21,7 @@ import re
 import unicodedata
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from .oportunidades import FREELA, Oportunidade, texto_limpo
@@ -123,6 +124,16 @@ class SessaoLogada:
                 self._logado[site] = False
         return self._logado[site]
 
+    def preencher_proposta_da_99freelas(
+        self, url: str, *, oferta: int, dias: int, texto: str, enviar: bool, pasta_das_fotos: Path | None = None
+    ) -> Preenchimento:
+        """Preenche o formulário `/project/bid/<slug>` e confere o que os campos mostram; com `enviar`, clica.
+
+        Antes do clique, campo que não ficou com o valor pedido levanta `SemNavegador` e nada é
+        enviado. Depois do clique nada levanta: quem chama confere na página do projeto.
+        """
+        raise SemNavegador("este navegador não preenche formulário")
+
     def fechar(self) -> None:
         return None
 
@@ -194,6 +205,47 @@ class _SessaoDoChrome(SessaoLogada):
         self._pagina = self._contexto.pages[0] if self._contexto.pages else self._contexto.new_page()
         _log.info("Caçada: o Chrome da caçada abriu (fora da tela).")
 
+    def preencher_proposta_da_99freelas(
+        self, url: str, *, oferta: int, dias: int, texto: str, enviar: bool, pasta_das_fotos: Path | None = None
+    ) -> Preenchimento:
+        self.html(url)
+        pagina = self._pagina
+        fotos: list[str] = []
+        try:
+            campo = pagina.locator("#oferta")
+            campo.click()
+            campo.press("Control+A")
+            campo.press_sequentially(f"{oferta * 100}")
+            if _reais(campo.input_value()) != oferta:
+                campo.fill(f"{oferta},00")
+            pagina.locator("#duracao-estimada").fill(str(dias))
+            pagina.locator("#proposta").fill(texto)
+            lidos = Preenchimento(
+                oferta=campo.input_value(),
+                dias=pagina.locator("#duracao-estimada").input_value(),
+                caracteres=len(pagina.locator("#proposta").input_value()),
+            )
+            fotos += _foto(pagina, pasta_das_fotos, "antes")
+        except Exception as erro:  # noqa: BLE001 — formulário que não abre não envia nada
+            raise SemNavegador(f"o formulário não abriu como esperado: {_motivo(erro)}") from erro
+        if _reais(lidos.oferta) != oferta or lidos.dias != str(dias) or lidos.caracteres != len(texto):
+            raise SemNavegador(
+                f"o formulário não ficou com o pedido (oferta {lidos.oferta!r}, {lidos.dias!r} dias, "
+                f"{lidos.caracteres} de {len(texto)} caracteres)"
+            )
+        if not enviar:
+            return Preenchimento(lidos.oferta, lidos.dias, lidos.caracteres, fotos=tuple(fotos))
+        try:
+            pagina.locator("#btnConcluirEnvioProposta").click()
+            try:
+                pagina.wait_for_load_state("networkidle", timeout=15_000)
+            except Exception:  # noqa: BLE001 — a conferência é na página do projeto
+                pass
+            fotos += _foto(pagina, pasta_das_fotos, "depois")
+        except Exception as erro:  # noqa: BLE001 — depois do clique, quem confere é quem chamou
+            _log.warning("Depois de clicar em enviar na 99Freelas: %s", _motivo(erro))
+        return Preenchimento(lidos.oferta, lidos.dias, lidos.caracteres, enviada=True, fotos=tuple(fotos))
+
     def fechar(self) -> None:
         if self._contexto is not None:
             try:
@@ -210,6 +262,27 @@ class _SessaoDoChrome(SessaoLogada):
             except Exception:  # noqa: BLE001 — o processo do Playwright sai de todo jeito
                 pass
         self._gerente = None
+
+
+def _foto(pagina, pasta: Path | None, quando: str) -> list[str]:
+    if pasta is None:
+        return []
+    try:
+        pasta.mkdir(parents=True, exist_ok=True)
+        arquivo = pasta / f"{datetime.now():%Y%m%d-%H%M%S}-{quando}.png"
+        pagina.screenshot(path=str(arquivo), full_page=True)
+        return [str(arquivo)]
+    except Exception as erro:  # noqa: BLE001 — a foto é só a prova visual
+        _log.info("A foto do formulário (%s) não saiu: %s", quando, _motivo(erro))
+        return []
+
+
+def _reais(texto: str) -> int | None:
+    """`"50,00"` ou `"1.250,00"` em reais inteiros; centavos que não são zero não valem."""
+    casou = re.fullmatch(r"\s*(?:R\$\s*)?([\d.]+),(\d{2})\s*", (texto or "").replace("\xa0", " "))
+    if not casou or casou.group(2) != "00":
+        return None
+    return int(casou.group(1).replace(".", ""))
 
 
 def motivo_do_chrome(texto: str) -> str:
@@ -285,10 +358,18 @@ class PaginaDa99Freelas:
     logado: bool
     situacao: str
     propostas: int | None = None
+    orcamento: str = ""
+    valor_minimo: int | None = None
+    publicada: datetime | None = None
+    cliente: str = ""
 
 
 def ler_99freelas(pagina: str) -> PaginaDa99Freelas:
-    """O projeto da 99Freelas: aberto, cancelado, em andamento (freelancer escolhido), já proposto ou fechado."""
+    """O projeto da 99Freelas: aberto, cancelado, em andamento (freelancer escolhido), já proposto ou fechado.
+
+    Também o orçamento, o valor mínimo da proposta, a data de publicação (hora local, sem fuso)
+    e o nome do cliente.
+    """
     botao = re.search(r'<a\b[^>]*href="/project/bid/[^"]*"[^>]*>\s*([^<]*)', pagina, re.I)
     if re.search(r'class="[^"]*\bbtn\b[^"]*\bstatus-5\b', pagina):
         situacao = CANCELADO
@@ -301,7 +382,23 @@ def ler_99freelas(pagina: str) -> PaginaDa99Freelas:
     else:
         situacao = FECHADO
     propostas = re.search(r"Propostas:\s*(\d+)", texto_da_pagina(pagina))
-    return PaginaDa99Freelas(logado_no_html(NOVENTA_E_NOVE, pagina), situacao, int(propostas.group(1)) if propostas else None)
+    orcamento = re.search(r"<th>\s*Or\S*amento:\s*</th>\s*<td[^>]*>(.*?)</td>", pagina, re.S | re.I)
+    minimo = re.search(r'class="valor-minimo"[^>]*>(.*?)</td>', pagina, re.S)
+    data = re.search(r'title="Data da publica\S*"[^>]*>\s*(\d{2})/(\d{2})/(\d{4}) \S+ (\d{2}):(\d{2})', pagina)
+    cliente = re.search(r'class="info-usuario cliente".*?<span class="name">(.*?)</span>', pagina, re.S)
+    publicada = None
+    if data:
+        dia, mes, ano, hora, minuto = (int(parte) for parte in data.groups())
+        publicada = datetime(ano, mes, dia, hora, minuto)
+    return PaginaDa99Freelas(
+        logado=logado_no_html(NOVENTA_E_NOVE, pagina),
+        situacao=situacao,
+        propostas=int(propostas.group(1)) if propostas else None,
+        orcamento=texto_limpo(orcamento.group(1)) if orcamento else "",
+        valor_minimo=_reais(texto_limpo(minimo.group(1))) if minimo else None,
+        publicada=publicada,
+        cliente=texto_limpo(cliente.group(1)) if cliente else "",
+    )
 
 
 @dataclass(frozen=True)
@@ -309,6 +406,7 @@ class PropostaDa99Freelas:
     custo: int | None = None
     restantes: int | None = None
     exclusivo: bool = False
+    oferta_minima: int | None = None
 
     @property
     def saldo(self) -> int | None:
@@ -320,11 +418,24 @@ def ler_proposta_da_99freelas(pagina: str) -> PropostaDa99Freelas:
     texto = texto_da_pagina(pagina)
     custo = re.search(r"requer (\d+) conex", texto)
     restantes = re.search(r"terá (\d+) conex\S* restantes", texto)
+    minima = re.search(r"Oferta m\S*nima:\s*R\$\s*([\d.]+,\d{2})", texto)
     return PropostaDa99Freelas(
         custo=int(custo.group(1)) if custo else None,
         restantes=int(restantes.group(1)) if restantes else None,
         exclusivo="projetos exclusivos, assine" in texto,
+        oferta_minima=_reais(minima.group(1)) if minima else None,
     )
+
+
+@dataclass(frozen=True)
+class Preenchimento:
+    """O que os campos do formulário mostraram depois de preenchidos, e se o Whis clicou em enviar."""
+
+    oferta: str
+    dias: str
+    caracteres: int
+    enviada: bool = False
+    fotos: tuple[str, ...] = ()
 
 
 CANDIDATOS_DA_VINTEPILA = 5

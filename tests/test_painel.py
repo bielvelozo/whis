@@ -86,7 +86,7 @@ def test_campos_cobrem_toda_chave_do_modelo_e_nenhuma_a_mais():
     do_modelo |= {"[daily].ativa", "[daily].horarios"}
 
     assert {campo.caminho for campo in CAMPOS} == do_modelo
-    assert len(CAMPOS) == 54
+    assert len(CAMPOS) == 62
 
 
 def test_os_oito_segredos_os_tres_caminhos_e_as_listas_tem_o_tipo_certo():
@@ -105,11 +105,13 @@ def test_os_oito_segredos_os_tres_caminhos_e_as_listas_tem_o_tipo_certo():
         "[noticias].ativa",
         "[cacada].enviar_sozinho",
         "[cacada].pacote_completo",
+        "[cacada].propostas_auto_exclusivos",
     }
     assert por_tipo[Tipo.INTEIRO] == {
         "[busca].maximo_de_notas", "[git].profundidade", "[cacada].teto_semanal", "[cacada].maximo_de_pacotes",
         "[linkedin].posts_por_vez", "[cacada].maximo_de_envios", "[cacada].limite_minutos", "[cacada].limite_plano",
-        "[cacada].encaixe_minimo_tentar", "[cacada].piso_freela",
+        "[cacada].encaixe_minimo_tentar", "[cacada].piso_freela", "[cacada].propostas_auto_horas",
+        "[cacada].propostas_auto_max_propostas", "[cacada].propostas_auto_por_dia", "[cacada].propostas_auto_reserva",
     }
     assert por_tipo[Tipo.HORA] == {
         "[diario].inicio_do_dia", "[diario].hora_da_tarefa", "[noticias].horario", "[granola].horario", "[cacada].hora_do_lembrete",

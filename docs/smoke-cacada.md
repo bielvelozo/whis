@@ -229,6 +229,25 @@ diante, cada projeto novo de Shopify na 99Freelas ou no Freelancer.com vira um t
 rodada, e um "Mais N"). Atenção: `whis windows --remover --vigia-freelas`, como os outros
 `--remover`, também tira a bandeja do logon.
 
+## Passo 7c — O celular e a proposta automática
+
+1. No Telegram, o @BotFather (`/newbot`) cria o bot; mande `/start` para ele. Depois:
+
+```
+python -m whis celular
+```
+
+**Sucesso:** pede o token sem mostrar, diz "Bot @... encontrado", acha o chat e grava `[celular]`; chega
+"Pronto: o Whis vai te avisar aqui..." no celular. `python -m whis celular --teste` manda outra.
+
+2. `python -m whis vigia-freelas --fakes` agora também manda ao celular um *Ensaio: esta proposta sairia
+agora na 99Freelas* com um projeto falso (sem Claude, sem Chrome, vault temporário).
+
+3. Entre na 99Freelas pelo `python -m whis navegador` e **feche o Chrome**. Com
+`[cacada].propostas_auto = "ensaio"`, cada rodada da vigia escreve a proposta dos projetos novos que
+passam nas travas, preenche o formulário sem clicar e manda o texto ao celular; as notas ficam em
+`cacada/propostas-auto/` e o dia em `cacada/propostas-auto.md`. Só com `"ligado"` ela envia.
+
 ## Passo 8 — O lembrete da véspera
 
 ```

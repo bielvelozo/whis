@@ -34,15 +34,43 @@ REACT = Oportunidade.nova(
 )
 
 
-def _rodar(estado: Path, oportunidades, nicho: str = "shopify"):
+def _rodar(estado: Path, oportunidades, nicho: str = "shopify", celular: list[str] | None = None):
     avisos: list[tuple[str, str, tuple[str, str] | None]] = []
 
     def avisar(titulo, texto, *, botao=None):
         avisos.append((titulo, texto, botao))
         return True
 
-    rodada = vigiar(nicho, ler=lambda _nicho: list(oportunidades), estado=estado, avisar=avisar, agora=AGORA)
+    no_celular = (lambda texto: celular.append(texto) or True) if celular is not None else None
+    rodada = vigiar(nicho, ler=lambda _nicho: list(oportunidades), estado=estado, avisar=avisar, celular=no_celular, agora=AGORA)
     return rodada, avisos
+
+
+def test_o_projeto_novo_do_freelancer_vai_tambem_para_o_celular_e_o_da_99freelas_nao(tmp_path: Path):
+    estado = tmp_path / "vigia.json"
+    estado.write_text("{}", encoding="utf-8")
+    celular: list[str] = []
+
+    _, avisos = _rodar(estado, [TEMA, CHECKOUT], celular=celular)
+
+    assert len(avisos) == 2
+    [mensagem] = celular
+    assert mensagem.splitlines()[0] == "Freela de Shopify novo no Freelancer.com"
+    assert "Checkout Shopify com frete" in mensagem and "USD 100 - 250" in mensagem and "Propostas: 3" in mensagem
+    assert mensagem.splitlines()[-1] == CHECKOUT.link
+
+
+def test_no_celular_nao_ha_corte_de_poucos_por_rodada(tmp_path: Path):
+    estado = tmp_path / "vigia.json"
+    estado.write_text("{}", encoding="utf-8")
+    novos = [
+        _freela(f"Tema Shopify {n}", f"https://www.freelancer.com/projects/shopify/tema-{n}", faixa="USD 30 - 250") for n in range(5)
+    ]
+    celular: list[str] = []
+
+    _rodar(estado, novos, celular=celular)
+
+    assert len(celular) == 5
 
 
 def test_a_primeira_rodada_so_guarda_o_que_ja_esta_la(tmp_path: Path):
@@ -101,11 +129,14 @@ def test_sem_nicho_a_vigia_nao_roda(arquivo_de_configuracao: Path, capsys: pytes
 
 
 def test_no_modo_de_teste_avisa_um_projeto_falso(
-    arquivo_de_configuracao: Path, toasts, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    arquivo_de_configuracao: Path, toasts, mensagens_no_celular, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
 
     assert main(["vigia-freelas", "--fakes"]) == 0
+
+    [ensaio] = mensagens_no_celular
+    assert ensaio.startswith("Ensaio: esta proposta sairia agora na 99Freelas") and "(teste)" in ensaio
 
     [(titulo, texto, botao)] = toasts
     assert titulo.startswith("Freela de Shopify novo:") and "(teste)" in titulo
@@ -123,7 +154,7 @@ def test_whis_windows_liga_e_desliga_a_vigia_de_freelas(tmp_path: Path, monkeypa
     arquivo.write_text(f'vault = "{tmp_path.as_posix()}"\n[cacada]\nnicho_freela = "shopify"\n', encoding="utf-8")
 
     assert main(["windows", "--vigia-freelas", "--config", str(arquivo)]) == 0
-    assert "Vigia de freelas agendada como 'Whis-Vigia-Freelas': todo dia às 08:00, 11:00" in capsys.readouterr().out
+    assert "Vigia de freelas agendada como 'Whis-Vigia-Freelas': todo dia às 07:00, 08:00, 09:00" in capsys.readouterr().out
     assert main(["windows", "--remover", "--vigia-freelas"]) == 0
     assert "Tarefa 'Whis-Vigia-Freelas' removida do Agendador." in capsys.readouterr().out
     assert chamadas == ["agendar", "desagendar"]
@@ -144,3 +175,50 @@ def test_windows_vigia_freelas_agenda_a_tarefa_nos_horarios(tmp_path: Path):
     texto = " ".join(comandos[-1])
     assert nome == "Whis-Vigia-Freelas" != automacao.NOME_DA_TAREFA_DO_VIGIA
     assert "vigia-freelas --agendada" in texto and "Daily=08:00,Daily=12:30" in texto
+
+
+def _config_da_vigia(tmp_path: Path, extra: str = "") -> Path:
+    arquivo = tmp_path / "config.toml"
+    arquivo.write_text(f'vault = "{(tmp_path / "vault").as_posix()}"\n[cacada]\nnicho_freela = "shopify"\n{extra}', encoding="utf-8")
+    return arquivo
+
+
+def test_com_o_envio_desligado_a_vigia_nao_chama_a_proposta_automatica(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from whis import propostas_auto, vigia_de_freelas
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+    monkeypatch.setattr(propostas_auto, "rodar", lambda *_a, **_k: pytest.fail("a proposta automática rodou desligada"))
+
+    assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path))]) == 0
+
+
+def test_no_ensaio_a_vigia_passa_a_mesma_leitura_para_a_proposta_automatica(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    from whis import propostas_auto, vigia_de_freelas
+
+    chamadas: list[dict] = []
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA, REACT))
+    monkeypatch.setattr(propostas_auto, "rodar", lambda lidas, **opcoes: chamadas.append({"lidas": lidas, **opcoes}) or propostas_auto.Rodada())
+
+    assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, 'propostas_auto = "ensaio"\n'))]) == 0
+
+    [chamada] = chamadas
+    assert chamada["lidas"] == (TEMA, REACT) and chamada["modo"] == "ensaio"
+    assert "nenhum projeto novo da 99Freelas passou nas travas" in capsys.readouterr().out
+
+
+def test_falha_da_proposta_automatica_nao_derruba_a_vigia(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from whis import propostas_auto, vigia_de_freelas
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+
+    def quebrar(*_a, **_k):
+        raise RuntimeError("quebrou")
+
+    monkeypatch.setattr(propostas_auto, "rodar", quebrar)
+
+    assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, 'propostas_auto = "ensaio"\n'))]) == 3

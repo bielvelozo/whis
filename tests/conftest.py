@@ -14,7 +14,7 @@ from pathlib import Path
 
 import pytest
 
-from whis import avisos
+from whis import avisos, celular
 from whis.configuracao import VARIAVEL_DE_AMBIENTE, Configuracao, carregar
 
 
@@ -103,6 +103,23 @@ def toasts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str, tuple[str, s
 
     monkeypatch.setattr(avisos, "avisar", fingir)
     return mostrados
+
+
+#: O `celular.avisar` de verdade, para quem testa o envio com a rede injetada.
+CELULAR_DE_VERDADE = celular.avisar
+
+
+@pytest.fixture(autouse=True)
+def mensagens_no_celular(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Nenhum teste manda mensagem para o Telegram dele: a vigia e o envio caem nesta lista."""
+    mandadas: list[str] = []
+
+    def guardar(_configuracao, texto: str) -> bool:
+        mandadas.append(texto)
+        return True
+
+    monkeypatch.setattr(celular, "avisar", guardar)
+    return mandadas
 
 
 @pytest.fixture(autouse=True)

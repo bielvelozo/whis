@@ -1,0 +1,520 @@
+"""A proposta automática na 99Freelas: travas em Python, o ensaio que não envia e o envio conferido."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+from whis import funil, propostas_auto
+from whis.configuracao import ConfiguracaoInvalida, carregar_texto
+from whis.navegador_logado import (
+    NOVENTA_E_NOVE,
+    PAGINAS_DE_CONFERENCIA,
+    Preenchimento,
+    SemNavegador,
+    SessaoLogada,
+    ler_99freelas,
+    ler_proposta_da_99freelas,
+)
+from whis.oportunidades import FREELA, Oportunidade
+from whis.propostas_auto import (
+    ENSAIO,
+    LIGADO,
+    Contexto,
+    Escrita,
+    Travas,
+    contexto_do_vault,
+    problemas_do_texto,
+    rodar,
+)
+
+FIXTURES = Path(__file__).parent / "fixtures" / "cacada_logada"
+AGORA = datetime(2026, 10, 10, 10, 0, tzinfo=timezone(timedelta(hours=-3)))
+LINK = "https://www.99freelas.com.br/project/sistema-web-para-gerar-mapas-numerologicos-790517"
+FORMULARIO = "https://www.99freelas.com.br/project/bid/sistema-web-para-gerar-mapas-numerologicos-790517"
+TEXTO = (
+    "Olá, Natacha! Mapa pitagórico e triângulo cabalístico saem de regras fixas, então o cuidado maior é "
+    "conferir cada cálculo contra os exemplos que você vai mandar. Eu começaria montando o formulário e o "
+    "cálculo do mapa pitagórico, te mostro com três nomes de teste e depois sigo para o triângulo.\n\n"
+    "Trabalho com JavaScript e PHP todo dia desde 2023, inclusive em páginas que geram resultado na hora.\n\n"
+    "Os exemplos que você tem já vêm com o resultado esperado de cada número?\n\nGabriel"
+)
+
+
+def _fixture(nome: str) -> str:
+    return (FIXTURES / f"99freelas_{nome}.html").read_text(encoding="utf-8")
+
+
+def _projeto(propostas: int = 7) -> str:
+    return _fixture("aberto").replace("<td>200</td>", f"<td>{propostas}</td>", 1)
+
+
+def _ja_proposto() -> str:
+    return _projeto().replace(">Enviar proposta", ">Melhorar proposta", 1)
+
+
+def _formulario(restantes: int = 14) -> str:
+    return _fixture("bid").replace("<b>14 conexões</b>", f"<b>{restantes} conexões</b>", 1)
+
+
+def _freela(
+    link: str = LINK,
+    *,
+    titulo: str = "Sistema web para gerar mapas numerológicos",
+    horas: float = 14,
+    propostas: int = 7,
+    detalhes: str = "",
+    descricao: str = "Cálculo numerológico personalizado com formulário de nome e data de nascimento.",
+) -> Oportunidade:
+    return Oportunidade.nova(
+        tipo=FREELA, fonte="99Freelas", titulo=titulo, link=link, publicada=AGORA - timedelta(hours=horas),
+        descricao=descricao, detalhes=detalhes or f"Desenvolvimento Web | Intermediário | Propostas: {propostas} | Interessados: 9",
+    )
+
+
+class SessaoFake(SessaoLogada):
+    def __init__(self, paginas: dict[str, str], *, depois_de_enviar: dict[str, str] | None = None) -> None:
+        super().__init__()
+        self.paginas = dict(paginas)
+        self.depois_de_enviar = depois_de_enviar or {}
+        self.visitadas: list[str] = []
+        self.preenchidos: list[tuple[str, int, int, str, bool]] = []
+
+    def html(self, url: str) -> str:
+        self.visitadas.append(url)
+        if url not in self.paginas:
+            raise SemNavegador(f"fora do fake: {url}")
+        return self.paginas[url]
+
+    def preencher_proposta_da_99freelas(self, url, *, oferta, dias, texto, enviar, pasta_das_fotos=None):
+        self.preenchidos.append((url, oferta, dias, texto, enviar))
+        if enviar:
+            self.paginas.update(self.depois_de_enviar)
+        return Preenchimento(oferta=f"{oferta},00", dias=str(dias), caracteres=len(texto), enviada=enviar)
+
+
+def _logada(projeto: str | None = None, formulario: str | None = None, **opcoes) -> SessaoFake:
+    return SessaoFake(
+        {
+            PAGINAS_DE_CONFERENCIA[NOVENTA_E_NOVE]: _fixture("aberto"),
+            LINK: projeto if projeto is not None else _projeto(),
+            FORMULARIO: formulario if formulario is not None else _formulario(),
+        },
+        **opcoes,
+    )
+
+
+@dataclass
+class EscritorFake:
+    respostas: list[Escrita] = field(default_factory=lambda: [Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3)])
+    pedidos: list[tuple[str, str, str]] = field(default_factory=list)
+
+    def escrever(self, oportunidade, pagina, contexto, *, corrigir=""):
+        self.pedidos.append((oportunidade.link, pagina, corrigir))
+        return self.respostas[min(len(self.pedidos), len(self.respostas)) - 1]
+
+
+CONTEXTO = Contexto(procuro="Freela por projeto.", sobre_mim="- Anos: 3", perfil="Full stack.", portfolio=(), exemplos=())
+
+
+def _rodar(
+    tmp_path: Path,
+    oportunidades,
+    *,
+    modo: str = ENSAIO,
+    sessao: SessaoLogada | None = None,
+    escritor: EscritorFake | None = None,
+    travas: Travas | None = None,
+    agora: datetime = AGORA,
+    publica=None,
+    contexto: Contexto = CONTEXTO,
+):
+    celular: list[str] = []
+    escritor = escritor or EscritorFake()
+    rodada = rodar(
+        list(oportunidades),
+        modo=modo,
+        travas=travas or Travas(),
+        vault=tmp_path / "vault",
+        escritor=escritor,
+        contexto=contexto,
+        sessao=sessao,
+        publica=publica or (lambda url: (_ for _ in ()).throw(AssertionError(f"página pública pedida: {url}"))),
+        estado=tmp_path / "propostas-auto.json",
+        celular=lambda texto: celular.append(texto) or True,
+        agora=agora,
+        dormir=lambda _segundos: None,
+    )
+    return rodada, celular, escritor
+
+
+def _nota(tmp_path: Path) -> str:
+    return (tmp_path / "vault" / "cacada" / "propostas-auto" / "sistema-web-para-gerar-mapas-numerologicos-790517.md").read_text(
+        encoding="utf-8"
+    )
+
+
+# -- os leitores das páginas -------------------------------------------------------------------
+
+
+def test_a_pagina_do_projeto_diz_orcamento_valor_minimo_data_e_cliente():
+    pagina = ler_99freelas(_fixture("aberto"))
+
+    assert (pagina.orcamento, pagina.valor_minimo, pagina.cliente) == ("Aberto", 50, "Natacha")
+    assert pagina.publicada == datetime(2026, 10, 9, 19, 32)
+
+
+def test_o_formulario_diz_a_oferta_minima():
+    assert ler_proposta_da_99freelas(_fixture("bid")).oferta_minima == 50
+
+
+# -- o ensaio ---------------------------------------------------------------------------------------
+
+
+def test_o_ensaio_escreve_a_nota_preenche_sem_clicar_e_avisa_no_celular(tmp_path: Path):
+    sessao = _logada()
+
+    rodada, celular, escritor = _rodar(tmp_path, [_freela()], sessao=sessao)
+
+    [resultado] = rodada.resultados
+    assert resultado.situacao == propostas_auto.NO_ENSAIO and resultado.preco == 50 and resultado.prazo_dias == 3
+    assert sessao.preenchidos == [(FORMULARIO, 50, 3, TEXTO, False)]
+    nota = _nota(tmp_path)
+    assert "status: ensaio em 2026-10-10 (R$ 50, 3 dias)" in nota and 'preco: "R$ 50"' in nota and TEXTO in nota
+    [mensagem] = celular
+    assert mensagem.startswith("Ensaio: esta proposta sairia agora na 99Freelas (1 de 3 hoje)")
+    assert "Sistema web para gerar mapas numerológicos" in mensagem and "Orçamento: Aberto" in mensagem
+    assert "7 propostas até agora" in mensagem and "R$ 50 em 3 dias" in mensagem and LINK in mensagem and TEXTO in mensagem
+    assert "Natacha" in escritor.pedidos[0][1]
+    assert funil.ler_mandadas(tmp_path / "vault") == []
+
+
+def test_o_ensaio_deslogado_le_a_pagina_publica_e_nao_preenche(tmp_path: Path):
+    publicas: list[str] = []
+
+    def publica(url: str) -> str:
+        publicas.append(url)
+        return _projeto().replace("header-menu-logged", "header-menu")
+
+    rodada, celular, _ = _rodar(tmp_path, [_freela()], sessao=None, publica=publica)
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.NO_ENSAIO]
+    assert publicas == [LINK] and rodada.resultados[0].preco == 50
+    assert len(celular) == 1
+
+
+# -- o envio ----------------------------------------------------------------------------------------
+
+
+def test_ligado_envia_e_so_grava_enviada_depois_do_melhorar_proposta(tmp_path: Path):
+    sessao = _logada(depois_de_enviar={LINK: _ja_proposto()})
+
+    rodada, celular, _ = _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=sessao)
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.ENVIADA]
+    assert sessao.preenchidos[0][-1] is True
+    assert "status: enviada em 2026-10-10 (R$ 50, 3 dias)" in _nota(tmp_path)
+    assert celular[0].startswith("Proposta enviada na 99Freelas (1 de 3 hoje)")
+    [mandada] = funil.ler_mandadas(tmp_path / "vault")
+    assert mandada.link == LINK and mandada.esperando
+
+
+def test_sem_confirmacao_vira_incerta_avisa_e_nunca_reenvia(tmp_path: Path):
+    sessao = _logada()
+
+    rodada, celular, _ = _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=sessao)
+    _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=sessao)
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.INCERTA]
+    assert len(sessao.preenchidos) == 1
+    assert "confira" in celular[0] and LINK in celular[0]
+    assert "status: incerta" in _nota(tmp_path)
+
+
+def test_ligado_deslogado_nao_envia_e_avisa_uma_vez_por_dia(tmp_path: Path):
+    sessao = SessaoFake({PAGINAS_DE_CONFERENCIA[NOVENTA_E_NOVE]: _fixture("deslogado"), LINK: _projeto()})
+
+    rodada, celular, escritor = _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=sessao)
+    _, de_novo, _ = _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=sessao)
+
+    assert rodada.resultados == () and "deslogado" in rodada.parou
+    assert escritor.pedidos == [] and sessao.preenchidos == []
+    assert len(celular) == 1 and "whis navegador" in celular[0] and de_novo == []
+
+
+# -- as travas --------------------------------------------------------------------------------------
+
+
+def test_velho_cheio_de_propostas_ou_exclusivo_nem_abre_a_pagina(tmp_path: Path):
+    sessao = _logada()
+    velho = _freela("https://www.99freelas.com.br/project/velho-1", horas=50)
+    cheio = _freela("https://www.99freelas.com.br/project/cheio-2", propostas=80)
+    exclusivo = _freela(
+        "https://www.99freelas.com.br/project/exclusivo-3",
+        detalhes="Projeto exclusivo para assinantes da 99Freelas: abre para quem não assina em 11/10 às 08:00 | Propostas: 0",
+    )
+    do_freelancer = Oportunidade.nova(
+        tipo=FREELA, fonte="Freelancer.com", titulo="Shopify", link="https://www.freelancer.com/projects/shopify/x", detalhes="Propostas: 1"
+    )
+
+    rodada, celular, escritor = _rodar(tmp_path, [velho, cheio, exclusivo, do_freelancer], sessao=sessao)
+
+    assert rodada.resultados == () and escritor.pedidos == [] and sessao.visitadas == [] and celular == []
+
+
+def test_as_horas_contam_de_quando_o_projeto_abre_para_quem_nao_assina(tmp_path: Path):
+    aberto_ha_pouco = _freela("https://www.99freelas.com.br/project/aberto-1", horas=40)
+    aberto_ha_muito = _freela("https://www.99freelas.com.br/project/aberto-2", horas=49)
+    sessao = SessaoFake({PAGINAS_DE_CONFERENCIA[NOVENTA_E_NOVE]: _fixture("aberto")})
+
+    candidatos = propostas_auto._candidatos(
+        [aberto_ha_pouco, aberto_ha_muito], Travas(), propostas_auto._Estado(tmp_path / "e.json"), tmp_path / "vault", AGORA, ""
+    )
+    assinante = propostas_auto._candidatos(
+        [aberto_ha_pouco], Travas(exclusivos=True), propostas_auto._Estado(tmp_path / "e.json"), tmp_path / "vault", AGORA, ""
+    )
+
+    assert [o.link for o in candidatos] == [aberto_ha_pouco.link] and assinante == [] and sessao.visitadas == []
+
+
+def test_a_pagina_confere_de_novo_as_propostas(tmp_path: Path):
+    sessao = _logada(projeto=_projeto(propostas=85))
+
+    rodada, _, escritor = _rodar(tmp_path, [_freela(propostas=3)], sessao=sessao)
+
+    assert rodada.resultados == () and escritor.pedidos == []
+
+
+def test_ja_proposto_na_pagina_e_pulado_sem_claude(tmp_path: Path):
+    rodada, _, escritor = _rodar(tmp_path, [_freela()], sessao=_logada(projeto=_ja_proposto()))
+
+    assert [(r.situacao, r.motivo) for r in rodada.resultados] == [(propostas_auto.PULADA, "você já propôs")]
+    assert escritor.pedidos == []
+
+
+def test_ja_mandada_no_vault_nem_abre_a_pagina(tmp_path: Path):
+    pasta = tmp_path / "vault" / "cacada" / "2026-10-12-1832-propostas"
+    pasta.mkdir(parents=True)
+    (pasta / "mapas.md").write_text(f"---\nplataforma: 99Freelas\nlink: {LINK}\nstatus: enviada em 2026-10-09 (R$ 50, 2 dias)\n---\n\nOlá!\n", encoding="utf-8")
+    sessao = _logada()
+
+    rodada, _, escritor = _rodar(tmp_path, [_freela()], sessao=sessao)
+
+    assert rodada.resultados == () and escritor.pedidos == [] and sessao.visitadas == []
+
+
+def test_no_maximo_tantas_por_dia_e_o_dia_seguinte_libera(tmp_path: Path):
+    outro = "https://www.99freelas.com.br/project/landing-page-de-advocacia-790999"
+    sessao = _logada()
+    sessao.paginas[outro] = (
+        _projeto()
+        .replace("sistema-web-para-gerar-mapas-numerologicos-790517", "landing-page-de-advocacia-790999")
+        .replace("09/10/2026 às 19:32", "10/10/2026 às 23:30")
+    )
+    sessao.paginas[outro.replace("/project/", "/project/bid/")] = _formulario()
+    travas = Travas(por_dia=1)
+
+    primeira, _, _ = _rodar(tmp_path, [_freela(), _freela(outro)], sessao=sessao, travas=travas)
+    mesmo_dia, _, escritor = _rodar(tmp_path, [_freela(outro)], sessao=sessao, travas=travas, agora=AGORA + timedelta(hours=1))
+    amanha, _, _ = _rodar(tmp_path, [_freela(outro, horas=1)], sessao=sessao, travas=travas, agora=AGORA + timedelta(hours=16))
+
+    assert len(primeira.resultados) == 1 and "cota" in primeira.parou
+    assert mesmo_dia.resultados == () and escritor.pedidos == []
+    assert [r.link for r in amanha.resultados] == [outro]
+
+
+def test_conexoes_abaixo_da_reserva_param_antes_do_claude_com_um_aviso_por_dia(tmp_path: Path):
+    sessao = _logada(formulario=_formulario(restantes=2))
+
+    rodada, celular, escritor = _rodar(tmp_path, [_freela()], sessao=sessao)
+    _, de_novo, _ = _rodar(tmp_path, [_freela()], sessao=sessao)
+
+    assert rodada.resultados == () and "conexões" in rodada.parou and escritor.pedidos == []
+    assert len(celular) == 1 and "2 conexões" in celular[0] and de_novo == []
+
+
+def test_o_que_ele_nao_entrega_fica_guardado_e_nao_volta_ao_claude(tmp_path: Path):
+    escritor = EscritorFake(respostas=[Escrita(entrega=False, motivo="é vídeo com avatar, não é desenvolvimento")])
+
+    rodada, celular, _ = _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
+    _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.NAO_ENTREGA]
+    assert len(escritor.pedidos) == 1 and celular == []
+
+
+def test_texto_com_problema_volta_uma_vez_ao_claude_com_o_motivo(tmp_path: Path):
+    ruim = Escrita(entrega=True, motivo="dá", texto=TEXTO.replace("Gabriel", "Gabriel\ngabriel@exemplo.com"), prazo_dias=3)
+    escritor = EscritorFake(respostas=[ruim, Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3)])
+
+    rodada, _, _ = _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.NO_ENSAIO]
+    assert escritor.pedidos[0][2] == "" and "e-mail" in escritor.pedidos[1][2]
+
+
+def test_texto_que_continua_com_problema_e_pulado(tmp_path: Path):
+    ruim = Escrita(entrega=True, motivo="dá", texto=TEXTO + " Valor: R$ 50.", prazo_dias=3)
+
+    rodada, celular, _ = _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=EscritorFake(respostas=[ruim]))
+
+    [resultado] = rodada.resultados
+    assert resultado.situacao == propostas_auto.PULADA and "preço" in resultado.motivo and celular == []
+
+
+def test_a_conferencia_do_texto():
+    projeto = _freela()
+    portfolio = contexto_do_portfolio()
+
+    assert problemas_do_texto(TEXTO, projeto, "", portfolio) == []
+    com_link = TEXTO.replace("todo dia", "todo dia (https://github.com/bielvelozo/inkly-shopify-theme)")
+    assert problemas_do_texto(com_link, projeto, "", portfolio) == []
+    assert "link fora do portfólio" in problemas_do_texto(TEXTO + " https://meusite.com.br", projeto, "", portfolio)[0]
+    assert "telefone" in problemas_do_texto(TEXTO + " (16) 99123-4567", projeto, "", portfolio)[0]
+    assert "IA" in problemas_do_texto(TEXTO.replace("todo dia", "com IA todo dia"), projeto, "", portfolio)[0]
+    com_ia = _freela(titulo="Criação de gêmeo digital com HeyGen e IA")
+    assert problemas_do_texto(TEXTO.replace("todo dia", "com IA todo dia"), com_ia, "", portfolio) == []
+    assert "3000" in problemas_do_texto("a" * 3001, projeto, "", portfolio)[0]
+
+
+def contexto_do_portfolio():
+    from whis.criterios_da_cacada import PecaDoPortfolio
+
+    return (PecaDoPortfolio("Tema Shopify Inkly", "https://github.com/bielvelozo/inkly-shopify-theme", "tema"),)
+
+
+# -- o resumo e o contexto ------------------------------------------------------------------------
+
+
+def test_o_resumo_do_dia_lista_o_que_saiu(tmp_path: Path):
+    escritor = EscritorFake(respostas=[Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3)])
+    _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
+
+    resumo = (tmp_path / "vault" / "cacada" / "propostas-auto.md").read_text(encoding="utf-8")
+
+    assert "## 10/10/2026 (sábado)" in resumo
+    assert "ensaio" in resumo and "[Sistema web para gerar mapas numerológicos](" in resumo and "R$ 50 em 3 dias" in resumo
+    assert "[[cacada/propostas-auto/sistema-web-para-gerar-mapas-numerologicos-790517|nota]]" in resumo
+
+
+def test_o_contexto_usa_as_propostas_que_deram_certo_como_exemplo(tmp_path: Path):
+    vault = tmp_path / "vault"
+    pasta = vault / "cacada" / "2026-10-12-1832-propostas"
+    pasta.mkdir(parents=True)
+    (vault / "cacada" / "criterios.md").write_text("## O que eu procuro\n\n- Freela.\n\n## Sobre mim\n\n- Anos: 3\n", encoding="utf-8")
+    (vault / "cacada" / "perfil-freelas.md").write_text("---\ntipo: perfil-da-cacada\n---\n\nFaz Shopify.\n", encoding="utf-8")
+    for nome, status in (("a", "enviada em 2026-10-13 (R$ 50, 7 dias)"), ("b", "respondida em 2026-10-17 (R$ 50, 2 dias)"), ("c", "escrita")):
+        (pasta / f"{nome}.md").write_text(
+            f"---\nplataforma: 99Freelas\nlink: https://www.99freelas.com.br/project/{nome}-1\nstatus: {status}\n---\n\nOlá! Texto {nome}.\n\nGabriel\n",
+            encoding="utf-8",
+        )
+
+    contexto = contexto_do_vault(vault, "shopify")
+
+    assert contexto.exemplos[0].startswith("Olá! Texto b.") and len(contexto.exemplos) == 2
+    assert "Faz Shopify." in contexto.perfil and "Freela." in contexto.procuro
+
+
+# -- a configuração ----------------------------------------------------------------------------------
+
+
+def test_a_vigia_roda_de_hora_em_hora_e_o_envio_nasce_desligado(tmp_path: Path):
+    configuracao = carregar_texto(f'vault = "{tmp_path.as_posix()}"\n', origem=tmp_path / "config.toml")
+
+    assert configuracao.cacada_horarios_da_vigia_de_freelas == tuple(f"{hora:02d}:00" for hora in range(7, 24))
+    assert configuracao.cacada_propostas_auto == "desligado"
+    assert Travas.da_configuracao(configuracao) == Travas(horas=24, max_propostas=80, por_dia=3, reserva=3, exclusivos=False)
+
+
+def test_modo_desconhecido_e_erro_de_configuracao(tmp_path: Path):
+    with pytest.raises(ConfiguracaoInvalida, match="propostas_auto"):
+        carregar_texto(f'vault = "{tmp_path.as_posix()}"\n[cacada]\npropostas_auto = "sim"\n', origem=tmp_path / "config.toml")
+
+
+def test_o_estado_guarda_o_que_aconteceu_com_cada_projeto(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+
+    estado = json.loads((tmp_path / "propostas-auto.json").read_text(encoding="utf-8"))
+
+    assert estado["projetos"][LINK]["situacao"] == propostas_auto.NO_ENSAIO
+
+
+# -- o Claude -----------------------------------------------------------------------------------------
+
+
+def _claude_gravado(dados: dict):
+    from claude_agent_sdk import ResultMessage
+
+    from whis.propostas_auto_claude import PropostaClaude
+
+    class Gravado(PropostaClaude):
+        prompts: list[str] = []
+
+        async def _mensagens(self, prompt, opcoes):
+            Gravado.prompts.append(prompt)
+            yield ResultMessage(
+                subtype="success", duration_ms=1, duration_api_ms=1, is_error=False, num_turns=1, session_id="s",
+                total_cost_usd=0.01, structured_output=dados,
+            )
+
+    return Gravado()
+
+
+def test_o_claude_le_os_exemplos_o_portfolio_e_o_motivo_da_correcao():
+    claude = _claude_gravado({"entrega": True, "motivo": "dá", "proposta": TEXTO, "prazo_dias": 4})
+    contexto = Contexto(
+        procuro="Freela.", sobre_mim="- Anos: 3", perfil="Full stack.", portfolio=contexto_do_portfolio(), exemplos=("Olá! Exemplo.",)
+    )
+
+    escrita = claude.escrever(_freela(), "Cliente: Natacha", contexto, corrigir="tem e-mail")
+
+    assert escrita == Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=4)
+    [prompt] = type(claude).prompts
+    assert "Olá! Exemplo." in prompt and "https://github.com/bielvelozo/inkly-shopify-theme" in prompt
+    assert "Cliente: Natacha" in prompt and "RECUSADA NA CONFERÊNCIA POR: tem e-mail" in prompt
+
+
+def test_o_claude_que_diz_que_nao_entrega_volta_sem_texto():
+    claude = _claude_gravado({"entrega": False, "motivo": "é edição de vídeo", "proposta": "Olá!", "prazo_dias": 0})
+
+    escrita = claude.escrever(_freela(), "", CONTEXTO)
+
+    assert (escrita.entrega, escrita.texto, escrita.motivo) == (False, "", "é edição de vídeo")
+
+
+def test_o_claude_roda_mesmo_com_o_loop_do_playwright_aberto_na_thread():
+    import asyncio
+
+    claude = _claude_gravado({"entrega": True, "motivo": "dá", "proposta": TEXTO, "prazo_dias": 4})
+
+    async def com_loop_rodando():
+        return claude.escrever(_freela(), "", CONTEXTO)
+
+    assert asyncio.run(com_loop_rodando()).texto == TEXTO
+
+
+def test_logado_a_bandeira_de_exclusivo_de_outro_projeto_no_cabecalho_nao_barra(tmp_path: Path):
+    cabecalho = '<li class="novo-projeto-item" data-id="1"><i class="flat_project_exclusive"></i>Outro projeto</li>'
+    sessao = _logada(projeto=_projeto().replace("<body", f"<body><ul>{cabecalho}</ul", 1) if "<body" in _projeto() else cabecalho + _projeto())
+
+    rodada, _, _ = _rodar(tmp_path, [_freela()], sessao=sessao)
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.NO_ENSAIO]
+
+
+def test_logado_quem_diz_exclusivo_e_o_formulario(tmp_path: Path):
+    rodada, _, escritor = _rodar(tmp_path, [_freela()], sessao=_logada(formulario=_fixture("bid_exclusivo")))
+
+    assert rodada.resultados == () and escritor.pedidos == []
+
+
+def test_sem_login_a_bandeira_da_pagina_barra_o_exclusivo(tmp_path: Path):
+    rodada, _, escritor = _rodar(
+        tmp_path, [_freela()], sessao=None, publica=lambda _url: '<i class="flat_project_exclusive"></i>' + _projeto()
+    )
+
+    assert rodada.resultados == () and escritor.pedidos == []

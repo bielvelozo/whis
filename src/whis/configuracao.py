@@ -37,7 +37,8 @@ NOME_DO_ARQUIVO = "config.toml"
 
 PLATAFORMAS_SEM_CONTA = ("peopleperhour", "workana")
 PLATAFORMAS_PAGAS = ("freelancer.com.br",)
-HORARIOS_DA_VIGIA_DE_FREELAS = ("08:00", "11:00", "14:00", "17:00", "20:00", "23:00")
+HORARIOS_DA_VIGIA_DE_FREELAS = tuple(f"{hora:02d}:00" for hora in range(7, 24))
+MODOS_DAS_PROPOSTAS_AUTO = ("desligado", "ensaio", "ligado")
 
 #: As chaves aceitas em `[daily].horarios`, na ordem em que a semana anda.
 #: Sem acento de propósito: é o que se digita num TOML sem pensar em escape.
@@ -124,7 +125,17 @@ plataformas_sem_conta = ["peopleperhour", "workana"]  # sites em que sua conta n
 plataformas_pagas = ["freelancer.com.br"]  # sites em que responder a um projeto pede plano pago que você não assinou: a caçada tira o que vier deles e não procura lá; quando assinar, apague o nome daqui
 nicho_freela = ""            # o nicho do freela (ex.: shopify): no hunt --freelas, chance boa só do nicho ou de e-commerce muito perto, o resto no máximo tentar a sorte, e as buscas do Freelancer.com fora dele saem; vazio = qualquer freela
 piso_freela = 0              # o menor preço de freela que você aceita, em R$: a caçada nunca sugere abaixo disso (o resumo avisa quando o Claude sugeriu menos); 0 = sem piso
-horarios_da_vigia_de_freelas = ["08:00", "11:00", "14:00", "17:00", "20:00", "23:00"]  # quando a tarefa Whis-Vigia-Freelas (whis windows --vigia-freelas) olha a 99Freelas e o Freelancer.com e avisa por toast o projeto novo do nicho
+horarios_da_vigia_de_freelas = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"]  # quando a tarefa Whis-Vigia-Freelas (whis windows --vigia-freelas) olha a 99Freelas e o Freelancer.com, avisa por toast e no celular o projeto novo do nicho e faz as propostas automáticas
+propostas_auto = "desligado"  # proposta automática na 99Freelas, a cada rodada da vigia: "ensaio" escreve, avisa no celular e não envia; "ligado" envia pelo Chrome da caçada (logado pelo whis navegador); "desligado" não escreve
+propostas_auto_horas = 24    # só propõe em projeto que abriu para você há menos de tantas horas (sem assinatura, o projeto abre 24 h depois de publicado)
+propostas_auto_max_propostas = 80  # só propõe em projeto com menos de tantas propostas (quando abre para quem não assina, já tem de 40 a 140)
+propostas_auto_por_dia = 3   # no máximo tantas propostas automáticas por dia (o ensaio conta)
+propostas_auto_reserva = 3   # não propõe se a proposta deixaria menos de tantas conexões da 99Freelas
+propostas_auto_exclusivos = false  # true = você assina a 99Freelas e pode propor no projeto exclusivo de assinante
+
+[celular]
+telegram_token = ""          # o token do seu bot do Telegram (o @BotFather dá); grave com whis celular, que pede o token sem mostrar na tela
+telegram_chat = ""           # o chat em que o bot te avisa; whis celular descobre sozinho quando você manda uma mensagem ao bot
 
 [linkedin]
 client_id = ""               # Client ID do seu app no LinkedIn Developers (produtos Share on LinkedIn e Sign In with LinkedIn using OpenID Connect)
@@ -220,6 +231,14 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "nicho_freela", "cacada_nicho_freela", Tipo.TEXTO),
     Chave("cacada", "piso_freela", "cacada_piso_freela", Tipo.INTEIRO),
     Chave("cacada", "horarios_da_vigia_de_freelas", "cacada_horarios_da_vigia_de_freelas", Tipo.LISTA),
+    Chave("cacada", "propostas_auto", "cacada_propostas_auto", Tipo.TEXTO),
+    Chave("cacada", "propostas_auto_horas", "cacada_propostas_auto_horas", Tipo.INTEIRO),
+    Chave("cacada", "propostas_auto_max_propostas", "cacada_propostas_auto_max_propostas", Tipo.INTEIRO),
+    Chave("cacada", "propostas_auto_por_dia", "cacada_propostas_auto_por_dia", Tipo.INTEIRO),
+    Chave("cacada", "propostas_auto_reserva", "cacada_propostas_auto_reserva", Tipo.INTEIRO),
+    Chave("cacada", "propostas_auto_exclusivos", "cacada_propostas_auto_exclusivos", Tipo.BOOLEANO),
+    Chave("celular", "telegram_token", "celular_telegram_token", Tipo.SEGREDO),
+    Chave("celular", "telegram_chat", "celular_telegram_chat", Tipo.TEXTO),
     Chave("linkedin", "client_id", "linkedin_client_id", Tipo.TEXTO),
     Chave("linkedin", "client_secret", "linkedin_client_secret", Tipo.SEGREDO),
     Chave("linkedin", "exportacao", "linkedin_exportacao", Tipo.CAMINHO),
@@ -329,6 +348,14 @@ class Configuracao:
     cacada_nicho_freela: str = ""
     cacada_piso_freela: int = 0
     cacada_horarios_da_vigia_de_freelas: tuple[str, ...] = HORARIOS_DA_VIGIA_DE_FREELAS
+    cacada_propostas_auto: str = "desligado"
+    cacada_propostas_auto_horas: int = 24
+    cacada_propostas_auto_max_propostas: int = 80
+    cacada_propostas_auto_por_dia: int = 3
+    cacada_propostas_auto_reserva: int = 3
+    cacada_propostas_auto_exclusivos: bool = False
+    celular_telegram_token: str = ""
+    celular_telegram_chat: str = ""
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
     linkedin_exportacao: Path | None = None
@@ -402,6 +429,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
     palheta = dados.get("palheta") or {}
     cacada = dados.get("cacada") or {}
     linkedin = dados.get("linkedin") or {}
+    celular = dados.get("celular") or {}
     exportacao = str(linkedin.get("exportacao", "")).strip()
     raiz_do_git = str(git.get("raiz", "")).strip()
     return Configuracao(
@@ -477,6 +505,24 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
             for hora in _textos(cacada.get("horarios_da_vigia_de_freelas", HORARIOS_DA_VIGIA_DE_FREELAS))
             if str(hora).strip()
         ),
+        cacada_propostas_auto=_modo_das_propostas_auto(cacada.get("propostas_auto", "desligado"), arquivo),
+        cacada_propostas_auto_horas=_inteiro_entre(
+            cacada.get("propostas_auto_horas", 24), "[cacada].propostas_auto_horas", 1, 720, arquivo
+        ),
+        cacada_propostas_auto_max_propostas=_inteiro_entre(
+            cacada.get("propostas_auto_max_propostas", 80), "[cacada].propostas_auto_max_propostas", 1, 1000, arquivo
+        ),
+        cacada_propostas_auto_por_dia=_inteiro_entre(
+            cacada.get("propostas_auto_por_dia", 3), "[cacada].propostas_auto_por_dia", 0, 50, arquivo
+        ),
+        cacada_propostas_auto_reserva=_inteiro_entre(
+            cacada.get("propostas_auto_reserva", 3), "[cacada].propostas_auto_reserva", 0, 1000, arquivo
+        ),
+        cacada_propostas_auto_exclusivos=_booleano(
+            cacada.get("propostas_auto_exclusivos", False), "[cacada].propostas_auto_exclusivos", arquivo
+        ),
+        celular_telegram_token=str(celular.get("telegram_token", "")).strip(),
+        celular_telegram_chat=str(celular.get("telegram_chat", "")).strip(),
         linkedin_client_id=str(linkedin.get("client_id", "")).strip(),
         linkedin_client_secret=str(linkedin.get("client_secret", "")).strip(),
         linkedin_exportacao=Path(exportacao) if exportacao else None,
@@ -513,6 +559,16 @@ def _hora(valor: object, chave: str, arquivo: Path) -> str:
             f"HH:MM em 24 horas (por exemplo \"04:00\"), e veio {valor!r}."
         ) from None
     return texto.strip()
+
+
+def _modo_das_propostas_auto(valor: object, arquivo: Path) -> str:
+    texto = str(valor).strip().casefold()
+    if texto not in MODOS_DAS_PROPOSTAS_AUTO:
+        raise ConfiguracaoInvalida(
+            f"Configuração em {arquivo}: '[cacada].propostas_auto' precisa ser "
+            f'{", ".join(repr(modo) for modo in MODOS_DAS_PROPOSTAS_AUTO)}, e veio {valor!r}.'
+        )
+    return texto
 
 
 def _booleano(valor: object, chave: str, arquivo: Path) -> bool:

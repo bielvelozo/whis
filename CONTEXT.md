@@ -104,8 +104,16 @@ Uma tarefa agendada fora do Whis (`Whis-Vigia`, um script PowerShell autossufici
 _Avoid_: watchdog, healthcheck
 
 **Vigia de freelas**:
-`whis vigia-freelas` e a tarefa `Whis-Vigia-Freelas` (`whis windows --vigia-freelas`, nas horas de `[cacada].horarios_da_vigia_de_freelas`): lê a listagem da 99Freelas e a API pública do Freelancer.com com a busca do **nicho do freela**, fica com o que é do nicho e avisa por toast, com o link, o projeto novo publicado nas últimas 24 h. Existe porque a **Caçada** é semanal e chega quando o projeto já tem 80 propostas; ele escreve a proposta à mão na hora. Não chama o Claude nem abre o Chrome da caçada. O que já viu fica em `%LOCALAPPDATA%\whis\cacada\vigia-de-freelas.json`, e a primeira rodada só guarda, sem avisar. Não é o **Vigia**.
+`whis vigia-freelas` e a tarefa `Whis-Vigia-Freelas` (`whis windows --vigia-freelas`, nas horas de `[cacada].horarios_da_vigia_de_freelas`, de hora em hora das 07h às 23h): lê a listagem da 99Freelas e a API pública do Freelancer.com com a busca do **nicho do freela**, fica com o que é do nicho e avisa por toast, com o link, o projeto novo publicado nas últimas 24 h; o do Freelancer.com vai também para o **Celular**. Existe porque a **Caçada** é semanal e chega quando o projeto já tem 80 propostas. O aviso em si não chama o Claude nem abre o Chrome da caçada; quem faz isso é a **Proposta automática**, na mesma rodada. O que já viu fica em `%LOCALAPPDATA%\whis\cacada\vigia-de-freelas.json`, e a primeira rodada só guarda, sem avisar. Não é o **Vigia**.
 _Avoid_: vigia (sozinho), alerta, monitor
+
+**Proposta automática**:
+A proposta que a **Vigia de freelas** manda sozinha na 99Freelas, com a mesma leitura da listagem (`propostas_auto.py`, notas em `cacada/propostas-auto/`, resumo por dia em `cacada/propostas-auto.md`). Fica o projeto novo, pouco disputado e aberto para quem não assina (as travas `[cacada].propostas_auto_*`); o Claude decide se ele entrega e escreve a proposta daquele projeto no jeito das que deram certo; o preço é a oferta mínima do formulário, nunca no texto. `[cacada].propostas_auto` diz o modo: `ensaio` faz tudo menos o clique (nota com `status: ensaio`, que o *Funil* não conta), `ligado` envia e só grava `status: enviada` depois de ver o "Melhorar proposta". Clique sem confirmação vira `incerta` e nunca é reenviado. Só na 99Freelas: o User Agreement do Freelancer.com proíbe envio automático.
+_Avoid_: robô, disparo, spam
+
+**Celular**:
+O aviso que chega no celular dele pelo bot do Telegram dele (`celular.py`, `[celular].telegram_token` e `telegram_chat`, gravados por `whis celular`): cada **Proposta automática** (no ensaio, com o texto inteiro) e cada projeto novo do nicho no Freelancer.com. Ao lado do toast, que só aparece com ele no PC.
+_Avoid_: push, notificação
 
 **Tracer bullet**:
 A primeira fatia construível de ponta a ponta: "aperto um botão durante a reunião → nota transcrita/resumida aparece no vault". Histórico: a gravação saiu do Whis em 2026-09-30 (ADR 0002).

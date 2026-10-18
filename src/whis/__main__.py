@@ -17,7 +17,7 @@ para as reuniões da Granola::
     python -m whis linkedin [--fakes] | linkedin-login | linkedin-publicar <nota>
     python -m whis contas [--so SITE] [--senha SITE] | navegador [url]
     python -m whis lembrete [--agendada] | candidaturas
-    python -m whis vigia-freelas [--agendada] [--fakes]
+    python -m whis vigia-freelas [--agendada] [--fakes] | celular [--teste]
     python -m whis o-que-pedem [--nicho NICHO] | agencias [--forcar] [--fakes]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
@@ -956,7 +956,9 @@ def _comando_lembrete(args: argparse.Namespace) -> int:
 
 
 def _comando_vigia_freelas(args: argparse.Namespace) -> int:
-    """A vigia de freelas: avisa por toast o projeto novo do nicho na 99Freelas e no Freelancer.com, sem Claude."""
+    """A vigia de freelas: o projeto novo do nicho vira toast (e, o do Freelancer.com, mensagem no celular);
+    com `[cacada].propostas_auto`, o novo da 99Freelas que ele entrega ganha proposta."""
+    from . import celular, vigia_de_freelas
     from .vigia_de_freelas import projeto_de_teste, vigiar
 
     configuracao = _configuracao(args)
@@ -971,9 +973,12 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
 
         estado = Path(tempfile.mkdtemp(prefix="whis-vigia-")) / "vigia-de-freelas.json"
         estado.write_text("{}", encoding="utf-8")
-        opcoes = {"ler": lambda _nicho: [projeto_de_teste()], "estado": estado}
+        lidas = (projeto_de_teste(),)
+        opcoes = {"estado": estado}
         print(f"Modo de teste: um projeto falso e o estado em {estado}.")
-    rodada = vigiar(nicho, **opcoes)
+    else:
+        lidas = vigia_de_freelas.ler_do_nicho(nicho)
+    rodada = vigiar(nicho, ler=lambda _nicho: lidas, celular=lambda texto: celular.avisar(configuracao, texto), **opcoes)
     if rodada.guardados:
         print(f"Primeira rodada: {rodada.guardados} projeto(s) de {nicho} já abertos guardados sem aviso; a próxima avisa o que for novo.")
     elif rodada.avisados:
@@ -981,6 +986,106 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
             print(f"Avisado: {oportunidade.titulo} — {oportunidade.link}")
     else:
         print(f"Nada novo de {nicho} desde a última rodada.")
+    try:
+        _propostas_automaticas(configuracao, lidas, nicho, fakes=args.fakes)
+    except Exception as erro:  # noqa: BLE001 — os avisos desta rodada já saíram; a proposta tenta na próxima hora
+        _log.exception("A proposta automática falhou nesta rodada.")
+        print(f"A proposta automática falhou nesta rodada: {erro}")
+        return SAIDA_PARCIAL
+    return SAIDA_COMPLETA
+
+
+def _propostas_automaticas(configuracao: Configuracao, lidas, nicho: str, *, fakes: bool = False) -> None:
+    """A proposta automática da 99Freelas com a mesma leitura da vigia; no `--fakes`, um ensaio sem Claude nem Chrome."""
+    from . import celular, propostas_auto
+    from .corrida import cacada_correndo, pasta_da_cacada
+
+    modo = propostas_auto.ENSAIO if fakes else configuracao.cacada_propostas_auto
+    if modo == propostas_auto.DESLIGADO:
+        return
+    no_celular = lambda texto: celular.avisar(configuracao, texto)  # noqa: E731
+    travas = propostas_auto.Travas.da_configuracao(configuracao)
+    if fakes:
+        import tempfile
+
+        temporaria = Path(tempfile.mkdtemp(prefix="whis-propostas-auto-"))
+        print(f"Modo de teste: a proposta automática em ensaio, sem Claude e sem Chrome, em {temporaria}.")
+        rodada = propostas_auto.rodar(
+            (propostas_auto.projeto_de_teste(),),
+            modo=modo,
+            travas=travas,
+            vault=temporaria / "vault",
+            escritor=propostas_auto.EscritorDeTeste(),
+            contexto=propostas_auto.Contexto(procuro="", sobre_mim="", perfil="", portfolio=(), exemplos=()),
+            sessao=None,
+            publica=lambda _url: propostas_auto.PAGINA_DE_TESTE,
+            estado=temporaria / propostas_auto.NOME_DO_ESTADO,
+            celular=no_celular,
+        )
+    else:
+        if cacada_correndo(pasta_da_cacada()):
+            print("A caçada está correndo com o Chrome da caçada: a proposta automática fica para a próxima hora.")
+            return
+        from .navegador_logado import NavegadorLogado
+        from .propostas_auto_claude import PropostaClaude
+
+        vault = _vault.preparar(configuracao.vault)
+        with NavegadorLogado().abrir() as sessao:
+            rodada = propostas_auto.rodar(
+                lidas,
+                modo=modo,
+                travas=travas,
+                vault=vault,
+                escritor=PropostaClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None),
+                contexto=propostas_auto.contexto_do_vault(vault, nicho),
+                sessao=sessao,
+                estado=propostas_auto.caminho_do_estado(),
+                celular=no_celular,
+                fotos=propostas_auto.pasta_das_fotos(),
+            )
+    for resultado in rodada.resultados:
+        detalhe = f" — {resultado.motivo}" if resultado.motivo else ""
+        print(f"Proposta automática ({modo}): {resultado.situacao} · {resultado.titulo} · {resultado.link}{detalhe}")
+    if rodada.parou:
+        print(f"Proposta automática parou: {rodada.parou}.")
+    elif not rodada.resultados:
+        print("Proposta automática: nenhum projeto novo da 99Freelas passou nas travas.")
+
+
+def _comando_celular(args: argparse.Namespace) -> int:
+    """Liga o bot do Telegram dele: pede o token sem mostrar, descobre o chat e grava `[celular]`."""
+    import getpass
+    from dataclasses import replace
+
+    from . import celular
+    from .configuracao import escrever
+
+    configuracao = _configuracao(args)
+    if args.teste:
+        if not (configuracao.celular_telegram_token and configuracao.celular_telegram_chat):
+            print("Falta o bot: rode `whis celular` primeiro.")
+            return SAIDA_NAO_NASCEU
+        telegram = celular.Telegram(configuracao.celular_telegram_token, configuracao.celular_telegram_chat)
+        if not telegram.enviar("Teste do Whis: é por aqui que chegam os avisos de freela."):
+            print("O Telegram não aceitou a mensagem; veja o log do Whis.")
+            return SAIDA_NAO_NASCEU
+        print("Mensagem de teste mandada; confira no celular.")
+        return SAIDA_COMPLETA
+    token = getpass.getpass("Cole o token do bot (o @BotFather mostra; não aparece na tela) e aperte Enter: ").strip()
+    telegram = celular.Telegram(token, "")
+    bot = telegram.usuario_do_bot()
+    if not bot:
+        print("Esse token não é de um bot do Telegram (o Telegram recusou). Copie de novo do @BotFather.")
+        return SAIDA_NAO_NASCEU
+    print(f"Bot @{bot} encontrado. Abra t.me/{bot} no celular e mande qualquer mensagem (ex.: /start); espero até 2 min.")
+    chat = celular.esperar_o_chat(telegram)
+    if not chat:
+        print(f"Nenhuma mensagem chegou ao @{bot}. Mande uma e rode `whis celular` de novo.")
+        return SAIDA_NAO_NASCEU
+    configuracao = replace(configuracao, celular_telegram_token=token, celular_telegram_chat=chat)
+    escrever(configuracao, configuracao.origem)
+    celular.Telegram(token, chat).enviar("Pronto: o Whis vai te avisar aqui das propostas e dos freelas novos.")
+    print(f"Gravado em {configuracao.origem} ([celular]). Mandei uma mensagem de teste para o @{bot}.")
     return SAIDA_COMPLETA
 
 
@@ -1516,8 +1621,9 @@ def _comando_windows(args: argparse.Namespace) -> int:
                 feitos.append(
                     f"Vigia de freelas agendada como '{automacao.NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS}': todo dia às "
                     f"{', '.join(configuracao.cacada_horarios_da_vigia_de_freelas)} ela olha a 99Freelas e o "
-                    f"Freelancer.com e avisa por toast o projeto novo de "
-                    f"{configuracao.cacada_nicho_freela or '[cacada].nicho_freela (ainda vazio: ela não roda sem ele)'}."
+                    f"Freelancer.com e avisa por toast (e no celular, o do Freelancer.com) o projeto novo de "
+                    f"{configuracao.cacada_nicho_freela or '[cacada].nicho_freela (ainda vazio: ela não roda sem ele)'}; "
+                    f"proposta automática na 99Freelas: {configuracao.cacada_propostas_auto}."
                 )
             if args.meetings:
                 automacao.agendar_reunioes(configuracao)
@@ -1853,16 +1959,25 @@ def construir_parser() -> argparse.ArgumentParser:
 
     vigia_freelas_cmd = subcomandos.add_parser(
         "vigia-freelas",
-        help="olha a 99Freelas e o Freelancer.com e avisa por toast o projeto novo de [cacada].nicho_freela (sem Claude)",
+        help="olha a 99Freelas e o Freelancer.com, avisa por toast e no celular o projeto novo de [cacada].nicho_freela "
+        "e, com [cacada].propostas_auto, propõe na 99Freelas",
     )
     _acrescentar_config(vigia_freelas_cmd)
     vigia_freelas_cmd.add_argument(
         "--agendada", action="store_true", help="é como a tarefa Whis-Vigia-Freelas chama"
     )
     vigia_freelas_cmd.add_argument(
-        "--fakes", action="store_true", help="um projeto falso e um estado temporário: só para ver o toast chegar"
+        "--fakes", action="store_true",
+        help="um projeto falso e um estado temporário: o toast e um ensaio da proposta automática, sem Claude nem Chrome"
     )
     vigia_freelas_cmd.set_defaults(funcao=_comando_vigia_freelas)
+
+    celular_cmd = subcomandos.add_parser(
+        "celular", help="liga o bot do Telegram que te avisa no celular: pede o token, descobre o chat e grava [celular]"
+    )
+    _acrescentar_config(celular_cmd)
+    celular_cmd.add_argument("--teste", action="store_true", help="só manda uma mensagem de teste com o que já está no config")
+    celular_cmd.set_defaults(funcao=_comando_celular)
 
     o_que_pedem_cmd = subcomandos.add_parser(
         "o-que-pedem",

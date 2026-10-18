@@ -40,7 +40,7 @@ _log = logging.getLogger("whis.painel")
 
 TITULO = "Whis — configuração"
 
-#: Os oito segredos, para o teste conferir que são os que a spec lista.
+#: Os nove segredos, para o teste conferir que são os que a spec lista.
 SEGREDOS = (
     "[linear].api_key",
     "[slack].user_token",
@@ -50,6 +50,7 @@ SEGREDOS = (
     "[cacada].senha_de_app",
     "[cacada].cpf",
     "[linkedin].client_secret",
+    "[celular].telegram_token",
 )
 
 MENSAGEM_DE_SALVO = (

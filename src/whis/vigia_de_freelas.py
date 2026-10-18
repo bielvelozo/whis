@@ -74,9 +74,14 @@ def vigiar(
     ler: Ler = ler_do_nicho,
     estado: Path | None = None,
     avisar: Avisar | None = None,
+    celular: Callable[[str], bool] | None = None,
     agora: datetime | None = None,
 ) -> Rodada:
-    """Uma rodada: lê, fica com o nicho, avisa o novo e recente, e guarda o que viu."""
+    """Uma rodada: lê, fica com o nicho, avisa o novo e recente, e guarda o que viu.
+
+    O do Freelancer.com vai também para o `celular`, um por mensagem: lá não há
+    proposta automática (o User Agreement proíbe), e ele propõe à mão na hora.
+    """
     agora = agora or datetime.now().astimezone()
     estado = estado or caminho_do_estado()
     avisar = avisar or avisos.avisar
@@ -95,6 +100,10 @@ def vigiar(
         return Rodada(guardados=len(novos))
     recentes = [o for o in novos if _recente(o, agora)]
     _avisar(recentes, nicho, avisar)
+    if celular is not None:
+        for oportunidade in recentes:
+            if _site(oportunidade) == "Freelancer.com":
+                celular(_texto_do_celular(oportunidade, nicho))
     _log.info("Vigia de freelas: %d projeto(s) novo(s) de %s avisado(s).", len(recentes), nicho)
     return Rodada(avisados=tuple(recentes))
 
@@ -131,9 +140,20 @@ def _avisar(oportunidades: Sequence[Oportunidade], nicho: str, avisar: Avisar) -
         )
 
 
+def _site(oportunidade: Oportunidade) -> str:
+    return "Freelancer.com" if "freelancer.com" in oportunidade.link else "99Freelas"
+
+
+def _texto_do_celular(oportunidade: Oportunidade, nicho: str) -> str:
+    propostas = re.search(r"Propostas:\s*\d+", oportunidade.detalhes)
+    linha = " · ".join(p for p in (oportunidade.faixa, propostas.group(0) if propostas else "") if p)
+    partes = (f"Freela de {nicho.strip().title()} novo no {_site(oportunidade)}", oportunidade.titulo, linha, oportunidade.link)
+    return "\n".join(p for p in partes if p)
+
+
 def _texto_do_toast(oportunidade: Oportunidade) -> str:
     propostas = re.search(r"Propostas:\s*\d+", oportunidade.detalhes)
-    site = "Freelancer.com" if "freelancer.com" in oportunidade.link else "99Freelas"
+    site = _site(oportunidade)
     linha = " · ".join(p for p in (oportunidade.faixa, propostas.group(0) if propostas else "", site) if p)
     exclusivo = re.search(r"abre para quem não assina[^|]*", oportunidade.detalhes)
     return f"{linha}\nExclusivo para assinantes: {exclusivo.group(0).strip()}" if exclusivo else linha
