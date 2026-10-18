@@ -699,6 +699,7 @@ def test_whis_navegador_sem_url_abre_as_abas_dos_sites_logados(arquivo_de_config
     [argumentos] = chrome_aberto
     assert argumentos[-len(PAGINAS_DE_LOGIN) :] == list(PAGINAS_DE_LOGIN)
     assert any(a.startswith("--user-data-dir=") and a.endswith("navegador-cacada") for a in argumentos)
+    assert "--window-name=Chrome da caçada (Whis)" in argumentos
 
 
 def test_whis_navegador_com_url_abre_so_ela(arquivo_de_configuracao: Path, chrome_aberto):

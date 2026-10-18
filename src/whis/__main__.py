@@ -1269,7 +1269,16 @@ def _comando_navegador(args: argparse.Namespace) -> int:
             f"Abrindo o Chrome da caçada ({perfil}) com Freelancer.com, 99Freelas, VintePila e freelancer.com.br. "
             "Entre em cada um e feche a janela quando terminar: a caçada usa esse login (com a janela fechada)."
         )
-    subprocess.Popen([str(chrome), f"--user-data-dir={perfil}", "--no-first-run", "--no-default-browser-check", *enderecos])
+    subprocess.Popen(
+        [
+            str(chrome),
+            f"--user-data-dir={perfil}",
+            "--window-name=Chrome da caçada (Whis)",
+            "--no-first-run",
+            "--no-default-browser-check",
+            *enderecos,
+        ]
+    )
     return SAIDA_COMPLETA
 
 

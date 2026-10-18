@@ -233,10 +233,17 @@ class _SessaoDoChrome(SessaoLogada):
                 f"o formulário não ficou com o pedido (oferta {lidos.oferta!r}, {lidos.dias!r} dias, "
                 f"{lidos.caracteres} de {len(texto)} caracteres)"
             )
+        botao = pagina.locator("#btnConcluirEnvioProposta")
+        try:
+            # A faixa de cookies fica fixa no rodapé e pode cobrir o botão; no meio da tela, não cobre.
+            botao.evaluate("botao => botao.scrollIntoView({block: 'center'})")
+            botao.click(trial=True, timeout=10_000)
+        except Exception as erro:  # noqa: BLE001 — botão coberto ou sumido: nada é enviado
+            raise SemNavegador(f"o botão de enviar não está clicável: {_motivo(erro)}") from erro
         if not enviar:
             return Preenchimento(lidos.oferta, lidos.dias, lidos.caracteres, fotos=tuple(fotos))
         try:
-            pagina.locator("#btnConcluirEnvioProposta").click()
+            botao.click()
             try:
                 pagina.wait_for_load_state("networkidle", timeout=15_000)
             except Exception:  # noqa: BLE001 — a conferência é na página do projeto
