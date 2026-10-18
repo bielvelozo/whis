@@ -94,14 +94,16 @@ def vigiar(
     celular: Callable[[str], bool] | None = None,
     agora: datetime | None = None,
     max_propostas_freelancer: int = MAX_PROPOSTAS_DO_FREELANCER,
+    sem_lances_no_freelancer: bool = False,
 ) -> Rodada:
     """Uma rodada: lê, fica com o nicho, avisa o novo e recente, e guarda o que viu.
 
     O do Freelancer.com vai também para o `celular`, um por mensagem: lá não há
     proposta automática (o User Agreement proíbe), e ele propõe à mão na hora.
     O de lá com `max_propostas_freelancer` propostas ou mais não vira aviso (0 =
-    sem limite). A vaga do fórum da Shopify é do nicho por ser de lá, e vai ao
-    celular com as regras do fórum.
+    sem limite), e nenhum de lá vira aviso com `sem_lances_no_freelancer`: sem
+    lance, ele não tem como propor (pedido dele em 18/10). A vaga do fórum da
+    Shopify é do nicho por ser de lá, e vai ao celular com as regras do fórum.
     """
     agora = agora or datetime.now().astimezone()
     estado = estado or caminho_do_estado()
@@ -128,6 +130,11 @@ def vigiar(
             max_propostas_freelancer,
         )
     recentes = [o for o in recentes if o not in lotados]
+    if sem_lances_no_freelancer:
+        sem_lance = [o for o in recentes if _site(o) == FREELANCER]
+        if sem_lance:
+            _log.info("Vigia de freelas: %d projeto(s) do Freelancer.com sem aviso: não sobra lance lá.", len(sem_lance))
+        recentes = [o for o in recentes if o not in sem_lance]
     _avisar(recentes, nicho, avisar)
     if celular is not None:
         for oportunidade in recentes:

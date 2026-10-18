@@ -338,6 +338,23 @@ def test_o_freelancer_com_propostas_demais_nao_vai_ao_celular_nem_vira_toast(tmp
     assert lotado.link in json.loads(estado.read_text(encoding="utf-8"))
 
 
+def test_sem_lances_no_freelancer_o_projeto_de_la_nao_vai_ao_celular_nem_vira_toast(tmp_path: Path):
+    estado = tmp_path / "vigia.json"
+    estado.write_text("{}", encoding="utf-8")
+    celular: list[str] = []
+    avisos: list = []
+
+    rodada = vigiar(
+        "shopify", ler=lambda _nicho: [CHECKOUT, TEMA], estado=estado,
+        avisar=lambda titulo, texto, *, botao=None: avisos.append(titulo) or True,
+        celular=lambda texto: celular.append(texto) or True, agora=AGORA, sem_lances_no_freelancer=True,
+    )
+
+    assert [o.link for o in rodada.avisados] == [TEMA.link]
+    assert celular == [] and len(avisos) == 1
+    assert CHECKOUT.link in json.loads(estado.read_text(encoding="utf-8"))
+
+
 def test_sem_limite_de_propostas_o_freelancer_lotado_tambem_avisa(tmp_path: Path):
     estado = tmp_path / "vigia.json"
     estado.write_text("{}", encoding="utf-8")

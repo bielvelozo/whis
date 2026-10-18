@@ -8,6 +8,9 @@ logada, a página de um projeto ativo que ela acabou de ler, tira do quadro
 manda no celular e guarda a página (já com o formulário) em
 `%LOCALAPPDATA%\whis\cacada\freelancer-formulario\`: é o que falta para o
 envio automático lá (ticket 06 de `.scratch/propostas-auto`).
+
+Enquanto a última contagem (de até 3 dias) der zero, o projeto novo de lá não
+vira aviso no celular: sem lance, ele não tem como propor.
 """
 
 from __future__ import annotations
@@ -16,7 +19,7 @@ import json
 import logging
 import os
 from collections.abc import Callable
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import navegador_logado as _logado
@@ -25,6 +28,7 @@ _log = logging.getLogger("whis.lances_do_freelancer")
 
 NOME_DO_ESTADO = "lances-do-freelancer.json"
 NOME_DA_PASTA_DO_FORMULARIO = "freelancer-formulario"
+VALIDADE_DA_CONTAGEM = timedelta(days=3)
 
 
 def caminho_do_estado() -> Path:
@@ -37,6 +41,19 @@ def pasta_do_formulario() -> Path:
     from .corrida import pasta_da_cacada
 
     return pasta_da_cacada() / NOME_DA_PASTA_DO_FORMULARIO
+
+
+def sem_lances(estado: Path, agora: datetime | None = None) -> bool:
+    """A última contagem deu zero e tem até 3 dias; contagem velha ou que não deu para ler não corta aviso."""
+    memoria = _ler(estado)
+    if memoria.get("restantes") != 0:
+        return False
+    try:
+        visto = datetime.fromisoformat(str(memoria.get("visto") or ""))
+    except ValueError:
+        return False
+    agora = (agora or datetime.now()).astimezone()
+    return agora - visto.astimezone() <= VALIDADE_DA_CONTAGEM
 
 
 def conferir(
@@ -81,8 +98,9 @@ def conferir(
         pasta_do_formulario.mkdir(parents=True, exist_ok=True)
         (pasta_do_formulario / "projeto.html").write_text(pagina, encoding="utf-8")
         celular(
-            f"Seus lances do Freelancer.com voltaram: {restantes} de {total}. Peça ao Claude o envio automático lá "
-            f"(ticket 06): a página do formulário ficou guardada em {pasta_do_formulario}.\n{projeto}"
+            f"Seus lances do Freelancer.com voltaram: {restantes} de {total}. Os projetos novos de lá voltam a chegar "
+            f"aqui. Peça ao Claude o envio automático lá (ticket 06): a página do formulário ficou guardada em "
+            f"{pasta_do_formulario}.\n{projeto}"
         )
     _guardar(estado, {"dia": hoje, "restantes": restantes, "total": total, "visto": agora.isoformat(timespec="minutes")})
     _log.info("Lances do Freelancer.com: %d de %d.", restantes, total)

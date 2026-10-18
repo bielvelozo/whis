@@ -74,6 +74,17 @@ def test_sem_lances_guarda_e_nao_avisa(tmp_path: Path):
     assert json.loads((tmp_path / "lances.json").read_text(encoding="utf-8"))["restantes"] == 0
 
 
+def test_sem_lances_vale_so_com_a_contagem_zerada_de_ate_tres_dias(tmp_path: Path):
+    estado = tmp_path / "lances.json"
+
+    assert lances_do_freelancer.sem_lances(estado, AGORA) is False
+    _conferir(tmp_path, _sessao(0))
+    assert lances_do_freelancer.sem_lances(estado, AGORA + timedelta(days=2)) is True
+    assert lances_do_freelancer.sem_lances(estado, AGORA + timedelta(days=4)) is False
+    _conferir(tmp_path, _sessao(3), agora=AGORA + timedelta(days=1))
+    assert lances_do_freelancer.sem_lances(estado, AGORA + timedelta(days=1)) is False
+
+
 def test_olha_uma_vez_por_dia(tmp_path: Path):
     _conferir(tmp_path, _sessao(0))
     sessao = _sessao(2)
@@ -148,6 +159,35 @@ def test_a_vigia_olha_os_lances_num_projeto_do_freelancer_que_ela_leu(tmp_path: 
 
     [opcoes] = chamadas
     assert opcoes["projeto"] == PROJETO and opcoes["estado"] == lances_do_freelancer.caminho_do_estado()
+
+
+def test_com_zero_lances_a_vigia_nao_manda_o_projeto_do_freelancer_ao_celular(tmp_path: Path, monkeypatch):
+    from whis import celular, vigia_de_freelas
+    from whis.__main__ import main
+    from whis.corrida import pasta_da_cacada
+    from whis.oportunidades import FREELA, Oportunidade
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    agora = datetime.now().astimezone()
+    da_99 = Oportunidade.nova(tipo=FREELA, fonte="99Freelas", titulo="Tema Shopify", link="https://www.99freelas.com.br/project/tema-1", publicada=agora)
+    do_freelancer = Oportunidade.nova(tipo=FREELA, fonte="Freelancer.com", titulo="Shopify theme", link=PROJETO, publicada=agora)
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (da_99, do_freelancer))
+    monkeypatch.setattr(lances_do_freelancer, "conferir", lambda **_opcoes: None)
+    mensagens: list[str] = []
+    monkeypatch.setattr(celular, "avisar", lambda _configuracao, texto, **_opcoes: mensagens.append(texto) or True)
+    pasta = pasta_da_cacada()
+    pasta.mkdir(parents=True)
+    (pasta / "vigia-de-freelas.json").write_text("{}", encoding="utf-8")
+    (pasta / lances_do_freelancer.NOME_DO_ESTADO).write_text(
+        json.dumps({"dia": agora.date().isoformat(), "restantes": 0, "total": 6, "visto": agora.isoformat(timespec="minutes")}),
+        encoding="utf-8",
+    )
+    config = _config(tmp_path)
+    config.write_text(config.read_text(encoding="utf-8") + "agencias_por_dia = 0\n", encoding="utf-8")
+
+    assert main(["vigia-freelas", "--config", str(config)]) == 0
+
+    assert not any(PROJETO in mensagem for mensagem in mensagens)
 
 
 def test_sem_projeto_do_freelancer_a_vigia_nem_olha_os_lances(tmp_path: Path, monkeypatch):

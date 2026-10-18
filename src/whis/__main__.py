@@ -959,7 +959,7 @@ def _comando_lembrete(args: argparse.Namespace) -> int:
 def _comando_vigia_freelas(args: argparse.Namespace) -> int:
     """A vigia de freelas: o projeto novo do nicho vira toast (e, o do Freelancer.com, mensagem no celular);
     com `[cacada].propostas_auto`, o novo da 99Freelas que ele entrega ganha proposta."""
-    from . import celular, vigia_de_freelas
+    from . import celular, lances_do_freelancer, vigia_de_freelas
     from .vigia_de_freelas import projeto_de_teste, vigiar
 
     configuracao = _configuracao(args)
@@ -984,6 +984,7 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
         ler=lambda _nicho: lidas,
         celular=lambda texto: celular.avisar(configuracao, texto),
         max_propostas_freelancer=configuracao.cacada_max_propostas_freelancer,
+        sem_lances_no_freelancer=not args.fakes and lances_do_freelancer.sem_lances(lances_do_freelancer.caminho_do_estado()),
         **opcoes,
     )
     if rodada.guardados:
