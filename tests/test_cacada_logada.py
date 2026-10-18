@@ -389,6 +389,31 @@ def test_a_caçada_logada_conta_os_selecionados_e_os_lances_em_fontes(configurac
     assert "- Freelancer.com: 0 de 6 lances restantes este mês (visto logado)." in relatorio
 
 
+def test_a_caçada_tira_o_freelancer_com_propostas_demais_e_conta_no_relatorio(configuracao: Configuracao, tmp_path: Path):
+    lotado = _do_freelancer("shopify/lotado", "Propostas: 4")
+    cedo = _do_freelancer("shopify/cedo", "Propostas: 2")
+
+    def coletar(fontes, agora, **opcoes):
+        coleta = coleta_fake(fontes, agora, **opcoes)
+        coleta.por_fonte["Freelancer.com · Shopify"] = (lotado, cedo)
+        return coleta
+
+    portas = portas_fake()
+    portas.coletar = coletar
+    portas.rede = _rede({"/projects/?": httpx.Response(200, json={"result": {"projects": [
+        {"seo_url": "shopify/lotado", "bid_stats": {"bid_count": 45}},
+        {"seo_url": "shopify/cedo", "bid_stats": {"bid_count": 3}},
+    ]}})})
+
+    resultado = cacar(configuracao, portas, pasta_do_estado=tmp_path / "estado", dormir=lambda _s: None)
+
+    relatorio = (Path(configuracao.vault) / resultado.relatorio).read_text(encoding="utf-8")
+    dados = json.loads((tmp_path / "estado" / "checkpoint.json").read_text(encoding="utf-8"))
+    assert lotado.link not in {o["link"] for o in dados["oportunidades"]}
+    assert cedo.link in {o["link"] for o in dados["oportunidades"]}
+    assert "- 1 do Freelancer.com ficaram de fora porque já tinham 30 propostas ou mais ([cacada].max_propostas_freelancer)." in relatorio
+
+
 # -- 03: 99Freelas logada -------------------------------------------------------------------------------
 
 NOVENTA = "https://www.99freelas.com.br/project/"

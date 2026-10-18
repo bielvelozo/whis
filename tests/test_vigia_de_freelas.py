@@ -26,7 +26,10 @@ def _freela(titulo: str, link: str, *, horas: float = 1, faixa: str = "R$ 300 - 
 
 
 TEMA = _freela("Ajuste no tema Shopify", "https://www.99freelas.com.br/project/tema-1")
-CHECKOUT = _freela("Checkout Shopify com frete", "https://www.freelancer.com/projects/shopify/checkout-2", faixa="USD 100 - 250")
+CHECKOUT = _freela(
+    "Checkout Shopify com frete", "https://www.freelancer.com/projects/shopify/checkout-2", faixa="USD 100 - 250",
+    detalhes="Propostas: 3 | Média: 140.00 USD",
+)
 VELHO = _freela("Seção nova no tema Shopify", "https://www.99freelas.com.br/project/secao-3", horas=40)
 REACT = Oportunidade.nova(
     tipo=FREELA, fonte="99Freelas", titulo="Painel em React", link="https://www.99freelas.com.br/project/painel-4",
@@ -57,6 +60,7 @@ def test_o_projeto_novo_do_freelancer_vai_tambem_para_o_celular_e_o_da_99freelas
     [mensagem] = celular
     assert mensagem.splitlines()[0] == "Freela de Shopify novo no Freelancer.com"
     assert "Checkout Shopify com frete" in mensagem and "USD 100 - 250" in mensagem and "Propostas: 3" in mensagem
+    assert "Média: 140.00 USD" in mensagem
     assert mensagem.splitlines()[-1] == CHECKOUT.link
 
 
@@ -279,3 +283,166 @@ def test_sem_agencias_por_dia_a_vigia_nem_chama_o_email(tmp_path: Path, monkeypa
     monkeypatch.setattr(agencias_email, "preparar", lambda *_a, **_k: pytest.fail("o e-mail das agências rodou desligado"))
 
     assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, "agencias_por_dia = 0\n"))]) == 0
+
+
+# -- o Job Listings da Shopify Community e o Freelancer.com lotado ----------------------------------
+
+VAGA_DO_FORUM = Oportunidade.nova(
+    tipo=FREELA, fonte="Shopify Community", titulo="Shopify Expert Developer – Ongoing Overflow Work",
+    link="https://community.shopify.com/t/shopify-expert-developer-ongoing-overflow-work/659089",
+    publicada=AGORA - timedelta(hours=2),
+    descricao="I'm a CRO specialist looking for a developer for OS 2.0 sections, Functions and metafields.",
+    detalhes="Respostas: 0",
+)
+
+
+def test_a_vaga_nova_do_job_listings_vai_ao_celular_com_as_regras_do_forum(tmp_path: Path):
+    estado = tmp_path / "vigia.json"
+    estado.write_text("{}", encoding="utf-8")
+    celular: list[str] = []
+    sem_shopify_no_texto = Oportunidade.nova(
+        tipo=FREELA, fonte="Shopify Community", titulo="[HIRING] Technical Digital Marketer",
+        link="https://community.shopify.com/t/hiring-technical-digital-marketer/652438",
+        publicada=AGORA - timedelta(hours=3), descricao="Part-time, remote, US hours.",
+    )
+
+    rodada, avisos = _rodar(estado, [VAGA_DO_FORUM, sem_shopify_no_texto], celular=celular)
+
+    assert [o.link for o in rodada.avisados] == [VAGA_DO_FORUM.link, sem_shopify_no_texto.link]
+    assert len(avisos) == 2 and "Shopify Community" in avisos[0][1]
+    primeira = celular[0].splitlines()
+    assert primeira[0] == "Vaga nova no Job Listings da Shopify Community"
+    assert primeira[1] == VAGA_DO_FORUM.titulo and "Functions and metafields" in celular[0]
+    assert VAGA_DO_FORUM.link in primeira
+    assert "sem oferecer serviço" in celular[0] and "DM" in celular[0]
+
+
+def test_o_freelancer_com_propostas_demais_nao_vai_ao_celular_nem_vira_toast(tmp_path: Path):
+    estado = tmp_path / "vigia.json"
+    estado.write_text("{}", encoding="utf-8")
+    lotado = _freela("Shopify theme fix", "https://www.freelancer.com/projects/shopify/fix-9", faixa="USD 30 - 250", detalhes="Propostas: 30")
+    quase = _freela("Shopify app setup", "https://www.freelancer.com/projects/shopify/app-8", faixa="USD 30 - 250", detalhes="Propostas: 29")
+    sem_contagem = _freela("Shopify speed", "https://www.freelancer.com/projects/shopify/speed-7", faixa="USD 30 - 250", detalhes="")
+    celular: list[str] = []
+
+    avisos: list = []
+    rodada = vigiar(
+        "shopify", ler=lambda _nicho: [lotado, quase, sem_contagem, TEMA], estado=estado,
+        avisar=lambda titulo, texto, *, botao=None: avisos.append(titulo) or True,
+        celular=lambda texto: celular.append(texto) or True, agora=AGORA, max_propostas_freelancer=30,
+    )
+
+    assert [o.link for o in rodada.avisados] == [quase.link, sem_contagem.link, TEMA.link]
+    assert [m.splitlines()[1] for m in celular] == ["Shopify app setup", "Shopify speed"]
+    assert len(avisos) == 3
+    assert lotado.link in json.loads(estado.read_text(encoding="utf-8"))
+
+
+def test_sem_limite_de_propostas_o_freelancer_lotado_tambem_avisa(tmp_path: Path):
+    estado = tmp_path / "vigia.json"
+    estado.write_text("{}", encoding="utf-8")
+    lotado = _freela("Shopify theme fix", "https://www.freelancer.com/projects/shopify/fix-9", detalhes="Propostas: 90")
+    celular: list[str] = []
+
+    vigiar(
+        "shopify", ler=lambda _nicho: [lotado], estado=estado, avisar=lambda *_a, **_k: True,
+        celular=lambda texto: celular.append(texto) or True, agora=AGORA, max_propostas_freelancer=0,
+    )
+
+    assert len(celular) == 1
+
+
+def test_o_job_listings_e_lido_pela_api_do_forum_sem_o_fixado_e_o_fechado():
+    import httpx
+
+    from whis.criterios_da_cacada import FonteDaCacada
+    from whis.fontes_da_cacada import coletar
+
+    pedidos: list[str] = []
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        pedidos.append(str(pedido.url))
+        return httpx.Response(200, json={"topic_list": {"topics": [
+            {"id": 651715, "slug": "job-posting-guidelines", "title": "Job posting guidelines", "pinned": True, "closed": True,
+             "created_at": "2026-10-15T15:30:51.819Z", "excerpt": "Growing your team", "posts_count": 2},
+            {"id": 690032, "slug": "hiring-bark-uk-online-shopify-seo", "title": "[HIRING] Bark UK Online - Shopify SEO",
+             "pinned": False, "closed": False, "visible": True, "created_at": "2026-10-17T11:55:41.668Z",
+             "excerpt": "Job Title: UK-Based Shopify SEO Specialist &ndash; landscaping &hellip;", "posts_count": 3},
+            {"id": 659089, "slug": "shopify-expert-developer-ongoing-overflow-work", "title": "Shopify Expert Developer",
+             "pinned": False, "closed": True, "created_at": "2026-10-16T06:43:52.578Z", "excerpt": "overflow", "posts_count": 8},
+        ]}})
+
+    coleta = coletar(
+        (FonteDaCacada("Shopify Community", "shopify_community", "job-listings/334"),), AGORA, rede=httpx.MockTransport(responder)
+    )
+
+    assert pedidos == ["https://community.shopify.com/c/job-listings/334.json"]
+    [vaga] = coleta.por_fonte["Shopify Community"]
+    assert vaga.link == "https://community.shopify.com/t/hiring-bark-uk-online-shopify-seo/690032"
+    assert vaga.titulo == "[HIRING] Bark UK Online - Shopify SEO"
+    assert vaga.descricao.startswith("Job Title: UK-Based Shopify SEO Specialist – landscaping")
+    assert vaga.publicada.startswith("2026-10-17T11:55") and vaga.detalhes == "Respostas: 2"
+
+
+def test_a_vigia_le_o_forum_da_shopify_so_no_nicho_shopify(monkeypatch: pytest.MonkeyPatch):
+    from whis import fontes_da_cacada, vigia_de_freelas
+
+    lidas: list[tuple[str, ...]] = []
+
+    def coletar(fontes, agora, rede=None):
+        lidas.append(tuple(fonte.tipo for fonte in fontes))
+        return fontes_da_cacada.ColetaDaCacada()
+
+    monkeypatch.setattr(fontes_da_cacada, "coletar", coletar)
+
+    vigia_de_freelas.ler_do_nicho("shopify", agora=AGORA)
+    vigia_de_freelas.ler_do_nicho("wordpress", agora=AGORA)
+
+    assert lidas == [("99freelas", "freelancer", "shopify_community"), ("99freelas", "freelancer")]
+
+
+def test_o_limite_de_propostas_do_freelancer_nasce_em_30_e_zero_desliga(tmp_path: Path):
+    from whis.configuracao import ConfiguracaoInvalida, carregar_texto
+
+    def ler(extra: str = ""):
+        return carregar_texto(f'vault = "{tmp_path.as_posix()}"\n[cacada]\n{extra}', origem=tmp_path / "config.toml")
+
+    assert ler().cacada_max_propostas_freelancer == 30
+    assert ler("max_propostas_freelancer = 0\n").cacada_max_propostas_freelancer == 0
+    with pytest.raises(ConfiguracaoInvalida, match="max_propostas_freelancer"):
+        ler("max_propostas_freelancer = -1\n")
+
+
+def test_a_vigia_passa_o_limite_do_config_e_manda_o_lembrete_das_agencias(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    from whis import lembrete_das_agencias, vigia_de_freelas
+    from whis.lembrete_das_agencias import Enviado
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    lotado = _freela("Shopify theme fix", "https://www.freelancer.com/projects/shopify/fix-9", detalhes="Propostas: 12")
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (lotado,))
+    chamadas: list[dict] = []
+
+    def lembrar(vault, **opcoes):
+        chamadas.append(opcoes)
+        return [Enviado("Aloft", "contato@aloftagencia.com", "Dev Shopify", datetime(2026, 10, 19).date())]
+
+    monkeypatch.setattr(lembrete_das_agencias, "lembrar", lembrar)
+    estado = tmp_path / "local" / "whis" / "cacada" / "vigia-de-freelas.json"
+    estado.parent.mkdir(parents=True)
+    estado.write_text("{}", encoding="utf-8")
+
+    assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, "max_propostas_freelancer = 10\nagencias_por_dia = 0\n"))]) == 0
+
+    saida = capsys.readouterr().out
+    assert "Nada novo de shopify" in saida
+    [opcoes] = chamadas
+    assert opcoes["estado"] == lembrete_das_agencias.caminho_do_estado()
+    assert "Lembrete de follow-up da Aloft (contato@aloftagencia.com) no celular." in saida
+
+    def quebrar(vault, **opcoes):
+        raise RuntimeError("quebrou")
+
+    monkeypatch.setattr(lembrete_das_agencias, "lembrar", quebrar)
+    assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, "agencias_por_dia = 0\n"))]) == 3

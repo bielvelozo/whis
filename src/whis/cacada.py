@@ -706,6 +706,7 @@ def _tirar_o_que_nao_da(
         dormir=guarda._dormir,
         agora=guarda._relogio(),
         sessao=sessao,
+        max_propostas_freelancer=estado.configuracao.cacada_max_propostas_freelancer,
     )
     checkpoint = estado.checkpoint
     if filtrado.lances is not None:
@@ -722,6 +723,7 @@ def _tirar_o_que_nao_da(
         freelancer_so_para_selecionados=int(checkpoint.get("freelancer_so_para_selecionados") or 0)
         + filtrado.so_para_selecionados,
         freelancer_repetidos=int(checkpoint.get("freelancer_repetidos") or 0) + filtrado.repetidos,
+        freelancer_lotados=int(checkpoint.get("freelancer_lotados") or 0) + filtrado.lotados,
         ja_propostas=int(checkpoint.get("ja_propostas") or 0) + filtrado.ja_propostas,
         pagas=int(checkpoint.get("pagas") or 0) + filtrado.pagas,
     )
@@ -1524,6 +1526,11 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
         )
     if conta_recente := estado.checkpoint.get("conta_recente"):
         linhas.append(f"- {conta_recente} bounties de conta do GitHub recente ou sem histórico ficaram de fora.")
+    if lotados := estado.checkpoint.get("freelancer_lotados"):
+        linhas.append(
+            f"- {lotados} do Freelancer.com ficaram de fora porque já tinham "
+            f"{estado.configuracao.cacada_max_propostas_freelancer} propostas ou mais ([cacada].max_propostas_freelancer)."
+        )
     if so_para_quem_paga := estado.checkpoint.get("freelancer_so_para_quem_paga"):
         linhas.append(f"- {so_para_quem_paga} do Freelancer.com ficaram de fora porque são só para Preferred Freelancer.")
     if selecionados := estado.checkpoint.get("freelancer_so_para_selecionados"):

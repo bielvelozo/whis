@@ -41,9 +41,11 @@ TEXTO = (
     "Olá, Natacha! Mapa pitagórico e triângulo cabalístico saem de regras fixas, então o cuidado maior é "
     "conferir cada cálculo contra os exemplos que você vai mandar. Eu começaria montando o formulário e o "
     "cálculo do mapa pitagórico, te mostro com três nomes de teste e depois sigo para o triângulo.\n\n"
-    "Trabalho com JavaScript e PHP todo dia desde 2023, inclusive em páginas que geram resultado na hora.\n\n"
+    "Trabalho com JavaScript e PHP todo dia desde 2023, inclusive em páginas que geram resultado na hora. "
+    "Começo no dia seguinte ao aceite, com duas rodadas de revisão incluídas.\n\n"
     "Os exemplos que você tem já vêm com o resultado esperado de cada número?\n\nGabriel"
 )
+INICIO_E_REVISOES = " Começo no dia seguinte ao aceite, com duas rodadas de revisão incluídas."
 
 
 def _fixture(nome: str) -> str:
@@ -113,9 +115,11 @@ def _logada(projeto: str | None = None, formulario: str | None = None, **opcoes)
 class EscritorFake:
     respostas: list[Escrita] = field(default_factory=lambda: [Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3, preco=50)])
     pedidos: list[tuple[str, str, str]] = field(default_factory=list)
+    contextos: list[Contexto] = field(default_factory=list)
 
     def escrever(self, oportunidade, pagina, contexto, *, corrigir=""):
         self.pedidos.append((oportunidade.link, pagina, corrigir))
+        self.contextos.append(contexto)
         return self.respostas[min(len(self.pedidos), len(self.respostas)) - 1]
 
 
@@ -146,6 +150,7 @@ def _rodar(
     agora: datetime = AGORA,
     publica=None,
     contexto: Contexto = CONTEXTO,
+    medir=None,
 ):
     celular = CelularFake()
     escritor = escritor or EscritorFake()
@@ -162,6 +167,7 @@ def _rodar(
         celular=celular,
         agora=agora,
         dormir=lambda _segundos: None,
+        medir=medir or (lambda _texto: None),
     )
     return rodada, celular, escritor
 
@@ -380,11 +386,84 @@ def test_texto_que_continua_com_problema_e_pulado(tmp_path: Path):
     assert resultado.situacao == propostas_auto.PULADA and "preço" in resultado.motivo and celular == []
 
 
+def test_o_texto_do_claude_sem_pergunta_no_fim_sem_revisoes_ou_sem_inicio_volta_com_o_motivo(tmp_path: Path):
+    sem_nada = TEXTO.replace(INICIO_E_REVISOES, "").replace("de cada número?", "de cada número.")
+    escritor = EscritorFake(
+        respostas=[Escrita(entrega=True, motivo="dá", texto=sem_nada, prazo_dias=3, preco=50), EscritorFake().respostas[0]]
+    )
+
+    rodada, _, _ = _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.NO_ENSAIO]
+    motivo = escritor.pedidos[1][2]
+    assert "pergunta" in motivo and "revisões" in motivo and "quando começa" in motivo
+
+
+def test_o_texto_do_claude_com_mais_de_250_palavras_volta(tmp_path: Path):
+    longo = TEXTO.replace("Os exemplos", "palavra " * 200 + "Os exemplos")
+    escritor = EscritorFake(respostas=[Escrita(entrega=True, motivo="dá", texto=longo, prazo_dias=3, preco=50)])
+
+    rodada, _, _ = _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
+
+    [resultado] = rodada.resultados
+    assert resultado.situacao == propostas_auto.PULADA and "250 palavras" in resultado.motivo
+
+
+def test_sem_loja_medida_o_texto_nao_pode_dizer_o_que_viu_na_loja(tmp_path: Path):
+    inventado = TEXTO.replace("Olá, Natacha! ", "Olá, Natacha! Abri a sua loja e o PageSpeed deu 34 no celular. ")
+    escritor = EscritorFake(respostas=[Escrita(entrega=True, motivo="dá", texto=inventado, prazo_dias=3, preco=50)])
+
+    rodada, _, _ = _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
+
+    [resultado] = rodada.resultados
+    assert resultado.situacao == propostas_auto.PULADA and "o Whis não mediu a loja" in resultado.motivo
+    do_portfolio = TEXTO.replace("todo dia", "todo dia, e no meu portfólio medi o PageSpeed antes e depois")
+    assert propostas_auto.problemas_do_jeito(do_portfolio, CONTEXTO) == []
+
+
+def test_a_loja_do_anuncio_e_medida_e_vai_ao_claude(tmp_path: Path):
+    from whis.loja_do_cliente import Loja
+
+    loja = Loja(endereco="lojadamaria.com.br", segundos=2.8, kb=410, scripts=37, tema="Dawn 9.0.0")
+    medidos: list[str] = []
+    abertura = TEXTO.replace("Olá, Natacha! ", "Olá, Natacha! Abri a lojadamaria.com.br: a página inicial carrega 37 scripts. ")
+    escritor = EscritorFake(respostas=[Escrita(entrega=True, motivo="dá", texto=abertura, prazo_dias=3, preco=50)])
+    projeto = _freela(descricao="Ajustar o carrinho da minha loja lojadamaria.com.br, tema Dawn.")
+
+    rodada, _, _ = _rodar(
+        tmp_path, [projeto], sessao=_logada(), escritor=escritor, medir=lambda texto: medidos.append(texto) or loja
+    )
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.NO_ENSAIO] and len(escritor.pedidos) == 1
+    [medido] = medidos
+    assert "lojadamaria.com.br" in medido and "sistema de cálculo numerológico" in medido
+    assert "Valor Mínimo" not in medido and "Propostas (199)" not in medido
+    assert escritor.contextos[0].loja == loja
+
+
+def test_o_pedido_ao_claude_traz_a_loja_medida_e_o_jeito_novo():
+    from whis.loja_do_cliente import Loja
+    from whis.propostas_auto_claude import SISTEMA_DA_PROPOSTA, pedido
+
+    loja = Loja(endereco="lojadamaria.com.br", segundos=2.8, kb=410, scripts=37, tema="Dawn 9.0.0", com_senha=True)
+    contexto = Contexto(procuro="", sobre_mim="", perfil="", portfolio=(), exemplos=(), loja=loja)
+
+    com_loja = pedido(_freela(), "", contexto)
+    sem_loja = pedido(_freela(), "", CONTEXTO)
+
+    assert "LOJA DO CLIENTE" in com_loja and "37 scripts" in com_loja and "2,8 s" in com_loja and "fechada com senha" in com_loja
+    assert "LOJA DO CLIENTE" not in sem_loja
+    assert "250 palavras" in SISTEMA_DA_PROPOSTA and "10 segundos" in SISTEMA_DA_PROPOSTA
+    assert "aceite" in SISTEMA_DA_PROPOSTA and "2 rodadas de revisão" in SISTEMA_DA_PROPOSTA and "UTC−3" in SISTEMA_DA_PROPOSTA
+
+
 def test_a_conferencia_do_texto():
     projeto = _freela()
     portfolio = contexto_do_portfolio()
 
     assert problemas_do_texto(TEXTO, projeto, "", portfolio) == []
+    editado_por_ele = TEXTO.replace(INICIO_E_REVISOES, "").replace("de cada número?", "de cada número.")
+    assert problemas_do_texto(editado_por_ele, projeto, "", portfolio) == []
     com_link = TEXTO.replace("todo dia", "todo dia (https://github.com/bielvelozo/inkly-shopify-theme)")
     assert problemas_do_texto(com_link, projeto, "", portfolio) == []
     assert "link fora do portfólio" in problemas_do_texto(TEXTO + " https://meusite.com.br", projeto, "", portfolio)[0]

@@ -60,7 +60,7 @@ TETO_DO_HN = 120
 TIPOS_LIDOS_AQUI = frozenset(
     {
         "himalayas", "remotive", "remoteok", "jobicy", "rss", "github", "hn", "gupy", "workana", "99freelas", "linkedin",
-        "getonbrd", "freelancer",
+        "getonbrd", "freelancer", "shopify_community",
     }
 )
 
@@ -419,7 +419,11 @@ def ler_freelancer(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[Oportun
             continue
         orcamento = item.get("budget") if isinstance(item.get("budget"), dict) else {}
         moeda = ((item.get("currency") or {}) if isinstance(item.get("currency"), dict) else {}).get("code") or "USD"
-        lances = ((item.get("bid_stats") or {}) if isinstance(item.get("bid_stats"), dict) else {}).get("bid_count")
+        estatisticas = item.get("bid_stats") if isinstance(item.get("bid_stats"), dict) else {}
+        lances, media = estatisticas.get("bid_count"), estatisticas.get("bid_avg")
+        detalhes = [f"Propostas: {lances}" if lances is not None else ""]
+        if isinstance(media, (int, float)) and not isinstance(media, bool) and media > 0:
+            detalhes.append(f"Média: {media:.2f} {moeda}")
         saida.append(
             Oportunidade.nova(
                 tipo=FREELA,
@@ -429,7 +433,40 @@ def ler_freelancer(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[Oportun
                 faixa=_faixa(orcamento.get("minimum"), orcamento.get("maximum"), str(moeda), "projeto"),
                 publicada=_data(item.get("time_submitted")),
                 descricao=_primeiro(item, "description", "preview_description"),
-                detalhes=f"Propostas: {lances}" if lances is not None else "",
+                detalhes=" | ".join(parte for parte in detalhes if parte),
+            )
+        )
+    return tuple(saida)
+
+
+FORUM_DA_SHOPIFY = "https://community.shopify.com"
+
+
+def ler_shopify_community(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[Oportunidade, ...]:
+    """Uma categoria do fórum da Shopify (Discourse) pelo JSON público; o tópico fixado e o fechado ficam de fora.
+
+    O Job Listings (`job-listings/334`) é onde lojistas postam vagas da loja desde jul/2026; o
+    fórum fecha cada post em 30 dias.
+    """
+    dados = _json(cliente, f"{FORUM_DA_SHOPIFY}/c/{(fonte.argumento or 'job-listings/334').strip('/')}.json")
+    topicos = _lista((dados.get("topic_list") or {}) if isinstance(dados, dict) else {}, "topics")
+    saida = []
+    for topico in topicos:
+        if topico.get("pinned") or topico.get("closed") or topico.get("archived") or topico.get("visible") is False:
+            continue
+        titulo, slug, numero = _primeiro(topico, "title"), _primeiro(topico, "slug"), topico.get("id")
+        if not titulo or not slug or not numero:
+            continue
+        respostas = topico.get("posts_count")
+        saida.append(
+            Oportunidade.nova(
+                tipo=FREELA,
+                fonte=fonte.nome,
+                titulo=titulo,
+                link=f"{FORUM_DA_SHOPIFY}/t/{slug}/{numero}",
+                publicada=_data(topico.get("created_at")),
+                descricao=_primeiro(topico, "excerpt"),
+                detalhes=f"Respostas: {max(0, int(respostas) - 1)}" if isinstance(respostas, int) else "",
             )
         )
     return tuple(saida)
@@ -613,6 +650,7 @@ class Filtrado:
     repetidos: int = 0
     ja_propostas: int = 0
     pagas: int = 0
+    lotados: int = 0
     lances: tuple[int, int] | None = None
     conexoes: int | None = None
 
@@ -637,6 +675,7 @@ def filtrar_o_que_da(
     dormir: Callable[[float], None] = time.sleep,
     agora: datetime | None = None,
     sessao: SessaoLogada | None = None,
+    max_propostas_freelancer: int = 0,
 ) -> Filtrado:
     """As organizações com malware, as contas do GitHub recentes, as plataformas sem conta ativa, o
     Freelancer.com pela API (e logado, com `sessao`) e a 99Freelas pela página, nessa ordem."""
@@ -644,7 +683,9 @@ def filtrar_o_que_da(
     recentes = com_malware.somar(barrar_contas_recentes(com_malware.ficam, rede=rede, agora=agora))
     sem_conta = recentes.somar(barrar_sem_conta(recentes.ficam, plataformas_sem_conta))
     sem_conta = sem_conta.somar(barrar_pagas(sem_conta.ficam, plataformas_pagas))
-    freelancer = sem_conta.somar(barrar_freelancer(sem_conta.ficam, usuario_freelancer, rede=rede))
+    freelancer = sem_conta.somar(
+        barrar_freelancer(sem_conta.ficam, usuario_freelancer, rede=rede, max_propostas=max_propostas_freelancer)
+    )
     if sessao is not None and any(_PROJETO_DO_FREELANCER.search(o.link) for o in freelancer.ficam):
         if sessao.logado(navegador_logado.FREELANCER):
             freelancer = freelancer.somar(conferir_freelancer_logado(freelancer.ficam, sessao))
@@ -765,7 +806,7 @@ def _de_plataforma(link: str, nomes: set[str]) -> bool:
 
 
 def barrar_freelancer(
-    oportunidades: Sequence[Oportunidade], usuario: str, *, rede: httpx.BaseTransport | None = None
+    oportunidades: Sequence[Oportunidade], usuario: str, *, rede: httpx.BaseTransport | None = None, max_propostas: int = 0
 ) -> Filtrado:
     """Tira os projetos do Freelancer.com em que a conta grátis dele não consegue propor.
 
@@ -775,6 +816,9 @@ def barrar_freelancer(
     mesmo anúncio repostado com outro título (`_anuncio`). Projeto que
     a API não acha e erro na rede deixam tudo como está: o filtro nunca derruba a
     caçada. Sem usuário, só o que já fechou sai.
+
+    Com `max_propostas`, sai também o que já tem tantas propostas pela contagem da API na hora: lá
+    um projeto de Shopify passa de 50 em uma hora, e com 6 lances por mês não vale entrar na fila.
     """
     links = {o.id: casou.group(1) for o in oportunidades if (casou := _PROJETO_DO_FREELANCER.search(o.link))}
     if not links:
@@ -791,7 +835,7 @@ def barrar_freelancer(
     ficam: list[Oportunidade] = []
     vistos: set[str] = set()
     anuncios: set[tuple[str, ...]] = set()
-    sem_skill = so_para_quem_paga = fechadas = repetidos = 0
+    sem_skill = so_para_quem_paga = fechadas = repetidos = lotados = 0
     for oportunidade in oportunidades:
         slug = links.get(oportunidade.id, "").casefold()
         projeto = projetos.get(slug)
@@ -810,6 +854,9 @@ def barrar_freelancer(
         if not _aberto_no_freelancer(projeto):
             fechadas += 1
             continue
+        if max_propostas and _lances(projeto) >= max_propostas:
+            lotados += 1
+            continue
         travas = projeto.get("upgrades") if isinstance(projeto.get("upgrades"), dict) else {}
         if any(travas.get(trava) is True for trava in _SO_PARA_QUEM_PAGA):
             so_para_quem_paga += 1
@@ -824,12 +871,20 @@ def barrar_freelancer(
             oportunidade = replace(oportunidade, detalhes=" | ".join(p for p in (oportunidade.detalhes, aviso) if p))
         ficam.append(oportunidade)
     _log.info(
-        "Caçada: Freelancer.com — %d sem skill do perfil, %d só para Preferred Freelancer e %d já fechados ficaram de fora.",
+        "Caçada: Freelancer.com — %d sem skill do perfil, %d só para Preferred Freelancer, %d já fechados e %d com "
+        "propostas demais ficaram de fora.",
         sem_skill,
         so_para_quem_paga,
         fechadas,
+        lotados,
     )
-    return Filtrado(tuple(ficam), sem_skill, so_para_quem_paga, fechadas, repetidos=repetidos)
+    return Filtrado(tuple(ficam), sem_skill, so_para_quem_paga, fechadas, repetidos=repetidos, lotados=lotados)
+
+
+def _lances(projeto: dict) -> int:
+    estatisticas = projeto.get("bid_stats") if isinstance(projeto.get("bid_stats"), dict) else {}
+    contagem = estatisticas.get("bid_count")
+    return contagem if isinstance(contagem, int) and not isinstance(contagem, bool) else 0
 
 
 DESCRICAO_DO_REPETIDO = 300
@@ -1222,6 +1277,7 @@ _LEITORES: dict[str, Callable[..., tuple[Oportunidade, ...]]] = {
     "linkedin": ler_linkedin,
     "getonbrd": ler_getonbrd,
     "freelancer": ler_freelancer,
+    "shopify_community": ler_shopify_community,
 }
 _PAGINADOS = frozenset({"workana", "99freelas", "linkedin"})
 

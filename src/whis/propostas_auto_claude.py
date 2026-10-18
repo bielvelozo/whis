@@ -4,6 +4,11 @@ Mesma postura da caçada (`cacada_claude`): a conta dele pelo CLI, sem
 ferramenta, saída por JSON Schema e o texto do projeto como dado. O Claude
 também dá o preço, com a conta numa frase; o texto nunca fala dele, e o Python
 não deixa sair abaixo da oferta mínima nem do piso.
+
+O jeito vem das fontes de 18/10 (cacada/analise-freela-shopify-2026-10-18.md):
+abrir pelo problema do cliente e, quando o Whis mediu a loja dele, por um dado
+dela; dizer quando começa e quantas revisões estão incluídas; e terminar com
+uma pergunta que se responde em 10 segundos.
 """
 
 from __future__ import annotations
@@ -18,6 +23,7 @@ from .propostas_auto import Contexto, Escrita
 
 TIMEOUT_DA_PROPOSTA_S = 240.0
 TURNOS_DA_PROPOSTA = 4
+REVISOES_INCLUIDAS = 2
 
 SISTEMA_DA_PROPOSTA = f"""\
 Você escreve, em nome de um desenvolvedor brasileiro, a proposta que vai sair sozinha na 99Freelas para um \
@@ -33,13 +39,22 @@ nativo ou plataforma inteira do zero, que não cabe nas horas dele; vaga de empr
 presencial; golpe (pagamento fora da plataforma, pedir dinheiro, "baixe e rode"); pedido sem nenhuma informação \
 do que fazer. "motivo": uma frase com o porquê.
 Se entrega=true:
-- "proposta": em português, 70 a 140 palavras, no jeito das propostas dele que deram certo (os exemplos abaixo: \
-copie o jeito, nunca o conteúdo). Começa com "Olá!" (ou "Olá, <nome>!" quando a página mostra o nome do cliente). \
-O primeiro parágrafo mostra que ele entendeu o problema deste projeto, com um detalhe concreto do pedido, e conta \
-em prosa como ele começaria, com duas ou três ações no máximo (uma fila de quatro passos lê como checklist). O \
-segundo traz um ou dois fatos reais do perfil ligados ao pedido; se falta experiência em algo, diga direto e emende \
-com "mas" ("Ainda não fiz X como freela, mas..."), sem "sendo honesto", "sinceramente" ou "confesso". Termina com \
-UMA pergunta concreta sobre o projeto e, na última linha, só "Gabriel".
+- "proposta": em português, de 100 a 250 palavras (nunca mais de 250), no jeito das propostas dele que deram \
+certo (os exemplos abaixo: copie o jeito, nunca o conteúdo). Começa com "Olá!" (ou "Olá, <nome>!" quando a página \
+mostra o nome do cliente). O primeiro parágrafo repete o problema deste projeto com as palavras do cliente, com um \
+detalhe concreto do pedido. Quando vier "LOJA DO CLIENTE" e a página deixar claro que é a loja ou o site do próprio \
+cliente, a frase logo depois da saudação cita UM dado dessa medição com o número como está (ex.: "Abri a \
+lojax.com.br: a página inicial carrega 37 scripts."), como observação, sem exagerar e sem diagnóstico que a medida \
+não mostra; o endereço vai sem http e sem www; se for site de referência ou de outra pessoa, não diga que é dele. Sem \
+"LOJA DO CLIENTE", não diga que abriu, olhou ou testou a loja. Depois conte em prosa como ele começaria, com duas ou \
+três ações no máximo (uma fila de quatro passos lê como checklist). O segundo parágrafo traz um ou dois fatos reais \
+do perfil ligados ao pedido; se falta experiência em algo, diga direto e emende com "mas" ("Ainda não fiz X como \
+freela, mas..."), sem "sendo honesto", "sinceramente" ou "confesso". Em seguida, uma frase com quando ele começa, \
+contado do aceite (ex.: "Começo no dia seguinte ao aceite"), e com as {REVISOES_INCLUIDAS} rodadas de revisão \
+incluídas. Se o cliente ou o projeto for de fora do Brasil, diga também que ele trabalha no horário de Brasília \
+(UTC−3) e por escrito. Termina com UMA pergunta que o cliente responde em 10 segundos, de sim ou não ou de escolher \
+entre duas coisas (ex.: "O tema já está publicado ou ainda em construção?"), nunca uma pergunta aberta que peça \
+para ele explicar o projeto; na última linha, só "Gabriel".
 - Nunca: dizer que usa IA, ChatGPT, Claude ou "inteligência artificial" para trabalhar (só fale de IA quando o \
 próprio projeto pede IA); preço, valor ou "R$" no texto (o preço vai no campo do formulário); e-mail, telefone, \
 WhatsApp, redes ou convite para conversar fora da plataforma; link, a não ser UM link do "Portfólio" abaixo, \
@@ -90,13 +105,19 @@ def pedido(oportunidade: Oportunidade, pagina: str, contexto: Contexto, corrigir
         f"SOBRE MIM (escrito por ele):\n{contexto.sobre_mim or '(em branco)'}",
         f"PORTFÓLIO (o único link que pode ir no texto):\n{portfolio}",
         f"VALOR DA HORA DELE: R$ {contexto.valor_hora or 40}",
+        (
+            "LOJA DO CLIENTE (medida agora pelo Whis, uma vez, só o HTML da página inicial; cite só estes números):\n"
+            f"{contexto.loja.como_texto()}"
+            if contexto.loja is not None
+            else ""
+        ),
         f"PROPOSTAS DELE QUE DERAM CERTO (o jeito a copiar):\n{exemplos or '(nenhuma ainda)'}",
         f"O PROJETO:\n{json.dumps({k: v for k, v in projeto.items() if v}, ensure_ascii=False)}",
         f"TEXTO DA PÁGINA DO PROJETO (pode ter lixo de navegação):\n{pagina or '(não veio)'}",
     ]
     if corrigir:
         partes.append(f"A VERSÃO ANTERIOR FOI RECUSADA NA CONFERÊNCIA POR: {corrigir}. Escreva de novo sem isso.")
-    return "\n\n".join(partes)
+    return "\n\n".join(parte for parte in partes if parte)
 
 
 class PropostaClaude(_ChamadaDoClaude):

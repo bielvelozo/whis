@@ -6,6 +6,11 @@ listagem da 99Freelas e a API pública do Freelancer.com com a busca do nicho,
 filtra em Python (sem Claude e sem o Chrome da caçada) e avisa só o que ainda
 não viu. Ele escreve a proposta à mão na hora.
 
+No nicho Shopify ela lê também o Job Listings do fórum da Shopify (Shopify
+Community), onde lojistas postam vagas da loja desde jul/2026. Lá o Whis só
+avisa: as regras do fórum proíbem oferecer serviço e mandar contato ou DM
+que o post não pediu, e ele responde à mão pelo caminho que o post dá.
+
 O que já foi visto fica em `%LOCALAPPDATA%\whis\cacada\vigia-de-freelas.json`.
 Sem esse arquivo, a rodada só guarda o que já está lá: avisar tudo de uma vez
 seriam dezenas de toasts.
@@ -35,6 +40,15 @@ NOME_DO_ESTADO = "vigia-de-freelas.json"
 RECENTE = timedelta(hours=24)
 TOASTS_POR_RODADA = 3
 GUARDA_POR = timedelta(days=30)
+#: Acima disto o projeto do Freelancer.com não vira aviso: lá um projeto de Shopify passa de 50 propostas em uma hora.
+MAX_PROPOSTAS_DO_FREELANCER = 30
+JOB_LISTINGS = "job-listings/334"
+FREELANCER = "Freelancer.com"
+FORUM = "Shopify Community"
+REGRAS_DO_FORUM = (
+    "Candidate-se pelo caminho que o post pede. No fórum, sem oferecer serviço, sem contato e sem DM que o post "
+    "não pediu (regras da Shopify Community)."
+)
 
 Avisar = Callable[..., bool]
 Ler = Callable[[str], Sequence[Oportunidade]]
@@ -55,14 +69,17 @@ def caminho_do_estado() -> Path:
 
 
 def ler_do_nicho(nicho: str, *, rede=None, agora: datetime | None = None) -> tuple[Oportunidade, ...]:
-    """A listagem da 99Freelas (web, mobile e software) e a busca do nicho na API do Freelancer.com."""
-    from .fontes_da_cacada import coletar
+    """A listagem da 99Freelas (web, mobile e software), a busca do nicho na API do Freelancer.com e, no
+    nicho Shopify, o Job Listings do fórum da Shopify."""
+    from . import fontes_da_cacada
 
     fontes = (
         FonteDaCacada("99Freelas", "99freelas", "web-mobile-e-software"),
-        FonteDaCacada("Freelancer.com", "freelancer", nicho),
+        FonteDaCacada(FREELANCER, "freelancer", nicho),
     )
-    coleta = coletar(fontes, agora or datetime.now().astimezone(), rede=rede)
+    if nicho.strip().casefold() == "shopify":
+        fontes += (FonteDaCacada(FORUM, "shopify_community", JOB_LISTINGS),)
+    coleta = fontes_da_cacada.coletar(fontes, agora or datetime.now().astimezone(), rede=rede)
     for nome, motivo in coleta.falhas.items():
         _log.warning("Vigia de freelas: %s não respondeu: %s", nome, motivo)
     return coleta.todas()
@@ -76,11 +93,15 @@ def vigiar(
     avisar: Avisar | None = None,
     celular: Callable[[str], bool] | None = None,
     agora: datetime | None = None,
+    max_propostas_freelancer: int = MAX_PROPOSTAS_DO_FREELANCER,
 ) -> Rodada:
     """Uma rodada: lê, fica com o nicho, avisa o novo e recente, e guarda o que viu.
 
     O do Freelancer.com vai também para o `celular`, um por mensagem: lá não há
     proposta automática (o User Agreement proíbe), e ele propõe à mão na hora.
+    O de lá com `max_propostas_freelancer` propostas ou mais não vira aviso (0 =
+    sem limite). A vaga do fórum da Shopify é do nicho por ser de lá, e vai ao
+    celular com as regras do fórum.
     """
     agora = agora or datetime.now().astimezone()
     estado = estado or caminho_do_estado()
@@ -89,7 +110,7 @@ def vigiar(
     vistos = {} if primeira else _ler_estado(estado)
     do_nicho_agora: dict[str, Oportunidade] = {}
     for oportunidade in ler(nicho):
-        if do_nicho(oportunidade, nicho):
+        if _site(oportunidade) == FORUM or do_nicho(oportunidade, nicho):
             do_nicho_agora.setdefault(link_canonico(oportunidade.link), oportunidade)
     novos = [o for link, o in do_nicho_agora.items() if link not in vistos]
     for link in do_nicho_agora:
@@ -99,10 +120,18 @@ def vigiar(
         _log.info("Vigia de freelas: primeira rodada, %d projeto(s) guardado(s) sem avisar.", len(novos))
         return Rodada(guardados=len(novos))
     recentes = [o for o in novos if _recente(o, agora)]
+    lotados = [o for o in recentes if _lotado(o, max_propostas_freelancer)]
+    if lotados:
+        _log.info(
+            "Vigia de freelas: %d projeto(s) do Freelancer.com com %d propostas ou mais ficaram sem aviso.",
+            len(lotados),
+            max_propostas_freelancer,
+        )
+    recentes = [o for o in recentes if o not in lotados]
     _avisar(recentes, nicho, avisar)
     if celular is not None:
         for oportunidade in recentes:
-            if _site(oportunidade) == "Freelancer.com":
+            if _site(oportunidade) in (FREELANCER, FORUM):
                 celular(_texto_do_celular(oportunidade, nicho))
     _log.info("Vigia de freelas: %d projeto(s) novo(s) de %s avisado(s).", len(recentes), nicho)
     return Rodada(avisados=tuple(recentes))
@@ -141,12 +170,27 @@ def _avisar(oportunidades: Sequence[Oportunidade], nicho: str, avisar: Avisar) -
 
 
 def _site(oportunidade: Oportunidade) -> str:
-    return "Freelancer.com" if "freelancer.com" in oportunidade.link else "99Freelas"
+    if "community.shopify.com" in oportunidade.link:
+        return FORUM
+    return FREELANCER if "freelancer.com" in oportunidade.link else "99Freelas"
+
+
+def _lotado(oportunidade: Oportunidade, maximo: int) -> bool:
+    if not maximo or _site(oportunidade) != FREELANCER:
+        return False
+    casou = re.search(r"Propostas:\s*(\d+)", oportunidade.detalhes)
+    return casou is not None and int(casou.group(1)) >= maximo
 
 
 def _texto_do_celular(oportunidade: Oportunidade, nicho: str) -> str:
+    if _site(oportunidade) == FORUM:
+        resumo = " ".join(oportunidade.descricao.split())
+        resumo = resumo if len(resumo) <= 280 else resumo[:279].rstrip() + "…"
+        partes = (f"Vaga nova no Job Listings da {FORUM}", oportunidade.titulo, resumo, oportunidade.link, REGRAS_DO_FORUM)
+        return "\n".join(p for p in partes if p)
     propostas = re.search(r"Propostas:\s*\d+", oportunidade.detalhes)
-    linha = " · ".join(p for p in (oportunidade.faixa, propostas.group(0) if propostas else "") if p)
+    media = re.search(r"Média:\s*[\d.]+\s*\w+", oportunidade.detalhes)
+    linha = " · ".join(p for p in (oportunidade.faixa, propostas.group(0) if propostas else "", media.group(0) if media else "") if p)
     partes = (f"Freela de {nicho.strip().title()} novo no {_site(oportunidade)}", oportunidade.titulo, linha, oportunidade.link)
     return "\n".join(p for p in partes if p)
 

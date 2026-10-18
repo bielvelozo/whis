@@ -43,7 +43,7 @@ import re
 import time
 import unicodedata
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Protocol
@@ -56,6 +56,7 @@ from .criterios_da_cacada import PASTA_CACADA, PecaDoPortfolio, ler_criterios
 from .fontes_da_cacada import e_da_99freelas
 from .freelas_rapidos import do_nicho
 from .instancia import OutraInstancia, Trava
+from .loja_do_cliente import Loja, medir_do_texto
 from .oportunidades import FREELA, Oportunidade, link_canonico
 
 _log = logging.getLogger("whis.propostas_auto")
@@ -141,6 +142,7 @@ class Contexto:
     exemplos: tuple[str, ...]
     nicho: str = ""
     valor_hora: int = 0
+    loja: Loja | None = None
 
 
 @dataclass(frozen=True)
@@ -278,8 +280,13 @@ def rodar(
     publica: Callable[[str], str] = pagina_publica,
     fotos: Path | None = None,
     dormir: Callable[[float], None] = time.sleep,
+    medir: Callable[[str], Loja | None] = medir_do_texto,
 ) -> Rodada:
-    """Uma rodada: as travas, a página, o Claude, o envio (ou o ensaio, ou a fila), a nota, o celular e o resumo."""
+    """Uma rodada: as travas, a página, o Claude, o envio (ou o ensaio, ou a fila), a nota, o celular e o resumo.
+
+    Quando o anúncio traz o endereço da loja do cliente, `medir` abre a página inicial uma vez e o
+    Claude recebe o que foi medido, para abrir a proposta com um dado dela.
+    """
     if modo not in (ENSAIO, LIGADO):
         return Rodada()
     agora = (agora or datetime.now()).astimezone()
@@ -373,8 +380,9 @@ def rodar(
         else:
             porque = ""
         texto_da_pagina = _texto_para_o_claude(html, pagina, minimo=oferta)
+        do_projeto = replace(contexto, loja=_medir_a_loja(medir, oportunidade, texto_da_pagina))
         try:
-            escrita, chamadas_feitas = _escrever(escritor, oportunidade, texto_da_pagina, contexto, limite_de_chamadas - chamadas)
+            escrita, chamadas_feitas = _escrever(escritor, oportunidade, texto_da_pagina, do_projeto, limite_de_chamadas - chamadas)
         except LimiteDoPlano as erro:
             parou = f"plano do Claude: {erro}"
             break
@@ -384,7 +392,7 @@ def rodar(
         if not escrita.entrega:
             resultados.append(_registrar(memoria, oportunidade, NAO_ENTREGA, agora, motivo=escrita.motivo))
             continue
-        problemas = _problemas(escrita, oportunidade, texto_da_pagina, contexto)
+        problemas = _problemas(escrita, oportunidade, texto_da_pagina, do_projeto)
         if problemas:
             resultados.append(_registrar(memoria, oportunidade, PULADA, agora, motivo=f"texto reprovado: {'; '.join(problemas)}"))
             continue
@@ -494,7 +502,55 @@ def _problemas(escrita: Escrita, oportunidade: Oportunidade, pagina: str, contex
     problemas = problemas_do_texto(escrita.texto, oportunidade, pagina, contexto.portfolio)
     if escrita.preco <= 0:
         problemas.append("faltou o preço (o campo preco, em reais)")
+    return problemas + problemas_do_jeito(escrita.texto, contexto)
+
+
+MAXIMO_DE_PALAVRAS = 250
+_PALAVRA = re.compile(r"\w+")
+_REVISOES = re.compile(r"revis(?:ão|ões|ao|oes)|rodadas? de ajustes?", re.I)
+_INICIO = re.compile(
+    r"\b(?:come[çc]o|come[çc]ar|in[íi]cio)\b[^.?!\n]{0,80}?"
+    r"(?:aceite|aprova|amanhã|hoje|segunda|terça|quarta|quinta|sexta|sábado|domingo|\d{1,2}/\d{1,2})",
+    re.I,
+)
+_VIU_NA_LOJA = re.compile(r"\b(?:abri|olhei|testei|entrei n[ao]|vi n[ao]) (?:a |o )?(?:sua|seu) (?:loja|site)\b", re.I)
+
+
+def problemas_do_jeito(texto: str, contexto: Contexto) -> list[str]:
+    """O jeito que as fontes de 18/10 pedem, só no texto do Claude: a nota editada no Obsidian sai como ele quis."""
+    problemas = []
+    palavras = len(_PALAVRA.findall(texto))
+    if palavras > MAXIMO_DE_PALAVRAS:
+        problemas.append(f"tem {palavras} palavras; o máximo é {MAXIMO_DE_PALAVRAS} palavras")
+    linhas = [linha.strip() for linha in texto.strip().splitlines() if linha.strip()]
+    if linhas and linhas[-1].casefold().startswith("gabriel"):
+        linhas.pop()
+    if not linhas or not linhas[-1].endswith("?"):
+        problemas.append("não termina com uma pergunta que o cliente responde em 10 segundos (a última linha antes de Gabriel)")
+    if not _REVISOES.search(texto):
+        problemas.append("não diz quantas revisões estão incluídas")
+    if not _INICIO.search(texto):
+        problemas.append("não diz quando começa, contado do aceite (ex.: \"começo no dia seguinte ao aceite\")")
+    if contexto.loja is None and _VIU_NA_LOJA.search(texto):
+        problemas.append("fala do que viu na loja do cliente, mas o Whis não mediu a loja")
     return problemas
+
+
+def _medir_a_loja(medir: Callable[[str], Loja | None], oportunidade: Oportunidade, pagina: str) -> Loja | None:
+    try:
+        return medir(f"{oportunidade.descricao}\n{_descricao_da_pagina(pagina)}")
+    except Exception as erro:  # noqa: BLE001 — sem a medida, a proposta sai sem abrir pela loja
+        _log.info("Propostas automáticas: a loja de %s não foi medida (%s).", oportunidade.link, erro)
+        return None
+
+
+def _descricao_da_pagina(pagina: str) -> str:
+    """Só a descrição do projeto: o resto da página traz links do rodapé e as propostas dos outros."""
+    inicio = pagina.find("Descrição do Projeto")
+    if inicio < 0:
+        return ""
+    fim = min((i for i in (pagina.find(marca, inicio) for marca in ("Habilidades desejadas", "Informações adicionais")) if i >= 0), default=-1)
+    return pagina[inicio:fim] if fim >= 0 else pagina[inicio : inicio + 4000]
 
 
 def _escrever(
@@ -1074,7 +1130,8 @@ class EscritorDeTeste:
             texto=(
                 "Olá! Proposta de teste do Whis: é assim que a proposta automática chega no seu celular. Nada foi "
                 "enviado para a 99Freelas, e o projeto não existe; a de verdade cita um detalhe do pedido e diz como "
-                "você começaria.\n\nGabriel"
+                "você começaria. Começo no dia seguinte ao aceite, com 2 rodadas de revisão incluídas.\n\n"
+                "O tema da loja já está publicado ou ainda em construção?\n\nGabriel"
             ),
             prazo_dias=2,
             preco=150,

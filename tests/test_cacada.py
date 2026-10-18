@@ -834,6 +834,27 @@ def test_freelancer_tira_o_projeto_fechado_e_o_mesmo_link_em_outra_caixa():
     assert filtrado.fechadas == 1
 
 
+def test_freelancer_tira_o_projeto_com_propostas_demais_pela_contagem_de_agora():
+    rede = _rede(
+        {
+            "/projects/?": httpx.Response(200, json={"result": {"projects": [
+                {"seo_url": "shopify/lotado", "bid_stats": {"bid_count": 30}},
+                {"seo_url": "shopify/cedo", "bid_stats": {"bid_count": 29}},
+                {"seo_url": "shopify/sem-contagem"},
+            ]}}),
+        }
+    )
+    lotado = replace_detalhes(_projeto_do_freelancer("shopify/lotado"), "Propostas: 4")
+    oportunidades = [lotado, _projeto_do_freelancer("shopify/cedo"), _projeto_do_freelancer("shopify/sem-contagem")]
+
+    filtrado = barrar_freelancer(oportunidades, "", rede=rede, max_propostas=30)
+    sem_limite = barrar_freelancer(oportunidades, "", rede=rede)
+
+    assert [o.titulo for o in filtrado.ficam] == ["shopify/cedo", "shopify/sem-contagem"]
+    assert filtrado.lotados == 1
+    assert len(sem_limite.ficam) == 3 and sem_limite.lotados == 0
+
+
 def _projeto_da_99freelas(slug: str) -> Oportunidade:
     return Oportunidade.nova(tipo=FREELA, fonte="99Freelas", titulo=slug, link=f"https://www.99freelas.com.br/project/{slug}")
 
@@ -879,7 +900,7 @@ def test_get_on_board_e_freelancer_pelas_apis_publicas():
             ]}),
             "freelancer.com": httpx.Response(200, json={"result": {"projects": [
                 {"title": "Landing page", "seo_url": "website-design/landing-page-1", "type": "fixed",
-                 "budget": {"minimum": 100, "maximum": 300}, "currency": {"code": "USD"}, "bid_stats": {"bid_count": 12},
+                 "budget": {"minimum": 100, "maximum": 300}, "currency": {"code": "USD"}, "bid_stats": {"bid_count": 12, "bid_avg": 182.456},
                  "time_submitted": int((AGORA - timedelta(hours=5)).timestamp()), "preview_description": "Landing"},
                 {"title": "Suporte por hora", "seo_url": "x/hora", "type": "hourly"},
             ]}}),
@@ -893,4 +914,4 @@ def test_get_on_board_e_freelancer_pelas_apis_publicas():
     assert (vaga.empresa, vaga.local, vaga.faixa) == ("Acme LatAm", "Remoto (Brasil)", "USD 2.500 – 3.500 por mês")
     [projeto] = coleta.por_fonte["Freelancer"]
     assert projeto.link == "https://www.freelancer.com/projects/website-design/landing-page-1"
-    assert projeto.faixa == "USD 100 – 300 por projeto" and projeto.detalhes == "Propostas: 12"
+    assert projeto.faixa == "USD 100 – 300 por projeto" and projeto.detalhes == "Propostas: 12 | Média: 182.46 USD"

@@ -979,7 +979,13 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
         print(f"Modo de teste: um projeto falso e o estado em {estado}.")
     else:
         lidas = vigia_de_freelas.ler_do_nicho(nicho)
-    rodada = vigiar(nicho, ler=lambda _nicho: lidas, celular=lambda texto: celular.avisar(configuracao, texto), **opcoes)
+    rodada = vigiar(
+        nicho,
+        ler=lambda _nicho: lidas,
+        celular=lambda texto: celular.avisar(configuracao, texto),
+        max_propostas_freelancer=configuracao.cacada_max_propostas_freelancer,
+        **opcoes,
+    )
     if rodada.guardados:
         print(f"Primeira rodada: {rodada.guardados} projeto(s) de {nicho} já abertos guardados sem aviso; a próxima avisa o que for novo.")
     elif rodada.avisados:
@@ -1001,7 +1007,27 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
             _log.exception("O e-mail das agências falhou nesta rodada.")
             print(f"O e-mail das agências falhou nesta rodada: {erro}")
             saida = SAIDA_PARCIAL
+        try:
+            _lembrete_das_agencias(configuracao)
+        except Exception as erro:  # noqa: BLE001 — o lembrete tenta de novo na próxima hora
+            _log.exception("O lembrete às agências falhou nesta rodada.")
+            print(f"O lembrete às agências falhou nesta rodada: {erro}")
+            saida = SAIDA_PARCIAL
     return saida
+
+
+def _lembrete_das_agencias(configuracao: Configuracao) -> None:
+    """Sete dias depois do e-mail a uma agência, o lembrete curto chega no celular, uma vez por agência."""
+    from . import agencias_email, celular, lembrete_das_agencias
+
+    lembradas = lembrete_das_agencias.lembrar(
+        _vault.preparar(configuracao.vault),
+        estado=lembrete_das_agencias.caminho_do_estado(),
+        estado_dos_emails=agencias_email.caminho_do_estado(),
+        celular=lambda texto: celular.avisar(configuracao, texto),
+    )
+    for enviado in lembradas:
+        print(f"Lembrete de follow-up da {enviado.nome} ({enviado.email}) no celular.")
 
 
 def _emails_das_agencias(configuracao: Configuracao) -> None:
