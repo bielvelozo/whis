@@ -17,12 +17,20 @@ Nada aqui é enviado duas vezes. O que aconteceu com cada projeto fica em
 `%LOCALAPPDATA%\whis\cacada\propostas-auto.json`; um clique sem confirmação
 vira `incerta`, ele confere no site, e o projeto nunca volta.
 
+A proposta que as travas não deixam sair sozinha (cota do dia cheia, propostas
+demais, conexões na reserva) ainda pode ser escrita, até
+`[cacada].propostas_auto_para_aprovar` por dia. Ela chega no celular com o botão
+"Enviar esta proposta", como a do ensaio. O toque dele é o aval daquela
+proposta: `tocou_enviar` confere tudo de novo e envia, sem olhar a cota nem a
+reserva, que existem para o automático.
+
 Só na 99Freelas: o User Agreement do Freelancer.com (seção 33) proíbe enviar
 por meio automático, e lá a vigia só avisa no celular.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -39,9 +47,11 @@ from typing import Protocol
 from . import navegador_logado as _logado
 from . import vault as _vault
 from .cacada_claude import ErroDaCacada, LimiteDoPlano
+from .celular import Resposta
 from .criterios_da_cacada import PASTA_CACADA, PecaDoPortfolio, ler_criterios
 from .fontes_da_cacada import e_da_99freelas
 from .freelas_rapidos import do_nicho
+from .instancia import OutraInstancia, Trava
 from .oportunidades import FREELA, Oportunidade, link_canonico
 
 _log = logging.getLogger("whis.propostas_auto")
@@ -55,11 +65,21 @@ NO_ENSAIO = "ensaio"
 INCERTA = "incerta"
 NAO_ENTREGA = "nao_entrega"
 PULADA = "pulada"
+PARA_APROVAR = "para_aprovar"
 CONTAM_NA_COTA = {ENSAIO: (NO_ENSAIO, INCERTA), LIGADO: (ENVIADA, INCERTA)}
+ESPERAM_O_TOQUE = (NO_ENSAIO, PARA_APROVAR)
 
 PASTA_DAS_NOTAS = f"{PASTA_CACADA}/propostas-auto"
 CAMINHO_DO_RESUMO = f"{PASTA_CACADA}/propostas-auto.md"
 NOME_DO_ESTADO = "propostas-auto.json"
+#: A rodada da vigia e o toque no celular usam o mesmo Chrome da caçada e o mesmo estado: um de cada vez.
+NOME_DA_TRAVA = "propostas-auto.trava"
+ESPERA_DA_TRAVA_S = 600.0
+PAUSA_DA_TRAVA_S = 10.0
+PREFIXO_DO_TOQUE = "enviar:"
+ROTULO_DO_BOTAO = "Enviar esta proposta"
+DIAS_DOS_PENDENTES = 2
+NAO_ACHEI = "Não achei essa proposta no Whis (ele guarda 30 dias); não mandei nada."
 OFERTA_SEM_MINIMO = 50
 LIMITE_DO_TEXTO = 3000
 CHAMADAS_ALEM_DA_COTA = 2
@@ -76,7 +96,9 @@ class Travas:
     """As travas de `[cacada]`: idade e propostas do projeto, exclusivo, cota do dia e reserva de conexões.
 
     `horas` conta da hora em que o projeto abre para ele: 24 h depois de publicado, quando ele não
-    assina (`exclusivos` falso), ou da publicação, quando assina.
+    assina (`exclusivos` falso), ou da publicação, quando assina. `para_aprovar` é quantas por dia
+    chegam escritas para o toque dele quando o automático não pode mandar; aqui nasce 0 (só o
+    automático), e o config nasce com 5.
     """
 
     horas: int = 24
@@ -84,6 +106,7 @@ class Travas:
     por_dia: int = 3
     reserva: int = 3
     exclusivos: bool = False
+    para_aprovar: int = 0
 
     @classmethod
     def da_configuracao(cls, configuracao) -> Travas:
@@ -93,6 +116,7 @@ class Travas:
             por_dia=configuracao.cacada_propostas_auto_por_dia,
             reserva=configuracao.cacada_propostas_auto_reserva,
             exclusivos=configuracao.cacada_propostas_auto_exclusivos,
+            para_aprovar=configuracao.cacada_propostas_auto_para_aprovar,
         )
 
 
@@ -135,6 +159,8 @@ class Resultado:
     texto: str = ""
     nota: str = ""
     quando: str = ""
+    fila: bool = False
+    aprovada: str = ""
 
 
 @dataclass(frozen=True)
@@ -202,10 +228,19 @@ class _Estado:
         os.replace(temporario, self.arquivo)
 
     def usados(self, modo: str, dia: date) -> int:
+        """As do automático no dia; as da fila e as que ele aprovou no celular não gastam a cota."""
         contam = CONTAM_NA_COTA.get(modo, ())
         return sum(
-            1 for dados in self.projetos.values() if dados.get("situacao") in contam and str(dados.get("quando", ""))[:10] == dia.isoformat()
+            1
+            for dados in self.projetos.values()
+            if dados.get("situacao") in contam
+            and not dados.get("fila")
+            and not dados.get("aprovada")
+            and str(dados.get("quando", ""))[:10] == dia.isoformat()
         )
+
+    def na_fila(self, dia: date) -> int:
+        return sum(1 for dados in self.projetos.values() if dados.get("fila") and str(dados.get("quando", ""))[:10] == dia.isoformat())
 
     def avisar_uma_vez(self, chave: str, dia: date) -> bool:
         if self.avisos.get(chave) == dia.isoformat():
@@ -230,14 +265,15 @@ def rodar(
     fotos: Path | None = None,
     dormir: Callable[[float], None] = time.sleep,
 ) -> Rodada:
-    """Uma rodada: as travas, a página, o Claude, o envio (ou o ensaio), a nota, o celular e o resumo."""
+    """Uma rodada: as travas, a página, o Claude, o envio (ou o ensaio, ou a fila), a nota, o celular e o resumo."""
     if modo not in (ENSAIO, LIGADO):
         return Rodada()
     agora = (agora or datetime.now()).astimezone()
     hoje = agora.date()
     memoria = _Estado.ler(estado)
-    if memoria.usados(modo, hoje) >= travas.por_dia:
-        return Rodada(parou=f"cota do dia ({travas.por_dia})")
+    cota = f"cota do dia ({travas.por_dia})"
+    if memoria.usados(modo, hoje) >= travas.por_dia and memoria.na_fila(hoje) >= travas.para_aprovar:
+        return Rodada(parou=cota)
     candidatos = _candidatos(oportunidades, travas, memoria, vault, agora, contexto.nicho)
     if not candidatos:
         return Rodada()
@@ -253,13 +289,20 @@ def rodar(
     resultados: list[Resultado] = []
     parou = ""
     chamadas = 0
-    limite_de_chamadas = travas.por_dia - memoria.usados(modo, hoje) + CHAMADAS_ALEM_DA_COTA
+    limite_de_chamadas = (
+        max(0, travas.por_dia - memoria.usados(modo, hoje)) + max(0, travas.para_aprovar - memoria.na_fila(hoje)) + CHAMADAS_ALEM_DA_COTA
+    )
     abertas = 0
+    na_reserva: int | None = None
     for oportunidade in candidatos:
-        usados = memoria.usados(modo, hoje)
-        if usados >= travas.por_dia:
-            parou = f"cota do dia ({travas.por_dia})"
+        sozinha = memoria.usados(modo, hoje) < travas.por_dia and na_reserva is None
+        fila = memoria.na_fila(hoje) < travas.para_aprovar
+        if not sozinha and not fila:
+            parou = _reserva(na_reserva, travas) if na_reserva is not None else cota
             break
+        listadas = _propostas(oportunidade)
+        if not fila and listadas is not None and listadas >= travas.max_propostas:
+            continue
         if chamadas >= limite_de_chamadas:
             break
         if abertas:
@@ -277,7 +320,8 @@ def rodar(
         if pagina.situacao != _logado.ABERTO:
             resultados.append(_registrar(memoria, oportunidade, PULADA, agora, motivo=f"o projeto não está aberto ({pagina.situacao})"))
             continue
-        if pagina.propostas is not None and pagina.propostas >= travas.max_propostas:
+        lotado = pagina.propostas is not None and pagina.propostas >= travas.max_propostas
+        if lotado and not fila:
             continue
         if pagina.publicada is not None and _velho(pagina.publicada.replace(tzinfo=agora.tzinfo), travas, agora):
             continue
@@ -296,14 +340,24 @@ def rodar(
             if proposta.exclusivo and not travas.exclusivos:
                 continue
             if proposta.restantes is not None and proposta.restantes < travas.reserva:
-                parou = f"conexões: sobrariam {proposta.restantes}, a reserva é {travas.reserva}"
-                if memoria.avisar_uma_vez("conexoes", hoje):
-                    celular(
-                        f"O envio automático da 99Freelas parou: a próxima proposta deixaria {proposta.restantes} "
-                        f"conexões, e a reserva é {travas.reserva}."
-                    )
-                break
+                na_reserva = proposta.restantes
+                if not fila:
+                    parou = _reserva(na_reserva, travas)
+                    if memoria.avisar_uma_vez("conexoes", hoje):
+                        celular(
+                            f"O envio automático da 99Freelas parou: a próxima proposta deixaria {proposta.restantes} "
+                            f"conexões, e a reserva é {travas.reserva}."
+                        )
+                    break
             oferta = proposta.oferta_minima or oferta
+        if lotado:
+            porque = f"tem {pagina.propostas} propostas, e o automático só manda abaixo de {travas.max_propostas}"
+        elif memoria.usados(modo, hoje) >= travas.por_dia:
+            porque = f"a cota automática de hoje ({travas.por_dia}) acabou"
+        elif na_reserva is not None:
+            porque = f"sobrariam {na_reserva} conexões, e a reserva é {travas.reserva}"
+        else:
+            porque = ""
         texto_da_pagina = _texto_para_o_claude(html, pagina)
         try:
             escrita, chamadas_feitas = _escrever(escritor, oportunidade, texto_da_pagina, contexto, limite_de_chamadas - chamadas)
@@ -321,7 +375,10 @@ def rodar(
             resultados.append(_registrar(memoria, oportunidade, PULADA, agora, motivo=f"texto reprovado: {'; '.join(problemas)}"))
             continue
         prazo = max(1, min(60, escrita.prazo_dias or 7))
-        situacao, observacao = _enviar_ou_ensaiar(modo, logada, sessao, oportunidade, formulario, oferta, prazo, escrita.texto, fotos)
+        if porque:
+            situacao, observacao = PARA_APROVAR, porque
+        else:
+            situacao, observacao = _enviar_ou_ensaiar(modo, logada, sessao, oportunidade, formulario, oferta, prazo, escrita.texto, fotos)
         resultado = _registrar(
             memoria,
             oportunidade,
@@ -334,10 +391,12 @@ def rodar(
             orcamento=pagina.orcamento,
             texto=escrita.texto,
             nota=_nota_relativa(oportunidade.link),
+            fila=bool(porque),
         )
         _escrever_nota(vault, resultado, agora)
         resultados.append(resultado)
-        celular(_mensagem(resultado, memoria.usados(modo, hoje), travas.por_dia))
+        botoes = _botao(resultado.link) if situacao in ESPERAM_O_TOQUE else ()
+        celular(_mensagem(resultado, memoria.usados(modo, hoje), travas.por_dia), botoes=botoes)
     memoria.guardar(agora)
     escrever_resumo(vault, memoria, modo, agora)
     return Rodada(tuple(resultados), parou)
@@ -345,6 +404,10 @@ def rodar(
 
 def formulario_da_proposta(link: str) -> str:
     return link.replace("/project/", "/project/bid/", 1)
+
+
+def _reserva(restantes: int, travas: Travas) -> str:
+    return f"conexões: sobrariam {restantes}, a reserva é {travas.reserva}"
 
 
 def _candidatos(
@@ -363,7 +426,7 @@ def _candidatos(
         if not travas.exclusivos and "exclusivo para assinantes" in oportunidade.detalhes.casefold():
             continue
         propostas = _propostas(oportunidade)
-        if propostas is not None and propostas >= travas.max_propostas:
+        if not travas.para_aprovar and propostas is not None and propostas >= travas.max_propostas:
             continue
         publicada = _publicada(oportunidade, agora)
         if publicada is not None and _velho(publicada, travas, agora):
@@ -472,7 +535,7 @@ def _registrar(memoria: _Estado, oportunidade: Oportunidade, situacao: str, agor
         quando=agora.isoformat(timespec="minutes"),
         **campos,
     )
-    memoria.projetos[resultado.link] = {
+    dados = {
         "quando": resultado.quando,
         "situacao": situacao,
         "titulo": resultado.titulo,
@@ -480,9 +543,228 @@ def _registrar(memoria: _Estado, oportunidade: Oportunidade, situacao: str, agor
         "preco": resultado.preco,
         "prazo_dias": resultado.prazo_dias,
         "propostas": resultado.propostas,
+        "orcamento": resultado.orcamento,
         "nota": resultado.nota,
+        "texto": resultado.texto,
     }
+    if resultado.fila:
+        dados["fila"] = True
+    if resultado.aprovada:
+        dados["aprovada"] = resultado.aprovada
+    memoria.projetos[resultado.link] = dados
     return resultado
+
+
+# -- o toque no celular -----------------------------------------------------------------------------
+
+
+def chave_do_toque(link: str) -> str:
+    """O que o botão leva ao Telegram: o link não cabe nos 64 bytes do `callback_data`."""
+    return PREFIXO_DO_TOQUE + hashlib.sha1(link_canonico(link).encode("utf-8")).hexdigest()[:12]
+
+
+def _botao(link: str) -> tuple[tuple[str, str], ...]:
+    return ((ROTULO_DO_BOTAO, chave_do_toque(link)),)
+
+
+def _link_do_toque(memoria: _Estado, dados: str) -> str | None:
+    return next((link for link in memoria.projetos if chave_do_toque(link) == dados), None)
+
+
+def tocou_enviar(
+    dados: str,
+    *,
+    abrir_sessao: Callable[[], _logado.SessaoLogada],
+    vault: Path,
+    estado: Path,
+    travas: Travas,
+    modo: str,
+    trava: Path,
+    ocupada: Callable[[], bool] = lambda: False,
+    espera_s: float = ESPERA_DA_TRAVA_S,
+    agora: datetime | None = None,
+    fotos: Path | None = None,
+    dormir: Callable[[float], None] = time.sleep,
+) -> Resposta:
+    """O toque dele em "Enviar esta proposta": confere de novo, envia pelo Chrome da caçada e diz como foi.
+
+    A cota do dia e a reserva de conexões não barram, porque é ele quem manda. O resto confere como no
+    envio sozinho: o login, o projeto aberto, nada proposto antes, o texto e o formulário. O texto é o
+    da nota, e se ele editou a nota no Obsidian, sai o editado. `ocupada` diz se a caçada está com o Chrome.
+    """
+    agora = (agora or datetime.now()).astimezone()
+    memoria = _Estado.ler(estado)
+    link = _link_do_toque(memoria, dados)
+    if link is None:
+        return Resposta(NAO_ACHEI, tirar_botao=True)
+    decidida = _ja_decidida(memoria.projetos[link])
+    if decidida is not None:
+        return decidida
+    if ocupada():
+        return Resposta("Não enviei: a caçada está usando o Chrome da caçada agora. Toque de novo quando ela terminar.")
+    segura = _esperar_a_trava(Trava(trava), espera_s, dormir)
+    if segura is None:
+        return Resposta("Não enviei: o Chrome da caçada está ocupado com a rodada da vigia. Toque de novo daqui a alguns minutos.")
+    try:
+        memoria = _Estado.ler(estado)
+        if link not in memoria.projetos:
+            return Resposta(NAO_ACHEI, tirar_botao=True)
+        decidida = _ja_decidida(memoria.projetos[link])
+        if decidida is not None:
+            return decidida
+        with abrir_sessao() as sessao:
+            return _enviar_do_celular(link, memoria, sessao, vault=vault, travas=travas, modo=modo, agora=agora, fotos=fotos)
+    finally:
+        segura.liberar()
+
+
+def _ja_decidida(dados: dict) -> Resposta | None:
+    situacao = dados.get("situacao")
+    if situacao in ESPERAM_O_TOQUE:
+        return None
+    if situacao == ENVIADA:
+        quando = _hora(dados.get("aprovada") or dados.get("quando"))
+        return Resposta(f"Essa proposta já foi enviada{f' ({quando})' if quando else ''}; não mandei de novo.", tirar_botao=True)
+    if situacao == INCERTA:
+        return Resposta("Essa já teve um clique em enviar que a página não confirmou: confira no site. Não mandei de novo.", tirar_botao=True)
+    return Resposta(f"Essa ficou de fora: {dados.get('motivo') or situacao}. Não mandei.", tirar_botao=True)
+
+
+def _hora(quando: object) -> str:
+    try:
+        return f"{datetime.fromisoformat(str(quando)):%d/%m às %H:%M}"
+    except ValueError:
+        return ""
+
+
+def _esperar_a_trava(trava: Trava, espera_s: float, dormir: Callable[[float], None]) -> Trava | None:
+    limite = time.monotonic() + espera_s
+    while True:
+        try:
+            return trava.adquirir()
+        except OutraInstancia:
+            if time.monotonic() >= limite:
+                return None
+            dormir(PAUSA_DA_TRAVA_S)
+
+
+def _enviar_do_celular(
+    link: str,
+    memoria: _Estado,
+    sessao: _logado.SessaoLogada,
+    *,
+    vault: Path,
+    travas: Travas,
+    modo: str,
+    agora: datetime,
+    fotos: Path | None,
+) -> Resposta:
+    dados = memoria.projetos[link]
+    titulo = str(dados.get("titulo") or link)
+    oportunidade = Oportunidade.nova(tipo=FREELA, fonte="99Freelas", titulo=titulo, link=link)
+    if sessao.motivo or not sessao.logado(_logado.NOVENTA_E_NOVE):
+        motivo = sessao.motivo or "o Chrome da caçada está deslogado da 99Freelas"
+        return Resposta(f"Não enviei: {motivo}. Entre pelo whis navegador, feche o Chrome e toque de novo.")
+    try:
+        html = sessao.html(link)
+    except _logado.SemNavegador as erro:
+        return Resposta(f"Não enviei: a página do projeto não abriu ({erro}). Toque de novo daqui a pouco.")
+    pagina = _logado.ler_99freelas(html)
+    texto = _texto_guardado(vault, dados)
+    campos = {
+        "preco": int(dados.get("preco") or 0),
+        "prazo_dias": int(dados.get("prazo_dias") or 0),
+        "propostas": pagina.propostas if pagina.propostas is not None else dados.get("propostas"),
+        "orcamento": pagina.orcamento or str(dados.get("orcamento") or ""),
+        "texto": texto,
+        "nota": str(dados.get("nota") or _nota_relativa(link)),
+        "fila": bool(dados.get("fila")),
+    }
+    if pagina.situacao == _logado.JA_PROPOS:
+        _decidir(memoria, vault, modo, oportunidade, PULADA, agora, motivo="você já tinha proposto pelo site", **campos)
+        return Resposta("Você já tinha proposto nesse projeto pelo site; não mandei de novo.", tirar_botao=True)
+    if pagina.situacao != _logado.ABERTO:
+        motivo = f"o projeto não está mais aberto ({pagina.situacao})"
+        _decidir(memoria, vault, modo, oportunidade, PULADA, agora, motivo=motivo, **campos)
+        return Resposta(f"Não enviei: {motivo}.", tirar_botao=True)
+    if not texto:
+        return Resposta("Não enviei: não achei o texto da proposta, nem na nota nem no Whis.")
+    problemas = problemas_do_texto(texto, oportunidade, _texto_para_o_claude(html, pagina), ler_criterios(vault).portfolio)
+    if problemas:
+        return Resposta(f"Não enviei: o texto não passou na conferência ({'; '.join(problemas)}). Arrume a nota e toque de novo.")
+    formulario = formulario_da_proposta(link)
+    try:
+        proposta = _logado.ler_proposta_da_99freelas(sessao.html(formulario))
+    except _logado.SemNavegador as erro:
+        return Resposta(f"Não enviei: o formulário não abriu ({erro}). Toque de novo daqui a pouco.")
+    if proposta.exclusivo and not travas.exclusivos:
+        abre = f" (abre por volta de {pagina.publicada + JANELA_DO_EXCLUSIVO:%d/%m às %H:%M})" if pagina.publicada else ""
+        return Resposta(f"Não enviei: o projeto ainda está só para assinantes da 99Freelas{abre}. Toque de novo depois.")
+    oferta = proposta.oferta_minima or campos["preco"] or pagina.valor_minimo or OFERTA_SEM_MINIMO
+    prazo = max(1, min(60, campos["prazo_dias"] or 7))
+    situacao, observacao = _enviar_ou_ensaiar(LIGADO, True, sessao, oportunidade, formulario, oferta, prazo, texto, fotos)
+    if situacao == PULADA:
+        return Resposta(f"Não enviei: {observacao}. Toque de novo daqui a pouco.")
+    campos.update(preco=oferta, prazo_dias=prazo)
+    _decidir(memoria, vault, modo, oportunidade, situacao, agora, motivo=observacao, aprovada=agora.isoformat(timespec="minutes"), **campos)
+    if situacao == ENVIADA:
+        sobram = f" · sobram {proposta.restantes} conexões" if proposta.restantes is not None else ""
+        dias = "dia" if prazo == 1 else "dias"
+        return Resposta(f"Enviada na 99Freelas: {titulo} · R$ {oferta} em {prazo} {dias}{sobram}\n{link}", tirar_botao=True)
+    return Resposta(f"Cliquei em enviar, mas a página não confirmou: confira no site se a proposta saiu.\n{titulo}\n{link}", tirar_botao=True)
+
+
+def _decidir(memoria: _Estado, vault: Path, modo: str, oportunidade: Oportunidade, situacao: str, agora: datetime, **campos) -> Resultado:
+    resultado = _registrar(memoria, oportunidade, situacao, agora, **campos)
+    _escrever_nota(vault, resultado, agora)
+    memoria.guardar(agora)
+    escrever_resumo(vault, memoria, modo, agora)
+    return resultado
+
+
+def _texto_guardado(vault: Path, dados: dict) -> str:
+    """O corpo da nota (ele pode ter editado), sem a linha de observação do fim; sem nota, o do estado."""
+    relativo = str(dados.get("nota") or "")
+    arquivo = Path(vault) / relativo
+    if relativo and arquivo.is_file():
+        casou = _FRONTMATTER.match(arquivo.read_text(encoding="utf-8", errors="replace"))
+        if casou is not None:
+            linhas = casou["corpo"].strip().splitlines()
+            while linhas and (not linhas[-1].strip() or linhas[-1].startswith(">")):
+                linhas.pop()
+            texto = "\n".join(linhas).strip()
+            if texto:
+                return texto
+    return str(dados.get("texto") or "").strip()
+
+
+def oferecer_pendentes(
+    *, estado: Path, vault: Path, celular: Callable[..., bool], agora: datetime | None = None, dias: int = DIAS_DOS_PENDENTES
+) -> int:
+    """Manda de novo ao celular, com o botão, as propostas escritas nos últimos `dias` que esperam o toque dele."""
+    agora = (agora or datetime.now()).astimezone()
+    limite = (agora - timedelta(days=dias)).isoformat()
+    memoria = _Estado.ler(estado)
+    oferecidas = 0
+    for link, dados in sorted(memoria.projetos.items(), key=lambda item: str(item[1].get("quando", ""))):
+        if dados.get("situacao") not in ESPERAM_O_TOQUE or str(dados.get("quando", "")) < limite:
+            continue
+        resultado = Resultado(
+            link=link,
+            titulo=str(dados.get("titulo") or link),
+            situacao=str(dados["situacao"]),
+            preco=int(dados.get("preco") or 0),
+            prazo_dias=int(dados.get("prazo_dias") or 0),
+            propostas=dados.get("propostas"),
+            orcamento=str(dados.get("orcamento") or ""),
+            texto=_texto_guardado(vault, dados),
+        )
+        comeco = f"Esperando o seu toque (escrita em {_hora(dados.get('quando'))})"
+        if dados.get("situacao") == PARA_APROVAR and dados.get("motivo"):
+            comeco += f": {dados['motivo']}"
+        if celular(_mensagem(resultado, 0, 0, comeco=comeco), botoes=_botao(link)):
+            oferecidas += 1
+    return oferecidas
 
 
 # -- a conferência do texto -------------------------------------------------------------------------
@@ -545,6 +827,8 @@ def _status(resultado: Resultado, dia: date) -> str:
         return f"incerta em {dia.isoformat()} ({preco}): confira no site e troque por enviada ou pulada"
     if resultado.situacao == PULADA:
         return f"pulada em {dia.isoformat()}: {resultado.motivo}"
+    if resultado.situacao == PARA_APROVAR:
+        return f"para aprovar em {dia.isoformat()} ({preco}): toque Enviar no Telegram"
     return f"ensaio em {dia.isoformat()} ({preco}), não enviada"
 
 
@@ -561,7 +845,7 @@ def _escrever_nota(vault: Path, resultado: Resultado, agora: datetime) -> None:
         f"orcamento: {json.dumps(resultado.orcamento, ensure_ascii=False)}",
         f"status: {_status(resultado, agora.date())}",
         f"{'enviada' if resultado.situacao == ENVIADA else 'escrita'}: {agora:%Y-%m-%d %H:%M}",
-        "origem: propostas automáticas (whis vigia-freelas)",
+        f"origem: propostas automáticas ({'aprovada no celular' if resultado.aprovada else 'whis vigia-freelas'})",
         "---",
         "",
         resultado.texto.strip(),
@@ -572,7 +856,7 @@ def _escrever_nota(vault: Path, resultado: Resultado, agora: datetime) -> None:
     _vault.escrever(vault, resultado.nota, "\n".join(linhas), zonas=(PASTA_CACADA,))
 
 
-def _mensagem(resultado: Resultado, usados: int, por_dia: int) -> str:
+def _mensagem(resultado: Resultado, usados: int, por_dia: int, *, comeco: str = "") -> str:
     if resultado.situacao == INCERTA:
         return (
             "Cliquei em enviar na 99Freelas, mas a página não confirmou: confira se a proposta saiu.\n"
@@ -580,11 +864,13 @@ def _mensagem(resultado: Resultado, usados: int, por_dia: int) -> str:
         )
     if resultado.situacao == PULADA:
         return f"A proposta não saiu: {resultado.motivo}\n{resultado.titulo}\n{resultado.link}"
-    comeco = (
-        f"Proposta enviada na 99Freelas ({usados} de {por_dia} hoje)"
-        if resultado.situacao == ENVIADA
-        else f"Ensaio: esta proposta sairia agora na 99Freelas ({usados} de {por_dia} hoje)"
-    )
+    if not comeco:
+        if resultado.situacao == ENVIADA:
+            comeco = f"Proposta enviada na 99Freelas ({usados} de {por_dia} hoje)"
+        elif resultado.situacao == PARA_APROVAR:
+            comeco = f"Para você aprovar: {resultado.motivo}."
+        else:
+            comeco = f"Ensaio: esta proposta sairia agora na 99Freelas ({usados} de {por_dia} hoje)"
     dados = " · ".join(
         parte
         for parte in (
@@ -601,14 +887,21 @@ def _mensagem(resultado: Resultado, usados: int, por_dia: int) -> str:
     return "\n".join(linha for indice, linha in enumerate(linhas) if linha or indice == 5)
 
 
-_ROTULOS = {ENVIADA: "enviada", NO_ENSAIO: "ensaio", INCERTA: "incerta", NAO_ENTREGA: "não entrega", PULADA: "pulada"}
+_ROTULOS = {
+    ENVIADA: "enviada",
+    NO_ENSAIO: "ensaio",
+    INCERTA: "incerta",
+    NAO_ENTREGA: "não entrega",
+    PULADA: "pulada",
+    PARA_APROVAR: "para aprovar",
+}
 
 
 def escrever_resumo(vault: Path, memoria: _Estado, modo: str, agora: datetime) -> Path:
     """`cacada/propostas-auto.md`: por dia, o que saiu, o que teria saído e o que ficou de fora."""
     explicacao = {
         ENSAIO: "**ensaio**: escreve, preenche o formulário sem clicar e avisa no celular, mas não envia",
-        LIGADO: "**ligado**: envia pela 99Freelas e confere pelo botão \"Melhorar proposta\"",
+        LIGADO: "**ligado**: envia pela 99Freelas e confere pelo botão \"Melhorar proposta\"; a que não sai sozinha chega no celular com o botão Enviar",
     }.get(modo, f"**{modo}**")
     linhas = [
         "# Propostas automáticas da 99Freelas",
@@ -627,7 +920,9 @@ def escrever_resumo(vault: Path, memoria: _Estado, modo: str, agora: datetime) -
         itens = sorted(por_dia[dia], key=lambda d: str(d.get("quando", "")))
         saiu = sum(1 for d in itens if d.get("situacao") == ENVIADA)
         ensaio = sum(1 for d in itens if d.get("situacao") == NO_ENSAIO)
-        linhas += ["", f"## {data:%d/%m/%Y} ({_DIAS_DA_SEMANA[data.weekday()]})", "", f"Enviadas: {saiu} · no ensaio: {ensaio}", ""]
+        fila = sum(1 for d in itens if d.get("situacao") == PARA_APROVAR)
+        contagem = f"Enviadas: {saiu} · no ensaio: {ensaio} · para aprovar: {fila}"
+        linhas += ["", f"## {data:%d/%m/%Y} ({_DIAS_DA_SEMANA[data.weekday()]})", "", contagem, ""]
         for dados in itens:
             hora = str(dados.get("quando", ""))[11:16]
             partes = [hora, _ROTULOS.get(str(dados.get("situacao")), str(dados.get("situacao"))), f"[{dados.get('titulo', '')}]({dados['link']})"]
@@ -639,7 +934,7 @@ def escrever_resumo(vault: Path, memoria: _Estado, modo: str, agora: datetime) -
             if dados.get("nota"):
                 partes.append(f"[[{str(dados['nota']).removesuffix('.md')}|nota]]")
             linha = "- " + " · ".join(partes)
-            if dados.get("motivo") and dados.get("situacao") in (NAO_ENTREGA, PULADA, INCERTA):
+            if dados.get("motivo") and dados.get("situacao") in (NAO_ENTREGA, PULADA, INCERTA, PARA_APROVAR):
                 linha += f" — {dados['motivo']}"
             linhas.append(linha)
     return _vault.escrever(vault, CAMINHO_DO_RESUMO, "\n".join(linhas) + "\n", zonas=(PASTA_CACADA,))

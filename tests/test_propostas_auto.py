@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from whis import funil, propostas_auto
+from whis.instancia import Trava
 from whis.configuracao import ConfiguracaoInvalida, carregar_texto
 from whis.navegador_logado import (
     NOVENTA_E_NOVE,
@@ -121,6 +122,19 @@ class EscritorFake:
 CONTEXTO = Contexto(procuro="Freela por projeto.", sobre_mim="- Anos: 3", perfil="Full stack.", portfolio=(), exemplos=())
 
 
+class CelularFake(list):
+    """As mensagens que iriam ao Telegram, e os botões de cada uma em `botoes`."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.botoes: list[tuple[tuple[str, str], ...]] = []
+
+    def __call__(self, texto: str, *, botoes=()) -> bool:
+        self.append(texto)
+        self.botoes.append(tuple(botoes))
+        return True
+
+
 def _rodar(
     tmp_path: Path,
     oportunidades,
@@ -133,7 +147,7 @@ def _rodar(
     publica=None,
     contexto: Contexto = CONTEXTO,
 ):
-    celular: list[str] = []
+    celular = CelularFake()
     escritor = escritor or EscritorFake()
     rodada = rodar(
         list(oportunidades),
@@ -145,7 +159,7 @@ def _rodar(
         sessao=sessao,
         publica=publica or (lambda url: (_ for _ in ()).throw(AssertionError(f"página pública pedida: {url}"))),
         estado=tmp_path / "propostas-auto.json",
-        celular=lambda texto: celular.append(texto) or True,
+        celular=celular,
         agora=agora,
         dormir=lambda _segundos: None,
     )
@@ -427,7 +441,7 @@ def test_a_vigia_roda_de_hora_em_hora_e_o_envio_nasce_desligado(tmp_path: Path):
 
     assert configuracao.cacada_horarios_da_vigia_de_freelas == tuple(f"{hora:02d}:00" for hora in range(7, 24))
     assert configuracao.cacada_propostas_auto == "desligado"
-    assert Travas.da_configuracao(configuracao) == Travas(horas=24, max_propostas=80, por_dia=3, reserva=3, exclusivos=False)
+    assert Travas.da_configuracao(configuracao) == Travas(horas=24, max_propostas=80, por_dia=3, reserva=3, exclusivos=False, para_aprovar=5)
 
 
 def test_modo_desconhecido_e_erro_de_configuracao(tmp_path: Path):
@@ -518,3 +532,226 @@ def test_sem_login_a_bandeira_da_pagina_barra_o_exclusivo(tmp_path: Path):
     )
 
     assert rodada.resultados == () and escritor.pedidos == []
+
+
+# -- o botão Enviar no celular ---------------------------------------------------------------------
+
+OUTRO = "https://www.99freelas.com.br/project/landing-page-de-advocacia-790999"
+BOTAO = ((propostas_auto.ROTULO_DO_BOTAO, propostas_auto.chave_do_toque(LINK)),)
+
+
+def _com_outro(sessao: SessaoFake, *, propostas: int = 7) -> SessaoFake:
+    sessao.paginas[OUTRO] = (
+        _projeto(propostas)
+        .replace("sistema-web-para-gerar-mapas-numerologicos-790517", "landing-page-de-advocacia-790999")
+        .replace("09/10/2026 às 19:32", "08/10/2026 às 23:30")
+    )
+    sessao.paginas[propostas_auto.formulario_da_proposta(OUTRO)] = _formulario()
+    return sessao
+
+
+def _tocar(tmp_path: Path, sessao: SessaoLogada, *, dados: str | None = None, agora: datetime = AGORA + timedelta(hours=1), **opcoes):
+    return propostas_auto.tocou_enviar(
+        dados if dados is not None else propostas_auto.chave_do_toque(LINK),
+        abrir_sessao=lambda: sessao,
+        vault=tmp_path / "vault",
+        estado=tmp_path / "propostas-auto.json",
+        travas=opcoes.pop("travas", Travas()),
+        modo=opcoes.pop("modo", ENSAIO),
+        trava=tmp_path / propostas_auto.NOME_DA_TRAVA,
+        agora=agora,
+        dormir=lambda _segundos: None,
+        **opcoes,
+    )
+
+
+def _estado(tmp_path: Path) -> dict:
+    return json.loads((tmp_path / "propostas-auto.json").read_text(encoding="utf-8"))["projetos"]
+
+
+def test_a_chave_do_botao_cabe_no_limite_do_telegram():
+    chave = propostas_auto.chave_do_toque(LINK)
+
+    assert chave.startswith(propostas_auto.PREFIXO_DO_TOQUE) and len(chave.encode()) <= 64
+    assert chave == propostas_auto.chave_do_toque(LINK) != propostas_auto.chave_do_toque(OUTRO)
+
+
+def test_o_ensaio_chega_no_celular_com_o_botao_enviar(tmp_path: Path):
+    _, celular, _ = _rodar(tmp_path, [_freela()], sessao=_logada())
+
+    assert celular.botoes == [BOTAO]
+
+
+def test_a_enviada_sozinha_chega_sem_botao(tmp_path: Path):
+    _, celular, _ = _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=_logada(depois_de_enviar={LINK: _ja_proposto()}))
+
+    assert celular.botoes == [()]
+
+
+def test_com_a_cota_cheia_a_proxima_chega_escrita_para_aprovar_sem_clique(tmp_path: Path):
+    sessao = _com_outro(_logada(depois_de_enviar={LINK: _ja_proposto()}))
+
+    rodada, celular, _ = _rodar(
+        tmp_path, [_freela(), _freela(OUTRO, propostas=9)], modo=LIGADO, sessao=sessao, travas=Travas(por_dia=1, para_aprovar=2)
+    )
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.ENVIADA, propostas_auto.PARA_APROVAR]
+    assert [p[0] for p in sessao.preenchidos] == [FORMULARIO]
+    assert celular[1].startswith("Para você aprovar: a cota automática de hoje (1) acabou.")
+    assert TEXTO in celular[1] and "R$ 50 em 3 dias" in celular[1] and OUTRO in celular[1]
+    assert celular.botoes[1] == ((propostas_auto.ROTULO_DO_BOTAO, propostas_auto.chave_do_toque(OUTRO)),)
+    nota = (tmp_path / "vault" / "cacada" / "propostas-auto" / "landing-page-de-advocacia-790999.md").read_text(encoding="utf-8")
+    assert "status: para aprovar em 2026-10-10 (R$ 50, 3 dias)" in nota
+    assert [m.link for m in funil.ler_mandadas(tmp_path / "vault")] == [LINK]
+
+
+def test_projeto_com_propostas_demais_nunca_sai_sozinho_mas_chega_para_aprovar(tmp_path: Path):
+    sessao = _logada(projeto=_projeto(95))
+
+    rodada, celular, _ = _rodar(tmp_path, [_freela(propostas=95)], modo=LIGADO, sessao=sessao, travas=Travas(para_aprovar=1))
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.PARA_APROVAR]
+    assert sessao.preenchidos == []
+    assert celular[0].startswith("Para você aprovar: tem 95 propostas, e o automático só manda abaixo de 80.")
+
+
+def test_conexoes_na_reserva_mandam_para_aprovar_em_vez_de_parar(tmp_path: Path):
+    sessao = _logada(formulario=_formulario(restantes=2))
+
+    rodada, celular, _ = _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=sessao, travas=Travas(para_aprovar=1))
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.PARA_APROVAR]
+    assert sessao.preenchidos == []
+    assert len(celular) == 1 and celular[0].startswith("Para você aprovar: sobrariam 2 conexões, e a reserva é 3.")
+
+
+def test_a_fila_para_aprovar_tem_teto_por_dia(tmp_path: Path):
+    sessao = _com_outro(_logada())
+
+    rodada, _, escritor = _rodar(
+        tmp_path, [_freela(), _freela(OUTRO)], modo=LIGADO, sessao=sessao, travas=Travas(por_dia=0, para_aprovar=1)
+    )
+    depois, _, de_novo = _rodar(tmp_path, [_freela(OUTRO)], modo=LIGADO, sessao=sessao, travas=Travas(por_dia=0, para_aprovar=1))
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.PARA_APROVAR]
+    assert len(escritor.pedidos) == 1 and "cota" in rodada.parou
+    assert depois.resultados == () and de_novo.pedidos == []
+
+
+def test_o_toque_envia_a_proposta_guardada_e_a_nota_vira_enviada(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+    sessao = _logada(depois_de_enviar={LINK: _ja_proposto()})
+
+    resposta = _tocar(tmp_path, sessao)
+
+    assert resposta.tirar_botao is True
+    assert resposta.texto.startswith("Enviada na 99Freelas: Sistema web para gerar mapas numerológicos · R$ 50 em 3 dias")
+    assert "sobram 14 conexões" in resposta.texto and LINK in resposta.texto
+    assert sessao.preenchidos == [(FORMULARIO, 50, 3, TEXTO, True)]
+    nota = _nota(tmp_path)
+    assert "status: enviada em 2026-10-10 (R$ 50, 3 dias)" in nota and "aprovada no celular" in nota and TEXTO in nota
+    [mandada] = funil.ler_mandadas(tmp_path / "vault")
+    assert mandada.link == LINK
+    assert _estado(tmp_path)[LINK]["situacao"] == propostas_auto.ENVIADA and _estado(tmp_path)[LINK]["aprovada"]
+    assert "enviada" in (tmp_path / "vault" / "cacada" / "propostas-auto.md").read_text(encoding="utf-8")
+
+
+def test_o_toque_manda_o_texto_da_nota_quando_ele_editou(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+    arquivo = tmp_path / "vault" / "cacada" / "propostas-auto" / "sistema-web-para-gerar-mapas-numerologicos-790517.md"
+    editado = TEXTO.replace("Olá, Natacha!", "Oi, Natacha, tudo bem?")
+    arquivo.write_text(arquivo.read_text(encoding="utf-8").replace(TEXTO, editado), encoding="utf-8")
+    sessao = _logada(depois_de_enviar={LINK: _ja_proposto()})
+
+    _tocar(tmp_path, sessao)
+
+    assert sessao.preenchidos[0][3] == editado
+
+
+def test_tocar_duas_vezes_nao_envia_de_novo(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+    sessao = _logada(depois_de_enviar={LINK: _ja_proposto()})
+
+    _tocar(tmp_path, sessao)
+    segunda = _tocar(tmp_path, sessao)
+
+    assert len(sessao.preenchidos) == 1
+    assert segunda.tirar_botao is True and "já foi enviada" in segunda.texto
+
+
+def test_ja_proposto_pelo_site_ou_projeto_fechado_tira_o_botao_sem_enviar(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+    sessao = _logada(projeto=_ja_proposto())
+
+    resposta = _tocar(tmp_path, sessao)
+
+    assert resposta.tirar_botao is True and "já tinha proposto" in resposta.texto
+    assert sessao.preenchidos == [] and _estado(tmp_path)[LINK]["situacao"] == propostas_auto.PULADA
+
+
+def test_deslogado_mantem_o_botao_para_tocar_de_novo(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+    sessao = SessaoFake({PAGINAS_DE_CONFERENCIA[NOVENTA_E_NOVE]: _fixture("deslogado"), LINK: _projeto()})
+
+    resposta = _tocar(tmp_path, sessao)
+
+    assert resposta.tirar_botao is False and "deslogado" in resposta.texto and "whis navegador" in resposta.texto
+    assert _estado(tmp_path)[LINK]["situacao"] == propostas_auto.NO_ENSAIO
+
+
+def test_chrome_ocupado_pela_vigia_ou_pela_cacada_mantem_o_botao(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+    sessao = _logada()
+    da_vigia = Trava(tmp_path / propostas_auto.NOME_DA_TRAVA).adquirir()
+    try:
+        ocupado = _tocar(tmp_path, sessao, espera_s=0)
+    finally:
+        da_vigia.liberar()
+    cacada = _tocar(tmp_path, sessao, ocupada=lambda: True)
+
+    assert ocupado.tirar_botao is False and "ocupado" in ocupado.texto
+    assert cacada.tirar_botao is False and "caçada" in cacada.texto
+    assert sessao.visitadas == [] and sessao.preenchidos == []
+
+
+def test_formulario_que_recusa_mantem_o_botao_e_nada_muda(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+
+    class Recusa(SessaoFake):
+        def preencher_proposta_da_99freelas(self, url, **_opcoes):
+            raise SemNavegador("o botão Enviar proposta está coberto")
+
+    resposta = _tocar(tmp_path, Recusa(_logada().paginas))
+
+    assert resposta.tirar_botao is False and "coberto" in resposta.texto
+    assert _estado(tmp_path)[LINK]["situacao"] == propostas_auto.NO_ENSAIO
+
+
+def test_toque_que_o_whis_nao_conhece_tira_o_botao(tmp_path: Path):
+    resposta = _tocar(tmp_path, _logada(), dados="enviar:000000000000")
+
+    assert resposta.tirar_botao is True and "Não achei" in resposta.texto
+
+
+def test_a_aprovada_no_celular_nao_gasta_a_cota_automatica(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=_logada(), travas=Travas(por_dia=0, para_aprovar=1))
+    _tocar(tmp_path, _logada(depois_de_enviar={LINK: _ja_proposto()}), modo=LIGADO)
+    sessao = _com_outro(_logada())
+    sessao.depois_de_enviar = {OUTRO: _ja_proposto()}
+
+    rodada, _, _ = _rodar(tmp_path, [_freela(OUTRO)], modo=LIGADO, sessao=sessao, travas=Travas(por_dia=1), agora=AGORA + timedelta(hours=2))
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.ENVIADA]
+
+
+def test_as_que_esperam_o_toque_voltam_ao_celular_com_o_botao(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+    celular = CelularFake()
+
+    oferecidas = propostas_auto.oferecer_pendentes(
+        estado=tmp_path / "propostas-auto.json", vault=tmp_path / "vault", celular=celular, agora=AGORA + timedelta(hours=3)
+    )
+
+    assert oferecidas == 1
+    assert celular[0].startswith("Esperando o seu toque (escrita em 10/10 às 10:00)") and TEXTO in celular[0]
+    assert celular.botoes == [BOTAO]

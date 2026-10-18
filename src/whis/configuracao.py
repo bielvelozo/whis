@@ -132,6 +132,7 @@ propostas_auto_max_propostas = 80  # só propõe em projeto com menos de tantas 
 propostas_auto_por_dia = 3   # no máximo tantas propostas automáticas por dia (o ensaio conta)
 propostas_auto_reserva = 3   # não propõe se a proposta deixaria menos de tantas conexões da 99Freelas
 propostas_auto_exclusivos = false  # true = você assina a 99Freelas e pode propor no projeto exclusivo de assinante
+propostas_auto_para_aprovar = 5  # por dia, até tantas propostas que não saem sozinhas (cota cheia, propostas demais, reserva) chegam escritas no celular com o botão Enviar; 0 = nenhuma
 
 [celular]
 telegram_token = ""          # o token do seu bot do Telegram (o @BotFather dá); grave com whis celular, que pede o token sem mostrar na tela
@@ -237,6 +238,7 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "propostas_auto_por_dia", "cacada_propostas_auto_por_dia", Tipo.INTEIRO),
     Chave("cacada", "propostas_auto_reserva", "cacada_propostas_auto_reserva", Tipo.INTEIRO),
     Chave("cacada", "propostas_auto_exclusivos", "cacada_propostas_auto_exclusivos", Tipo.BOOLEANO),
+    Chave("cacada", "propostas_auto_para_aprovar", "cacada_propostas_auto_para_aprovar", Tipo.INTEIRO),
     Chave("celular", "telegram_token", "celular_telegram_token", Tipo.SEGREDO),
     Chave("celular", "telegram_chat", "celular_telegram_chat", Tipo.TEXTO),
     Chave("linkedin", "client_id", "linkedin_client_id", Tipo.TEXTO),
@@ -354,6 +356,7 @@ class Configuracao:
     cacada_propostas_auto_por_dia: int = 3
     cacada_propostas_auto_reserva: int = 3
     cacada_propostas_auto_exclusivos: bool = False
+    cacada_propostas_auto_para_aprovar: int = 5
     celular_telegram_token: str = ""
     celular_telegram_chat: str = ""
     linkedin_client_id: str = ""
@@ -520,6 +523,9 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         ),
         cacada_propostas_auto_exclusivos=_booleano(
             cacada.get("propostas_auto_exclusivos", False), "[cacada].propostas_auto_exclusivos", arquivo
+        ),
+        cacada_propostas_auto_para_aprovar=_inteiro_entre(
+            cacada.get("propostas_auto_para_aprovar", 5), "[cacada].propostas_auto_para_aprovar", 0, 50, arquivo
         ),
         celular_telegram_token=str(celular.get("telegram_token", "")).strip(),
         celular_telegram_chat=str(celular.get("telegram_chat", "")).strip(),

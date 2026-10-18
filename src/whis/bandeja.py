@@ -14,6 +14,10 @@ da camada 3.
 
 Um atalho que o Windows recusa vira toast e linha no log em
 `%APPDATA%\\whis\\bandeja.log`, e a bandeja sobe do mesmo jeito.
+
+Com o bot do Telegram em `[celular]`, a bandeja também ouve os botões das
+mensagens (o `celular.Ouvinte`, numa thread própria): é ela que está sempre
+ligada no notebook quando ele toca "Enviar esta proposta" no celular.
 """
 
 from __future__ import annotations
@@ -168,6 +172,7 @@ def executar(
     verboso: bool = False,
     atalho=None,
     painel: Callable[[object], object] | None = None,
+    ouvinte=None,
 ) -> int:
     """Sobe a bandeja com a palheta hospedada. É o que o subcomando chama.
 
@@ -237,6 +242,8 @@ def executar(
     def encerrar() -> None:
         if hotkey is not None:
             hotkey.parar()
+        if ouvinte is not None:
+            ouvinte.parar()
         janela.pedir(janela.encerrar)
 
     bandeja = Bandeja(
@@ -259,6 +266,8 @@ def executar(
                 f"{atalho.texto} já está em uso por outro programa. A palheta abre pelo "
                 f"menu da bandeja; troque [palheta].atalho para ter o atalho de volta.",
             )
+    if ouvinte is not None:
+        ouvinte.iniciar()
     try:
         bandeja.executar(hospedeiro=janela)
     except KeyboardInterrupt:

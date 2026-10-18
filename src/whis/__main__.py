@@ -17,7 +17,7 @@ para as reuniões da Granola::
     python -m whis linkedin [--fakes] | linkedin-login | linkedin-publicar <nota>
     python -m whis contas [--so SITE] [--senha SITE] | navegador [url]
     python -m whis lembrete [--agendada] | candidaturas
-    python -m whis vigia-freelas [--agendada] [--fakes] | celular [--teste]
+    python -m whis vigia-freelas [--agendada] [--fakes] | celular [--teste | --pendentes]
     python -m whis o-que-pedem [--nicho NICHO] | agencias [--forcar] [--fakes]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
@@ -999,11 +999,12 @@ def _propostas_automaticas(configuracao: Configuracao, lidas, nicho: str, *, fak
     """A proposta automática da 99Freelas com a mesma leitura da vigia; no `--fakes`, um ensaio sem Claude nem Chrome."""
     from . import celular, propostas_auto
     from .corrida import cacada_correndo, pasta_da_cacada
+    from .instancia import OutraInstancia, Trava
 
     modo = propostas_auto.ENSAIO if fakes else configuracao.cacada_propostas_auto
     if modo == propostas_auto.DESLIGADO:
         return
-    no_celular = lambda texto: celular.avisar(configuracao, texto)  # noqa: E731
+    no_celular = lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes)  # noqa: E731
     travas = propostas_auto.Travas.da_configuracao(configuracao)
     if fakes:
         import tempfile
@@ -1029,20 +1030,29 @@ def _propostas_automaticas(configuracao: Configuracao, lidas, nicho: str, *, fak
         from .navegador_logado import NavegadorLogado
         from .propostas_auto_claude import PropostaClaude
 
-        vault = _vault.preparar(configuracao.vault)
-        with NavegadorLogado().abrir() as sessao:
-            rodada = propostas_auto.rodar(
-                lidas,
-                modo=modo,
-                travas=travas,
-                vault=vault,
-                escritor=PropostaClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None),
-                contexto=propostas_auto.contexto_do_vault(vault, nicho),
-                sessao=sessao,
-                estado=propostas_auto.caminho_do_estado(),
-                celular=no_celular,
-                fotos=propostas_auto.pasta_das_fotos(),
-            )
+        trava = Trava(pasta_da_cacada() / propostas_auto.NOME_DA_TRAVA)
+        try:
+            trava.adquirir()
+        except OutraInstancia:
+            print("A proposta automática fica para a próxima hora: o envio pelo celular está usando o Chrome da caçada.")
+            return
+        try:
+            vault = _vault.preparar(configuracao.vault)
+            with NavegadorLogado().abrir() as sessao:
+                rodada = propostas_auto.rodar(
+                    lidas,
+                    modo=modo,
+                    travas=travas,
+                    vault=vault,
+                    escritor=PropostaClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None),
+                    contexto=propostas_auto.contexto_do_vault(vault, nicho),
+                    sessao=sessao,
+                    estado=propostas_auto.caminho_do_estado(),
+                    celular=no_celular,
+                    fotos=propostas_auto.pasta_das_fotos(),
+                )
+        finally:
+            trava.liberar()
     for resultado in rodada.resultados:
         detalhe = f" — {resultado.motivo}" if resultado.motivo else ""
         print(f"Proposta automática ({modo}): {resultado.situacao} · {resultado.titulo} · {resultado.link}{detalhe}")
@@ -1061,6 +1071,22 @@ def _comando_celular(args: argparse.Namespace) -> int:
     from .configuracao import escrever
 
     configuracao = _configuracao(args)
+    if args.pendentes:
+        from . import propostas_auto
+
+        if not (configuracao.celular_telegram_token and configuracao.celular_telegram_chat):
+            print("Falta o bot: rode `whis celular` primeiro.")
+            return SAIDA_NAO_NASCEU
+        oferecidas = propostas_auto.oferecer_pendentes(
+            estado=propostas_auto.caminho_do_estado(),
+            vault=_vault.preparar(configuracao.vault),
+            celular=lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes),
+        )
+        if oferecidas:
+            print(f"{oferecidas} {'proposta esperando' if oferecidas == 1 else 'propostas esperando'} o seu toque, mandadas de novo ao celular.")
+        else:
+            print(f"Nenhuma proposta escrita nos últimos {propostas_auto.DIAS_DOS_PENDENTES} dias está esperando o seu toque.")
+        return SAIDA_COMPLETA
     if args.teste:
         if not (configuracao.celular_telegram_token and configuracao.celular_telegram_chat):
             print("Falta o bot: rode `whis celular` primeiro.")
@@ -1087,6 +1113,29 @@ def _comando_celular(args: argparse.Namespace) -> int:
     celular.Telegram(token, chat).enviar("Pronto: o Whis vai te avisar aqui das propostas e dos freelas novos.")
     print(f"Gravado em {configuracao.origem} ([celular]). Mandei uma mensagem de teste para o @{bot}.")
     return SAIDA_COMPLETA
+
+
+def _tocou_no_celular(configuracao: Configuracao, dados: str):
+    """O toque num botão do Telegram, que a bandeja ouve: hoje só o "Enviar esta proposta" da 99Freelas."""
+    from . import propostas_auto
+    from .celular import Resposta
+    from .corrida import cacada_correndo, pasta_da_cacada
+    from .navegador_logado import NavegadorLogado
+
+    if not dados.startswith(propostas_auto.PREFIXO_DO_TOQUE):
+        return Resposta("Esse botão não faz mais nada no Whis.", tirar_botao=True)
+    pasta = pasta_da_cacada()
+    return propostas_auto.tocou_enviar(
+        dados,
+        abrir_sessao=lambda: NavegadorLogado().abrir(),
+        vault=_vault.preparar(configuracao.vault),
+        estado=propostas_auto.caminho_do_estado(),
+        travas=propostas_auto.Travas.da_configuracao(configuracao),
+        modo=configuracao.cacada_propostas_auto,
+        trava=pasta / propostas_auto.NOME_DA_TRAVA,
+        ocupada=lambda: cacada_correndo(pasta),
+        fotos=propostas_auto.pasta_das_fotos(),
+    )
 
 
 def _comando_o_que_pedem(args: argparse.Namespace) -> int:
@@ -1414,12 +1463,18 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
 
         abrir_painel(raiz, palheta, destino=configuracao.origem)
 
+    ouvinte = None
+    if not fakes and configuracao.celular_telegram_token and configuracao.celular_telegram_chat:
+        from .celular import Ouvinte
+
+        ouvinte = Ouvinte(lambda: palheta.configuracao, lambda dados: _tocou_no_celular(palheta.configuracao, dados))
     return _bandeja.executar(
         configuracao,
         verboso=args.verboso,
         palheta=palheta,
         atalho=analisar_atalho(configuracao.palheta_atalho),
         painel=painel,
+        ouvinte=ouvinte,
     )
 
 
@@ -1986,6 +2041,11 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     _acrescentar_config(celular_cmd)
     celular_cmd.add_argument("--teste", action="store_true", help="só manda uma mensagem de teste com o que já está no config")
+    celular_cmd.add_argument(
+        "--pendentes",
+        action="store_true",
+        help="manda de novo, com o botão Enviar, as propostas da 99Freelas escritas nos últimos 2 dias que esperam o seu toque",
+    )
     celular_cmd.set_defaults(funcao=_comando_celular)
 
     o_que_pedem_cmd = subcomandos.add_parser(

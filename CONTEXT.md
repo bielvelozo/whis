@@ -108,11 +108,15 @@ _Avoid_: watchdog, healthcheck
 _Avoid_: vigia (sozinho), alerta, monitor
 
 **Proposta automática**:
-A proposta que a **Vigia de freelas** manda sozinha na 99Freelas, com a mesma leitura da listagem (`propostas_auto.py`, notas em `cacada/propostas-auto/`, resumo por dia em `cacada/propostas-auto.md`). Fica o projeto novo, pouco disputado e aberto para quem não assina (as travas `[cacada].propostas_auto_*`); o Claude decide se ele entrega e escreve a proposta daquele projeto no jeito das que deram certo; o preço é a oferta mínima do formulário, nunca no texto. `[cacada].propostas_auto` diz o modo: `ensaio` faz tudo menos o clique (nota com `status: ensaio`, que o *Funil* não conta), `ligado` envia e só grava `status: enviada` depois de ver o "Melhorar proposta". Clique sem confirmação vira `incerta` e nunca é reenviado. Só na 99Freelas: o User Agreement do Freelancer.com proíbe envio automático.
+A proposta que a **Vigia de freelas** manda sozinha na 99Freelas, com a mesma leitura da listagem (`propostas_auto.py`, notas em `cacada/propostas-auto/`, resumo por dia em `cacada/propostas-auto.md`). Fica o projeto novo, pouco disputado e aberto para quem não assina (as travas `[cacada].propostas_auto_*`); o Claude decide se ele entrega e escreve a proposta daquele projeto no jeito das que deram certo; o preço é a oferta mínima do formulário, nunca no texto. `[cacada].propostas_auto` diz o modo: `ensaio` faz tudo menos o clique (nota com `status: ensaio`, que o *Funil* não conta), `ligado` envia e só grava `status: enviada` depois de ver o "Melhorar proposta". Clique sem confirmação vira `incerta` e nunca é reenviado. A que as travas não deixam sair sozinha (cota do dia cheia, 80 propostas ou mais, conexões na reserva) ainda é escrita, até `[cacada].propostas_auto_para_aprovar` por dia, e fica **Para aprovar** (`status: para aprovar`). Só na 99Freelas: o User Agreement do Freelancer.com proíbe envio automático.
 _Avoid_: robô, disparo, spam
 
+**Para aprovar**:
+A **Proposta automática** escrita que espera o toque dele: a da fila e a do ensaio chegam no **Celular** com o botão "Enviar esta proposta". O toque é o aval daquela proposta. A bandeja ouve o botão (`celular.Ouvinte`) e `propostas_auto.tocou_enviar` confere de novo o login, o projeto aberto, nada proposto antes, o texto e o formulário, e envia pelo Chrome da caçada, sem olhar a cota nem a reserva, que valem só para o automático. O texto que sai é o da nota, então a nota editada no Obsidian sai editada. Enviada assim, a nota vira `status: enviada` (origem "aprovada no celular") e não gasta a cota do dia. `whis celular --pendentes` manda de novo as que esperam, dos últimos 2 dias.
+_Avoid_: aprovação manual, revisão
+
 **Celular**:
-O aviso que chega no celular dele pelo bot do Telegram dele (`celular.py`, `[celular].telegram_token` e `telegram_chat`, gravados por `whis celular`): cada **Proposta automática** (no ensaio, com o texto inteiro) e cada projeto novo do nicho no Freelancer.com. Ao lado do toast, que só aparece com ele no PC.
+O aviso que chega no celular dele pelo bot do Telegram dele (`celular.py`, `[celular].telegram_token` e `telegram_chat`, gravados por `whis celular`): cada **Proposta automática** (no ensaio, com o texto inteiro) e cada projeto novo do nicho no Freelancer.com. Ao lado do toast, que só aparece com ele no PC. A proposta **Para aprovar** chega com um botão, e só o chat dele em `[celular]` é atendido.
 _Avoid_: push, notificação
 
 **Tracer bullet**:

@@ -114,7 +114,7 @@ def mensagens_no_celular(monkeypatch: pytest.MonkeyPatch) -> list[str]:
     """Nenhum teste manda mensagem para o Telegram dele: a vigia e o envio caem nesta lista."""
     mandadas: list[str] = []
 
-    def guardar(_configuracao, texto: str) -> bool:
+    def guardar(_configuracao, texto: str, **_botoes) -> bool:
         mandadas.append(texto)
         return True
 

@@ -222,3 +222,22 @@ def test_falha_da_proposta_automatica_nao_derruba_a_vigia(tmp_path: Path, monkey
     monkeypatch.setattr(propostas_auto, "rodar", quebrar)
 
     assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, 'propostas_auto = "ensaio"\n'))]) == 3
+
+
+def test_com_o_toque_do_celular_no_chrome_a_proposta_fica_para_a_proxima_hora(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    from whis import propostas_auto, vigia_de_freelas
+    from whis.corrida import pasta_da_cacada
+    from whis.instancia import Trava
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+    monkeypatch.setattr(propostas_auto, "rodar", lambda *_a, **_k: pytest.fail("a proposta automática rodou com o Chrome ocupado"))
+    toque = Trava(pasta_da_cacada() / propostas_auto.NOME_DA_TRAVA).adquirir()
+    try:
+        assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, 'propostas_auto = "ligado"\n'))]) == 0
+    finally:
+        toque.liberar()
+
+    assert "o envio pelo celular está usando o Chrome da caçada" in capsys.readouterr().out

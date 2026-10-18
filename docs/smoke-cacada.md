@@ -248,6 +248,16 @@ agora na 99Freelas* com um projeto falso (sem Claude, sem Chrome, vault temporá
 passam nas travas, preenche o formulário sem clicar e manda o texto ao celular; as notas ficam em
 `cacada/propostas-auto/` e o dia em `cacada/propostas-auto.md`. Só com `"ligado"` ela envia.
 
+4. Com a bandeja no ar (reinicie depois de gravar `[celular]`), a proposta do ensaio e a que não sai
+sozinha (cota cheia, 80 propostas ou mais, conexões na reserva; até `[cacada].propostas_auto_para_aprovar`
+por dia) chegam com o botão **Enviar esta proposta**. `python -m whis celular --pendentes` manda de novo
+as que esperam o toque.
+
+**Sucesso:** o toque mostra "Recebido" na hora; em cerca de um minuto chega a resposta na conversa
+("Enviada na 99Freelas: ... sobram N conexões"), o botão some, a nota vira `status: enviada` e o
+projeto mostra "Melhorar proposta" no site. Chrome ocupado ou deslogado responde o motivo e deixa o
+botão para tocar de novo.
+
 ## Passo 8 — O lembrete da véspera
 
 ```
