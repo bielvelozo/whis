@@ -81,7 +81,7 @@ def texto_do_lembrete(nome: str) -> str:
     return (
         f"Oi, pessoal da {nome},\n\n"
         "Escrevo de novo só para saber se o meu e-mail da semana passada chegou. Se aparecer um pico de demanda "
-        "em Shopify, posso pegar uma tarefa pequena para vocês verem como eu trabalho. Faz sentido para vocês?\n\n"
+        "em Shopify, posso pegar uma tarefa pequena, com escopo fechado. Faz sentido para vocês?\n\n"
         "Abraço,\nGabriel Velozo"
     )
 

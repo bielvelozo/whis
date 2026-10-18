@@ -419,6 +419,8 @@ def test_sem_loja_medida_o_texto_nao_pode_dizer_o_que_viu_na_loja(tmp_path: Path
     assert resultado.situacao == propostas_auto.PULADA and "o Whis não mediu a loja" in resultado.motivo
     do_portfolio = TEXTO.replace("todo dia", "todo dia, e no meu portfólio medi o PageSpeed antes e depois")
     assert propostas_auto.problemas_do_jeito(do_portfolio, CONTEXTO) == []
+    aceite_antes = TEXTO.replace("Começo no dia seguinte ao aceite", "Depois do aceite, começo no mesmo dia")
+    assert propostas_auto.problemas_do_jeito(aceite_antes, CONTEXTO) == []
 
 
 def test_a_loja_do_anuncio_e_medida_e_vai_ao_claude(tmp_path: Path):

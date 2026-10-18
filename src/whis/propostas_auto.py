@@ -510,7 +510,8 @@ _PALAVRA = re.compile(r"\w+")
 _REVISOES = re.compile(r"revis(?:ão|ões|ao|oes)|rodadas? de ajustes?", re.I)
 _INICIO = re.compile(
     r"\b(?:come[çc]o|come[çc]ar|in[íi]cio)\b[^.?!\n]{0,80}?"
-    r"(?:aceite|aprova|amanhã|hoje|segunda|terça|quarta|quinta|sexta|sábado|domingo|\d{1,2}/\d{1,2})",
+    r"(?:aceite|aprova|amanhã|hoje|segunda|terça|quarta|quinta|sexta|sábado|domingo|\d{1,2}/\d{1,2})"
+    r"|\b(?:aceite|aprova\w*)\b[^.?!\n]{0,80}?\b(?:come[çc]o|come[çc]ar|in[íi]cio)\b",
     re.I,
 )
 _VIU_NA_LOJA = re.compile(r"\b(?:abri|olhei|testei|entrei n[ao]|vi n[ao]) (?:a |o )?(?:sua|seu) (?:loja|site)\b", re.I)
