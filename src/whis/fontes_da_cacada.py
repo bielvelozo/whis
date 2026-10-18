@@ -94,6 +94,7 @@ def coletar(
     rede: httpx.BaseTransport | None = None,
     dormir: Callable[[float], None] = time.sleep,
     ao_ler: Callable[[str], None] | None = None,
+    paginas_da_99freelas: int = PAGINAS_DA_99FREELAS,
 ) -> ColetaDaCacada:
     """Lê cada fonte que é desta coleta, uma de cada vez, e corta o que é velho demais."""
     coleta = ColetaDaCacada()
@@ -108,7 +109,12 @@ def coletar(
                 ao_ler(fonte.nome)
             leitor = _LEITORES[fonte.tipo]
             try:
-                lidas = leitor(cliente, fonte, dormir) if fonte.tipo in _PAGINADOS else leitor(cliente, fonte)
+                if fonte.tipo == "99freelas" and paginas_da_99freelas != PAGINAS_DA_99FREELAS:
+                    lidas = leitor(cliente, fonte, dormir, paginas=paginas_da_99freelas)
+                elif fonte.tipo in _PAGINADOS:
+                    lidas = leitor(cliente, fonte, dormir)
+                else:
+                    lidas = leitor(cliente, fonte)
             except Exception as erro:  # noqa: BLE001 — uma fonte não derruba as outras
                 coleta.falhas[fonte.nome] = _motivo(erro)
                 _log.warning("Caçada: %s não respondeu: %s", fonte.nome, coleta.falhas[fonte.nome])
@@ -536,11 +542,15 @@ def interpretar_workana(pagina: str, nome: str = "Workana") -> tuple[Oportunidad
 
 
 def ler_99freelas(
-    cliente: httpx.Client, fonte: FonteDaCacada, dormir: Callable[[float], None] = time.sleep
+    cliente: httpx.Client,
+    fonte: FonteDaCacada,
+    dormir: Callable[[float], None] = time.sleep,
+    *,
+    paginas: int = PAGINAS_DA_99FREELAS,
 ) -> tuple[Oportunidade, ...]:
     categoria = fonte.argumento or "web-mobile-e-software"
     saida: list[Oportunidade] = []
-    for pagina in range(1, PAGINAS_DA_99FREELAS + 1):
+    for pagina in range(1, paginas + 1):
         if pagina > 1:
             dormir(random.uniform(*PAUSA_ENTRE_PAGINAS_S))
         url = "https://www.99freelas.com.br/projects?" + urlencode({"categoria": categoria, "page": pagina})

@@ -37,6 +37,11 @@ from .oportunidades import FREELA, Oportunidade, link_canonico
 _log = logging.getLogger("whis.vigia_de_freelas")
 
 NOME_DO_ESTADO = "vigia-de-freelas.json"
+NOME_DA_ULTIMA_RODADA = "vigia-de-freelas-rodada.json"
+#: Parada mais que isto (a noite, ou o PC desligado), a rodada lê mais páginas da 99Freelas: duas
+#: páginas cobriram umas 50 h de projetos num domingo (18/10), menos num dia útil movimentado.
+PARADA_HA = timedelta(hours=6)
+PAGINAS_NA_VOLTA = 6
 RECENTE = timedelta(hours=24)
 TOASTS_POR_RODADA = 3
 GUARDA_POR = timedelta(days=30)
@@ -68,7 +73,31 @@ def caminho_do_estado() -> Path:
     return pasta_da_cacada() / NOME_DO_ESTADO
 
 
-def ler_do_nicho(nicho: str, *, rede=None, agora: datetime | None = None) -> tuple[Oportunidade, ...]:
+def caminho_da_ultima_rodada() -> Path:
+    from .corrida import pasta_da_cacada
+
+    return pasta_da_cacada() / NOME_DA_ULTIMA_RODADA
+
+
+def voltou_de_parada(arquivo: Path, agora: datetime) -> bool:
+    """A rodada anterior foi há mais de `PARADA_HA`: a da manhã, ou a primeira depois de o PC ligar."""
+    try:
+        anterior = datetime.fromisoformat(json.loads(arquivo.read_text(encoding="utf-8"))["rodada"])
+    except (OSError, ValueError, KeyError, TypeError):
+        return False
+    return agora - anterior.astimezone() > PARADA_HA
+
+
+def marcar_rodada(arquivo: Path, agora: datetime) -> None:
+    arquivo.parent.mkdir(parents=True, exist_ok=True)
+    temporario = arquivo.with_name(arquivo.name + ".tmp")
+    temporario.write_text(json.dumps({"rodada": agora.isoformat(timespec="minutes")}), encoding="utf-8")
+    os.replace(temporario, arquivo)
+
+
+def ler_do_nicho(
+    nicho: str, *, rede=None, agora: datetime | None = None, paginas_da_99freelas: int | None = None
+) -> tuple[Oportunidade, ...]:
     """A listagem da 99Freelas (web, mobile e software), a busca do nicho na API do Freelancer.com e, no
     nicho Shopify, o Job Listings do fórum da Shopify."""
     from . import fontes_da_cacada
@@ -79,7 +108,8 @@ def ler_do_nicho(nicho: str, *, rede=None, agora: datetime | None = None) -> tup
     )
     if nicho.strip().casefold() == "shopify":
         fontes += (FonteDaCacada(FORUM, "shopify_community", JOB_LISTINGS),)
-    coleta = fontes_da_cacada.coletar(fontes, agora or datetime.now().astimezone(), rede=rede)
+    paginas = {"paginas_da_99freelas": paginas_da_99freelas} if paginas_da_99freelas else {}
+    coleta = fontes_da_cacada.coletar(fontes, agora or datetime.now().astimezone(), rede=rede, **paginas)
     for nome, motivo in coleta.falhas.items():
         _log.warning("Vigia de freelas: %s não respondeu: %s", nome, motivo)
     return coleta.todas()

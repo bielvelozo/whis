@@ -463,3 +463,45 @@ def test_a_vigia_passa_o_limite_do_config_e_manda_o_lembrete_das_agencias(
 
     monkeypatch.setattr(lembrete_das_agencias, "lembrar", quebrar)
     assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, "agencias_por_dia = 0\n"))]) == 3
+
+
+def test_depois_de_6_h_parada_a_vigia_le_mais_paginas_da_99freelas(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from whis import vigia_de_freelas
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    chamadas: list[dict] = []
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **opcoes: chamadas.append(opcoes) or ())
+    rodada = vigia_de_freelas.caminho_da_ultima_rodada()
+    rodada.parent.mkdir(parents=True)
+    (rodada.parent / "vigia-de-freelas.json").write_text("{}", encoding="utf-8")
+    config = str(_config_da_vigia(tmp_path, "agencias_por_dia = 0\n"))
+
+    assert main(["vigia-freelas", "--config", config]) == 0
+    vigia_de_freelas.marcar_rodada(rodada, datetime.now().astimezone() - timedelta(hours=7))
+    assert main(["vigia-freelas", "--config", config]) == 0
+    assert main(["vigia-freelas", "--config", config]) == 0
+
+    assert chamadas == [{}, {"paginas_da_99freelas": vigia_de_freelas.PAGINAS_NA_VOLTA}, {}]
+
+
+def test_a_coleta_le_as_paginas_da_99freelas_que_pedirem():
+    import httpx
+
+    from whis import fontes_da_cacada
+    from whis.criterios_da_cacada import FonteDaCacada
+
+    listagem = (Path(__file__).parent / "fixtures" / "cacada_logada" / "99freelas_listagem.html").read_text(encoding="utf-8")
+    paginas: list[str] = []
+
+    def responder(pedido: httpx.Request) -> httpx.Response:
+        paginas.append(pedido.url.params.get("page"))
+        return httpx.Response(200, text=listagem)
+
+    fonte = FonteDaCacada("99Freelas", "99freelas", "web-mobile-e-software")
+    rede = httpx.MockTransport(responder)
+    fontes_da_cacada.coletar((fonte,), AGORA, rede=rede, dormir=lambda _s: None, paginas_da_99freelas=6)
+    seis = list(paginas)
+    paginas.clear()
+    fontes_da_cacada.coletar((fonte,), AGORA, rede=rede, dormir=lambda _s: None)
+
+    assert seis == ["1", "2", "3", "4", "5", "6"] and paginas == ["1", "2"]

@@ -978,7 +978,14 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
         opcoes = {"estado": estado}
         print(f"Modo de teste: um projeto falso e o estado em {estado}.")
     else:
-        lidas = vigia_de_freelas.ler_do_nicho(nicho)
+        agora = datetime.now().astimezone()
+        ultima_rodada = vigia_de_freelas.caminho_da_ultima_rodada()
+        if vigia_de_freelas.voltou_de_parada(ultima_rodada, agora):
+            lidas = vigia_de_freelas.ler_do_nicho(nicho, paginas_da_99freelas=vigia_de_freelas.PAGINAS_NA_VOLTA)
+            print(f"A vigia ficou mais de 6 h parada: li {vigia_de_freelas.PAGINAS_NA_VOLTA} páginas da 99Freelas para ver o que saiu nesse tempo.")
+        else:
+            lidas = vigia_de_freelas.ler_do_nicho(nicho)
+        vigia_de_freelas.marcar_rodada(ultima_rodada, agora)
     rodada = vigiar(
         nicho,
         ler=lambda _nicho: lidas,
