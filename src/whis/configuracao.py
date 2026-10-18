@@ -132,6 +132,7 @@ propostas_auto_max_propostas = 80  # só propõe em projeto com menos de tantas 
 propostas_auto_por_dia = 3   # no máximo tantas propostas automáticas por dia (o ensaio conta)
 propostas_auto_reserva = 3   # não propõe se a proposta deixaria menos de tantas conexões da 99Freelas
 propostas_auto_exclusivos = false  # true = você assina a 99Freelas e pode propor no projeto exclusivo de assinante
+agencias_por_dia = 1         # quantos e-mails de apresentação para agências Shopify da sua lista chegam por dia no celular, escritos, com o botão Enviar e-mail (sai do seu Gmail, de [cacada].email com a senha de app); 0 = nenhum
 propostas_auto_valor_hora = 40  # o valor da sua hora na proposta automática, em R$: o preço é as horas que o Claude estima vezes isto, dentro da faixa de orçamento do cliente e nunca abaixo da oferta mínima (fica um pouco abaixo do que se cobra na 99Freelas, porque você ainda não tem avaliação)
 propostas_auto_para_aprovar = 5  # por dia, até tantas propostas que não saem sozinhas (cota cheia, propostas demais, reserva) chegam escritas no celular com o botão Enviar; 0 = nenhuma
 
@@ -241,6 +242,7 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "propostas_auto_exclusivos", "cacada_propostas_auto_exclusivos", Tipo.BOOLEANO),
     Chave("cacada", "propostas_auto_para_aprovar", "cacada_propostas_auto_para_aprovar", Tipo.INTEIRO),
     Chave("cacada", "propostas_auto_valor_hora", "cacada_propostas_auto_valor_hora", Tipo.INTEIRO),
+    Chave("cacada", "agencias_por_dia", "cacada_agencias_por_dia", Tipo.INTEIRO),
     Chave("celular", "telegram_token", "celular_telegram_token", Tipo.SEGREDO),
     Chave("celular", "telegram_chat", "celular_telegram_chat", Tipo.TEXTO),
     Chave("linkedin", "client_id", "linkedin_client_id", Tipo.TEXTO),
@@ -360,6 +362,7 @@ class Configuracao:
     cacada_propostas_auto_exclusivos: bool = False
     cacada_propostas_auto_para_aprovar: int = 5
     cacada_propostas_auto_valor_hora: int = 40
+    cacada_agencias_por_dia: int = 1
     celular_telegram_token: str = ""
     celular_telegram_chat: str = ""
     linkedin_client_id: str = ""
@@ -533,6 +536,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         cacada_propostas_auto_valor_hora=_inteiro_entre(
             cacada.get("propostas_auto_valor_hora", 40), "[cacada].propostas_auto_valor_hora", 1, 1000, arquivo
         ),
+        cacada_agencias_por_dia=_inteiro_entre(cacada.get("agencias_por_dia", 1), "[cacada].agencias_por_dia", 0, 10, arquivo),
         celular_telegram_token=str(celular.get("telegram_token", "")).strip(),
         celular_telegram_chat=str(celular.get("telegram_chat", "")).strip(),
         linkedin_client_id=str(linkedin.get("client_id", "")).strip(),

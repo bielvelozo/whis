@@ -986,13 +986,38 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
             print(f"Avisado: {oportunidade.titulo} — {oportunidade.link}")
     else:
         print(f"Nada novo de {nicho} desde a última rodada.")
+    saida = SAIDA_COMPLETA
     try:
         _propostas_automaticas(configuracao, lidas, nicho, fakes=args.fakes)
     except Exception as erro:  # noqa: BLE001 — os avisos desta rodada já saíram; a proposta tenta na próxima hora
         _log.exception("A proposta automática falhou nesta rodada.")
         print(f"A proposta automática falhou nesta rodada: {erro}")
-        return SAIDA_PARCIAL
-    return SAIDA_COMPLETA
+        saida = SAIDA_PARCIAL
+    if not args.fakes:
+        try:
+            _emails_das_agencias(configuracao)
+        except Exception as erro:  # noqa: BLE001 — o e-mail das agências tenta de novo na próxima hora
+            _log.exception("O e-mail das agências falhou nesta rodada.")
+            print(f"O e-mail das agências falhou nesta rodada: {erro}")
+            saida = SAIDA_PARCIAL
+    return saida
+
+
+def _emails_das_agencias(configuracao: Configuracao) -> None:
+    """O e-mail do dia para uma agência Shopify da lista, escrito e mandado ao celular com o botão."""
+    from . import agencias_email, celular
+
+    if configuracao.cacada_agencias_por_dia <= 0:
+        return
+    preparados = agencias_email.preparar(
+        _vault.preparar(configuracao.vault),
+        escritor=agencias_email.EmailClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None),
+        estado=agencias_email.caminho_do_estado(),
+        celular=lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes),
+        por_dia=configuracao.cacada_agencias_por_dia,
+    )
+    for preparado in preparados:
+        print(f"E-mail para a agência {preparado.nome} ({preparado.email}) no celular, esperando o toque: {preparado.nota}")
 
 
 def _propostas_automaticas(configuracao: Configuracao, lidas, nicho: str, *, fakes: bool = False) -> None:
@@ -1116,12 +1141,19 @@ def _comando_celular(args: argparse.Namespace) -> int:
 
 
 def _tocou_no_celular(configuracao: Configuracao, dados: str):
-    """O toque num botão do Telegram, que a bandeja ouve: hoje só o "Enviar esta proposta" da 99Freelas."""
-    from . import propostas_auto
+    """O toque num botão do Telegram, que a bandeja ouve: "Enviar esta proposta" e "Enviar e-mail"."""
+    from . import agencias_email, propostas_auto
     from .celular import Resposta
     from .corrida import cacada_correndo, pasta_da_cacada
     from .navegador_logado import NavegadorLogado
 
+    if dados.startswith(agencias_email.PREFIXO_DO_TOQUE):
+        return agencias_email.tocou_enviar_email(
+            dados,
+            vault=_vault.preparar(configuracao.vault),
+            estado=agencias_email.caminho_do_estado(),
+            enviar=agencias_email.gmail(configuracao.cacada_email, configuracao.cacada_senha_de_app),
+        )
     if not dados.startswith(propostas_auto.PREFIXO_DO_TOQUE):
         return Resposta("Esse botão não faz mais nada no Whis.", tirar_botao=True)
     pasta = pasta_da_cacada()

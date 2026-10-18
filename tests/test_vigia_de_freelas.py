@@ -241,3 +241,41 @@ def test_com_o_toque_do_celular_no_chrome_a_proposta_fica_para_a_proxima_hora(
         toque.liberar()
 
     assert "o envio pelo celular está usando o Chrome da caçada" in capsys.readouterr().out
+
+
+def test_a_vigia_prepara_o_email_do_dia_das_agencias_e_a_falha_nao_derruba(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    from whis import agencias_email, vigia_de_freelas
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+    chamadas: list[dict] = []
+
+    def preparar(vault, **opcoes):
+        chamadas.append(opcoes)
+        return [agencias_email.Preparado("contato@exemplo.com.br", "Estúdio Exemplo", "cacada/agencias-emails/estudio-exemplo.md")]
+
+    monkeypatch.setattr(agencias_email, "preparar", preparar)
+
+    assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, "agencias_por_dia = 2\n"))]) == 0
+
+    [opcoes] = chamadas
+    assert opcoes["por_dia"] == 2 and opcoes["estado"] == agencias_email.caminho_do_estado()
+    assert "Estúdio Exemplo" in capsys.readouterr().out
+
+    def quebrar(vault, **opcoes):
+        raise RuntimeError("quebrou")
+
+    monkeypatch.setattr(agencias_email, "preparar", quebrar)
+    assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path))]) == 3
+
+
+def test_sem_agencias_por_dia_a_vigia_nem_chama_o_email(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from whis import agencias_email, vigia_de_freelas
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+    monkeypatch.setattr(agencias_email, "preparar", lambda *_a, **_k: pytest.fail("o e-mail das agências rodou desligado"))
+
+    assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, "agencias_por_dia = 0\n"))]) == 0

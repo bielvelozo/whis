@@ -329,3 +329,15 @@ def test_whis_celular_pendentes_manda_de_novo_as_que_esperam_o_toque(
     [opcoes] = chamadas
     assert opcoes["estado"] == propostas_auto.caminho_do_estado()
     assert "2 propostas esperando o seu toque" in capsys.readouterr().out
+
+
+
+def test_o_toque_em_enviar_email_vai_para_o_email_das_agencias(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from whis import agencias_email
+    from whis.__main__ import _tocou_no_celular
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+
+    resposta = _tocou_no_celular(Configuracao(vault=tmp_path / "vault"), agencias_email.chave_do_toque("contato@exemplo.com.br"))
+
+    assert resposta.texto == agencias_email.NAO_ACHEI and resposta.tirar_botao is True

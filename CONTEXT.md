@@ -115,6 +115,10 @@ _Avoid_: robô, disparo, spam
 A **Proposta automática** escrita que espera o toque dele: a da fila e a do ensaio chegam no **Celular** com o botão "Enviar esta proposta". O toque é o aval daquela proposta. A bandeja ouve o botão (`celular.Ouvinte`) e `propostas_auto.tocou_enviar` confere de novo o login, o projeto aberto, nada proposto antes, o texto e o formulário, e envia pelo Chrome da caçada, sem olhar a cota nem a reserva, que valem só para o automático. O texto que sai é o da nota, então a nota editada no Obsidian sai editada. Enviada assim, a nota vira `status: enviada` (origem "aprovada no celular") e não gasta a cota do dia. `whis celular --pendentes` manda de novo as que esperam, dos últimos 2 dias.
 _Avoid_: aprovação manual, revisão
 
+**E-mail das agências**:
+O primeiro e-mail para uma agência Shopify da lista (`cacada/agencias-shopify.md` e `agencias-shopify-novas.md`), um por dia (`[cacada].agencias_por_dia`), escrito pelo Claude no jeito dos que ele já mandou (`cacada/emails-agencias.md`) e conferido em Python (sem preço, sem colchete, com o link do portfólio e a assinatura). A nota nasce em `cacada/agencias-emails/` e chega no **Celular** com o botão "Enviar e-mail"; o toque manda o texto da nota pelo Gmail de `[cacada].email` (senha de app) e a nota vira `status: enviado`. Só e-mail da empresa; as que já estão em `emails-agencias.md` nunca recebem outro. Roda na **Vigia de freelas** (`agencias_email.py`).
+_Avoid_: mala direta, disparo
+
 **Celular**:
 O aviso que chega no celular dele pelo bot do Telegram dele (`celular.py`, `[celular].telegram_token` e `telegram_chat`, gravados por `whis celular`): cada **Proposta automática** (no ensaio, com o texto inteiro) e cada projeto novo do nicho no Freelancer.com. Ao lado do toast, que só aparece com ele no PC. A proposta **Para aprovar** chega com um botão, e só o chat dele em `[celular]` é atendido.
 _Avoid_: push, notificação
