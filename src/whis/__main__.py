@@ -61,6 +61,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import date, datetime
 from pathlib import Path
@@ -1096,6 +1097,13 @@ def _comando_celular(args: argparse.Namespace) -> int:
     from .configuracao import escrever
 
     configuracao = _configuracao(args)
+    if args.tocar:
+        import json
+
+        _registro.acrescentar_arquivo(configuracao)
+        resposta = _tocou_no_celular(configuracao, args.tocar)
+        print(json.dumps({"texto": resposta.texto, "tirar_botao": resposta.tirar_botao}, ensure_ascii=False))
+        return SAIDA_COMPLETA
     if args.pendentes:
         from . import propostas_auto
 
@@ -1138,6 +1146,51 @@ def _comando_celular(args: argparse.Namespace) -> int:
     celular.Telegram(token, chat).enviar("Pronto: o Whis vai te avisar aqui das propostas e dos freelas novos.")
     print(f"Gravado em {configuracao.origem} ([celular]). Mandei uma mensagem de teste para o @{bot}.")
     return SAIDA_COMPLETA
+
+
+#: O toque pode esperar a rodada da vigia soltar o Chrome (até 10 min) e ainda abrir o Chrome e conferir.
+TEMPO_DO_TOQUE_S = 1200
+
+
+def _tocar_num_processo_novo(configuracao: Configuracao, dados: str, *, rodar=None):
+    """O toque que a bandeja ouve, atendido por `whis celular --tocar` num processo novo.
+
+    A bandeja fica no ar por dias; num processo novo o toque usa o código de agora (em 18/10 a
+    bandeja das 11h45 mandou uma proposta com o preço da regra velha) e o Chrome da caçada não
+    fica preso ao processo da bandeja.
+    """
+    import json
+    import subprocess
+
+    from .celular import FALHOU, Resposta
+
+    comando = [sys.executable, "-m", "whis", "celular", "--tocar", dados]
+    if configuracao.origem:
+        comando += ["--config", str(configuracao.origem)]
+    rodar = rodar or subprocess.run
+    try:
+        feito = rodar(
+            comando,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=TEMPO_DO_TOQUE_S,
+            env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except (OSError, subprocess.SubprocessError) as erro:
+        _log.error("Celular: o processo do toque não rodou (%s).", erro)
+        return Resposta(FALHOU)
+    linhas = [linha for linha in (feito.stdout or "").splitlines() if linha.strip()]
+    try:
+        dados_da_resposta = json.loads(linhas[-1]) if feito.returncode == 0 and linhas else None
+    except ValueError:
+        dados_da_resposta = None
+    if not isinstance(dados_da_resposta, dict):
+        _log.error("Celular: o toque %r falhou no processo novo (saída %s): %s", dados, feito.returncode, (feito.stderr or "")[-1500:])
+        return Resposta(FALHOU)
+    return Resposta(str(dados_da_resposta.get("texto", "")), tirar_botao=bool(dados_da_resposta.get("tirar_botao")))
 
 
 def _tocou_no_celular(configuracao: Configuracao, dados: str):
@@ -1499,7 +1552,7 @@ def _comando_bandeja(args: argparse.Namespace) -> int:
     if not fakes and configuracao.celular_telegram_token and configuracao.celular_telegram_chat:
         from .celular import Ouvinte
 
-        ouvinte = Ouvinte(lambda: palheta.configuracao, lambda dados: _tocou_no_celular(palheta.configuracao, dados))
+        ouvinte = Ouvinte(lambda: palheta.configuracao, lambda dados: _tocar_num_processo_novo(palheta.configuracao, dados))
     return _bandeja.executar(
         configuracao,
         verboso=args.verboso,
@@ -2073,6 +2126,7 @@ def construir_parser() -> argparse.ArgumentParser:
     )
     _acrescentar_config(celular_cmd)
     celular_cmd.add_argument("--teste", action="store_true", help="só manda uma mensagem de teste com o que já está no config")
+    celular_cmd.add_argument("--tocar", default="", help=argparse.SUPPRESS)
     celular_cmd.add_argument(
         "--pendentes",
         action="store_true",

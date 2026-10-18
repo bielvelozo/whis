@@ -341,3 +341,50 @@ def test_o_toque_em_enviar_email_vai_para_o_email_das_agencias(tmp_path: Path, m
     resposta = _tocou_no_celular(Configuracao(vault=tmp_path / "vault"), agencias_email.chave_do_toque("contato@exemplo.com.br"))
 
     assert resposta.texto == agencias_email.NAO_ACHEI and resposta.tirar_botao is True
+
+
+
+def test_whis_celular_tocar_responde_em_json_para_a_bandeja(
+    arquivo_de_configuracao: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    from whis import agencias_email
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+
+    assert main(["celular", "--tocar", agencias_email.chave_do_toque("contato@exemplo.com.br")]) == 0
+
+    ultima = capsys.readouterr().out.strip().splitlines()[-1]
+    assert json.loads(ultima) == {"texto": agencias_email.NAO_ACHEI, "tirar_botao": True}
+
+
+def test_a_bandeja_atende_o_toque_num_processo_novo_com_o_config_dela(tmp_path: Path):
+    import subprocess
+
+    from whis.__main__ import _tocar_num_processo_novo
+
+    comandos: list[list[str]] = []
+
+    def rodar(comando, **_opcoes):
+        comandos.append(comando)
+        return subprocess.CompletedProcess(comando, 0, 'Configuração lida\n{"texto": "Enviada", "tirar_botao": true}\n', "")
+
+    configuracao = Configuracao(vault=tmp_path, origem=tmp_path / "config.toml")
+
+    resposta = _tocar_num_processo_novo(configuracao, "enviar:abc", rodar=rodar)
+
+    assert resposta == celular.Resposta("Enviada", tirar_botao=True)
+    [comando] = comandos
+    assert comando[1:] == ["-m", "whis", "celular", "--tocar", "enviar:abc", "--config", str(tmp_path / "config.toml")]
+
+
+def test_processo_do_toque_que_quebra_vira_resposta_e_o_botao_fica(tmp_path: Path):
+    import subprocess
+
+    from whis.__main__ import _tocar_num_processo_novo
+
+    def quebrar(comando, **_opcoes):
+        return subprocess.CompletedProcess(comando, 1, "", "Traceback ...")
+
+    resposta = _tocar_num_processo_novo(Configuracao(vault=tmp_path), "enviar:abc", rodar=quebrar)
+
+    assert resposta.tirar_botao is False and "bandeja.log" in resposta.texto
