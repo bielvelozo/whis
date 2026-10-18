@@ -295,7 +295,8 @@ def _reais(texto: str) -> int | None:
 def motivo_do_chrome(texto: str) -> str:
     if "is not found" in texto or "Executable doesn't exist" in texto:
         return SEM_CHROME
-    if "ProcessSingleton" in texto or "already in use" in texto:
+    # O Chrome entrega a janela ao que já está aberto no mesmo perfil e fecha o do Playwright.
+    if "ProcessSingleton" in texto or "already in use" in texto or "Target page, context or browser has been closed" in texto:
         return PERFIL_EM_USO
     return f"o Chrome não abriu: {_primeira_linha(texto)}"
 
@@ -323,6 +324,23 @@ def logado_no_html(site: str, pagina: str) -> bool:
     if site == FREELANCER_BR:
         return bool(pagina.strip()) and "header-login-btn" not in pagina
     return False
+
+
+_LANCES = (
+    re.compile(r"\b(\d+)\s*/\s*(\d+)\s*(?:restantes|remaining)", re.I),
+    re.compile(r"\b(\d+)\s*ofertas?\s*restantes\s*de\s*(\d+)", re.I),
+    re.compile(r"\b(\d+)\s*bids?\s*(?:left|remaining)\s*(?:of|out of)\s*(\d+)", re.I),
+)
+
+
+def ler_lances_do_freelancer(pagina: str) -> tuple[int, int] | None:
+    """Os lances que sobram e o total do plano, do quadro "Suas Ofertas" da página de um projeto, logado."""
+    texto = texto_da_pagina(pagina)
+    for padrao in _LANCES:
+        casou = padrao.search(texto)
+        if casou:
+            return int(casou.group(1)), int(casou.group(2))
+    return None
 
 
 def texto_da_pagina(pagina: str) -> str:

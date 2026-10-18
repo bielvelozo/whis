@@ -42,8 +42,9 @@ com "mas" ("Ainda não fiz X como freela, mas..."), sem "sendo honesto", "sincer
 UMA pergunta concreta sobre o projeto e, na última linha, só "Gabriel".
 - Nunca: dizer que usa IA, ChatGPT, Claude ou "inteligência artificial" para trabalhar (só fale de IA quando o \
 próprio projeto pede IA); preço, valor ou "R$" no texto (o preço vai no campo do formulário); e-mail, telefone, \
-WhatsApp, redes ou convite para conversar fora da plataforma; link, a não ser UM link do "Portfólio" abaixo, \
-copiado exatamente, quando a peça casa com o pedido (Shopify, e-commerce, tema, velocidade, app).
+WhatsApp, redes ou convite para conversar fora da plataforma; link, a não ser os do "Portfólio" abaixo, copiados \
+exatamente: a peça que casa com o pedido (Shopify, e-commerce, tema, velocidade, app) e, quando fizer sentido \
+mostrar o todo, também o "Site do portfólio"; no máximo dois links.
 - "prazo_dias": dias corridos realistas para quem trabalha de dia, faz faculdade à noite e faz freela no fim de \
 semana e umas 8 h no meio da semana; arredonde para cima.
 - "preco": em reais, inteiro, o valor da oferta. Estime as horas que o trabalho pede de verdade e multiplique pelo \

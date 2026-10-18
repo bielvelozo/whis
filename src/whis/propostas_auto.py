@@ -84,6 +84,7 @@ PREFIXO_DO_TOQUE = "enviar:"
 ROTULO_DO_BOTAO = "Enviar esta proposta"
 DIAS_DOS_PENDENTES = 2
 NAO_ACHEI = "Não achei essa proposta no Whis (ele guarda 30 dias); não mandei nada."
+FALHAS_DO_CHROME_ATE_AVISAR = 3
 OFERTA_SEM_MINIMO = 50
 LIMITE_DO_TEXTO = 3000
 CHAMADAS_ALEM_DA_COTA = 2
@@ -293,8 +294,23 @@ def rodar(
         return Rodada()
 
     logada = sessao is not None and not sessao.motivo and sessao.logado(_logado.NOVENTA_E_NOVE)
+    sem_chrome = sessao is not None and bool(sessao.motivo)
+    if sem_chrome and modo == LIGADO:
+        # Chrome que não abre é quase sempre a janela da caçada aberta à mão (em 18/10, às 15h,
+        # ele estava entrando no Freelancer.com): só a terceira rodada seguida vira aviso.
+        falhas = int(memoria.avisos.get("chrome_falhou", "0") or 0) + 1
+        memoria.avisos["chrome_falhou"] = str(falhas)
+        memoria.guardar(agora)
+        if falhas == FALHAS_DO_CHROME_ATE_AVISAR:
+            celular(
+                f"O envio automático da 99Freelas está parado há {falhas} rodadas: o Chrome da caçada não abre "
+                f"({sessao.motivo}). Se a janela \"Chrome da caçada (Whis)\" estiver aberta, feche; o Whis tenta de novo na próxima hora."
+            )
+        return Rodada(parou=f"sem Chrome: {sessao.motivo}")
+    if sessao is not None and not sem_chrome and memoria.avisos.pop("chrome_falhou", None) is not None:
+        memoria.guardar(agora)
     if modo == LIGADO and not logada:
-        motivo = sessao.motivo if sessao is not None and sessao.motivo else "o Chrome da caçada está deslogado da 99Freelas"
+        motivo = "o Chrome da caçada está deslogado da 99Freelas"
         if memoria.avisar_uma_vez("deslogado", hoje):
             celular(f"O envio automático da 99Freelas parou: {motivo}. Entre de novo pelo whis navegador (e feche o Chrome depois).")
             memoria.guardar(agora)
@@ -858,8 +874,8 @@ def problemas_do_texto(texto: str, oportunidade: Oportunidade, pagina: str, port
     fora = [link for link in links if not any(link.rstrip(".,;").startswith(p) for p in permitidos)]
     if fora:
         problemas.append(f"link fora do portfólio: {fora[0]}")
-    elif len(links) > 1:
-        problemas.append("mais de um link")
+    elif len(links) > 2:
+        problemas.append("mais de dois links (a peça e o site do portfólio, no máximo)")
     if _PRECO.search(texto):
         problemas.append("preço no texto (o preço vai no campo)")
     projeto = f"{oportunidade.titulo} {oportunidade.descricao} {pagina}"

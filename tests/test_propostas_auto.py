@@ -871,3 +871,45 @@ def test_o_toque_tambem_espera_a_confirmacao(tmp_path: Path):
     resposta = _tocar(tmp_path, sessao)
 
     assert resposta.texto.startswith("Enviada na 99Freelas") and _estado(tmp_path)[LINK]["situacao"] == propostas_auto.ENVIADA
+
+
+
+def test_chrome_que_nao_abre_so_avisa_na_terceira_rodada_seguida(tmp_path: Path):
+    from whis.navegador_logado import PERFIL_EM_USO
+
+    def sem_chrome() -> SessaoFake:
+        sessao = SessaoFake({})
+        sessao.motivo = PERFIL_EM_USO
+        return sessao
+
+    celulares = [
+        _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=sem_chrome(), agora=AGORA + timedelta(hours=hora))[1] for hora in range(4)
+    ]
+
+    assert celulares[0] == [] and celulares[1] == [] and celulares[3] == []
+    [aviso] = celulares[2]
+    assert "há 3 rodadas" in aviso and "feche" in aviso and "whis navegador" not in aviso
+
+
+def test_o_chrome_que_abre_zera_a_contagem_de_falhas(tmp_path: Path):
+    from whis.navegador_logado import PERFIL_EM_USO
+
+    sessao = SessaoFake({})
+    sessao.motivo = PERFIL_EM_USO
+    _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=sessao)
+    _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=_logada(depois_de_enviar={LINK: _ja_proposto()}), agora=AGORA + timedelta(hours=1))
+
+    avisos = json.loads((tmp_path / "propostas-auto.json").read_text(encoding="utf-8"))["avisos"]
+    assert "chrome_falhou" not in avisos
+
+
+
+def test_a_peca_e_o_site_do_portfolio_podem_ir_juntos_mas_nao_tres_links():
+    from whis.criterios_da_cacada import PecaDoPortfolio
+
+    portfolio = (*contexto_do_portfolio(), PecaDoPortfolio("Site do portfólio", "https://gabrielvelozo.pages.dev", "o portfólio inteiro"))
+    peca_e_site = TEXTO.replace("todo dia", "todo dia (https://github.com/bielvelozo/inkly-shopify-theme, https://gabrielvelozo.pages.dev)")
+    tres = peca_e_site.replace("Gabriel", "https://gabrielvelozo.pages.dev/sobre\n\nGabriel")
+
+    assert problemas_do_texto(peca_e_site, _freela(), "", portfolio) == []
+    assert any("mais de dois links" in problema for problema in problemas_do_texto(tres, _freela(), "", portfolio))
