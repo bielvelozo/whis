@@ -1,4 +1,4 @@
-Status: ready-for-human
+Status: resolved
 Blocked by: 04
 
 # Botão "Enviar esta proposta" no Telegram
@@ -24,3 +24,5 @@ Pedido dele em 18/10: "se eu ver uma proposta boa, eu falo para ele já enviar p
 4. Ele toca em uma e confere na 99Freelas.
 
 ## Comments
+
+18/10, 11h45–11h56: bandeja de verdade reiniciada pela descartável (`execucao/reiniciar-bandeja.ps1`, uma instância só, log "Celular: ouvindo os botões do Telegram"); as 3 do ensaio reoferecidas com o botão (`execucao/pendentes.ps1`). Prova sem enviar: o Chrome da caçada abre logado de dentro de uma thread num pythonw (`execucao/prova_thread.py`). Às 11:53 ele tocou Enviar no "Redesenho UX/UI das telas de site no ar (PT e EN)": R$ 50, 18 dias, 61 propostas antes; a resposta "Enviada" chegou no Telegram, o estado ficou `enviada` com `aprovada`, a nota virou `status: enviada` (origem "aprovada no celular") e o resumo do dia conta 1. Depois do clique a 99Freelas não abre modal: o botão vira "Enviando…" e o projeto passa a mostrar "Melhorar proposta".
