@@ -57,7 +57,7 @@ from .oportunidades import (
     link_canonico,
 )
 from .precos import conferir_piso, pedido_do_piso
-from .prova_do_portfolio import conferir_prova, pedido_do_portfolio
+from .prova_do_portfolio import conferir_prova, pedido_do_portfolio, sem_a_vitrine
 
 _log = logging.getLogger("whis.cacada")
 
@@ -509,6 +509,7 @@ def cacar(
 
 def _criterios_do_modo(configuracao: Configuracao, raiz: Path, modo: str, cobertos: Sequence[str]) -> Criterios:
     criterios = ler_criterios(raiz)
+    criterios = replace(criterios, portfolio=sem_a_vitrine(criterios.portfolio))
     if configuracao.cacada_piso_freela > 0:
         criterios = replace(criterios, procuro=f"{criterios.procuro.rstrip()}\n{pedido_do_piso(configuracao.cacada_piso_freela)}")
     if criterios.portfolio:

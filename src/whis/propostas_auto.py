@@ -58,6 +58,7 @@ from .freelas_rapidos import do_nicho
 from .instancia import OutraInstancia, Trava
 from .loja_do_cliente import Loja, medir_do_texto
 from .oportunidades import FREELA, Oportunidade, link_canonico
+from .prova_do_portfolio import VITRINE, cita_a_vitrine, sem_a_vitrine
 
 _log = logging.getLogger("whis.propostas_auto")
 
@@ -805,7 +806,7 @@ def _enviar_do_celular(
         return Resposta(f"Não enviei: {motivo}.", tirar_botao=True)
     if not texto:
         return Resposta("Não enviei: não achei o texto da proposta, nem na nota nem no Whis.")
-    problemas = problemas_do_texto(texto, oportunidade, _texto_para_o_claude(html, pagina), ler_criterios(vault).portfolio)
+    problemas = problemas_do_texto(texto, oportunidade, _texto_para_o_claude(html, pagina), sem_a_vitrine(ler_criterios(vault).portfolio))
     if problemas:
         return Resposta(f"Não enviei: o texto não passou na conferência ({'; '.join(problemas)}). Arrume a nota e toque de novo.")
     formulario = formulario_da_proposta(link)
@@ -927,12 +928,14 @@ def problemas_do_texto(texto: str, oportunidade: Oportunidade, pagina: str, port
     if _CONTATO.search(texto):
         problemas.append("chama para contato fora da plataforma")
     links = _LINK.findall(texto)
-    permitidos = [peca.link.rstrip("/") for peca in portfolio]
+    permitidos = [peca.link.rstrip("/") for peca in sem_a_vitrine(portfolio)]
     fora = [link for link in links if not any(link.rstrip(".,;").startswith(p) for p in permitidos)]
-    if fora:
+    if cita_a_vitrine(texto):
+        problemas.append(f"link da vitrine ({VITRINE} mostra e-mail e Fiverr: contato fora da plataforma)")
+    elif fora:
         problemas.append(f"link fora do portfólio: {fora[0]}")
-    elif len(links) > 2:
-        problemas.append("mais de dois links (a peça e o site do portfólio, no máximo)")
+    elif len(links) > 1:
+        problemas.append("mais de um link")
     if _PRECO.search(texto):
         problemas.append("preço no texto (o preço vai no campo)")
     projeto = f"{oportunidade.titulo} {oportunidade.descricao} {pagina}"
@@ -1098,7 +1101,7 @@ def contexto_do_vault(vault: Path, nicho: str = "", valor_hora: int = 0) -> Cont
         procuro=criterios.procuro,
         sobre_mim=criterios.sobre_mim,
         perfil="\n\n".join(perfis),
-        portfolio=criterios.portfolio,
+        portfolio=sem_a_vitrine(criterios.portfolio),
         exemplos=_exemplos(vault),
         nicho=nicho,
         valor_hora=valor_hora,

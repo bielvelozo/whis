@@ -985,12 +985,34 @@ def test_o_chrome_que_abre_zera_a_contagem_de_falhas(tmp_path: Path):
 
 
 
-def test_a_peca_e_o_site_do_portfolio_podem_ir_juntos_mas_nao_tres_links():
+def test_a_vitrine_nunca_vai_na_proposta_nem_quando_esta_no_portfolio():
     from whis.criterios_da_cacada import PecaDoPortfolio
 
     portfolio = (*contexto_do_portfolio(), PecaDoPortfolio("Site do portfólio", "https://gabrielvelozo.pages.dev", "o portfólio inteiro"))
-    peca_e_site = TEXTO.replace("todo dia", "todo dia (https://github.com/bielvelozo/inkly-shopify-theme, https://gabrielvelozo.pages.dev)")
-    tres = peca_e_site.replace("Gabriel", "https://gabrielvelozo.pages.dev/sobre\n\nGabriel")
+    peca = TEXTO.replace("todo dia", "todo dia (https://github.com/bielvelozo/inkly-shopify-theme)")
+    com_a_vitrine = TEXTO.replace("todo dia", "todo dia (https://gabrielvelozo.pages.dev)")
+    sem_esquema = TEXTO.replace("todo dia", "todo dia, veja em gabrielvelozo.pages.dev/br")
+    dois = peca.replace("Gabriel", "https://github.com/bielvelozo/inkly-shopify-theme#cart\n\nGabriel")
 
-    assert problemas_do_texto(peca_e_site, _freela(), "", portfolio) == []
-    assert any("mais de dois links" in problema for problema in problemas_do_texto(tres, _freela(), "", portfolio))
+    assert problemas_do_texto(peca, _freela(), "", portfolio) == []
+    assert any("vitrine" in problema and "contato fora da plataforma" in problema for problema in problemas_do_texto(com_a_vitrine, _freela(), "", portfolio))
+    assert any("vitrine" in problema for problema in problemas_do_texto(sem_esquema, _freela(), "", portfolio))
+    assert "mais de um link" in problemas_do_texto(dois, _freela(), "", portfolio)
+
+
+def test_o_claude_da_proposta_nao_recebe_a_vitrine(tmp_path: Path):
+    vault = tmp_path / "vault"
+    (vault / "cacada").mkdir(parents=True)
+    (vault / "cacada" / "criterios.md").write_text(
+        "## O que eu procuro\n\n- Freela.\n\n## Portfólio\n\n"
+        "- Tema Shopify Inkly: https://github.com/bielvelozo/inkly-shopify-theme — tema\n"
+        "- Site do portfólio: https://gabrielvelozo.pages.dev — o portfólio inteiro\n",
+        encoding="utf-8",
+    )
+
+    contexto = contexto_do_vault(vault, "shopify")
+
+    from whis.propostas_auto_claude import SISTEMA_DA_PROPOSTA
+
+    assert [peca.nome for peca in contexto.portfolio] == ["Tema Shopify Inkly"]
+    assert "Site do portfólio" not in SISTEMA_DA_PROPOSTA
