@@ -831,3 +831,43 @@ def test_erro_inesperado_do_claude_pula_o_projeto_e_o_estado_fica_gravado(tmp_pa
 
     assert [r.link for r in rodada.resultados] == [LINK]
     assert list(_estado(tmp_path)) == [LINK]
+
+
+
+class Demora(SessaoFake):
+    """A 99Freelas mostra "Enviando…" e só depois de umas leituras aparece o "Melhorar proposta"."""
+
+    def __init__(self, *args, leituras_ate_confirmar: int = 3, **opcoes) -> None:
+        super().__init__(*args, **opcoes)
+        self.leituras_ate_confirmar = leituras_ate_confirmar
+        self.enviada = False
+        self.depois = 0
+
+    def html(self, url):
+        if self.enviada and url == LINK:
+            self.depois += 1
+            self.visitadas.append(url)
+            return _ja_proposto() if self.depois >= self.leituras_ate_confirmar else _projeto()
+        return super().html(url)
+
+    def preencher_proposta_da_99freelas(self, url, *, oferta, dias, texto, enviar, pasta_das_fotos=None):
+        self.enviada = self.enviada or enviar
+        return super().preencher_proposta_da_99freelas(url, oferta=oferta, dias=dias, texto=texto, enviar=enviar, pasta_das_fotos=pasta_das_fotos)
+
+
+def test_a_confirmacao_espera_a_pagina_mostrar_o_melhorar_proposta(tmp_path: Path):
+    sessao = Demora(_logada().paginas)
+
+    rodada, celular, _ = _rodar(tmp_path, [_freela()], modo=LIGADO, sessao=sessao)
+
+    assert [r.situacao for r in rodada.resultados] == [propostas_auto.ENVIADA]
+    assert sessao.depois == 3 and celular[0].startswith("Proposta enviada")
+
+
+def test_o_toque_tambem_espera_a_confirmacao(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada())
+    sessao = Demora(_logada().paginas, leituras_ate_confirmar=2)
+
+    resposta = _tocar(tmp_path, sessao)
+
+    assert resposta.texto.startswith("Enviada na 99Freelas") and _estado(tmp_path)[LINK]["situacao"] == propostas_auto.ENVIADA

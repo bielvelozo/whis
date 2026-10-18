@@ -90,6 +90,10 @@ CHAMADAS_ALEM_DA_COTA = 2
 GUARDA_POR = timedelta(days=30)
 DIAS_NO_RESUMO = 14
 PAUSA_ENTRE_PAGINAS_S = (2.0, 5.0)
+#: Depois do clique a 99Freelas mostra "Enviando…" por uns segundos; a página do projeto só mostra
+#: "Melhorar proposta" depois disso (em 18/10 três enviadas viraram incerta numa leitura só).
+LEITURAS_DA_CONFIRMACAO = 5
+ESPERA_DA_CONFIRMACAO_S = 6.0
 #: Quanto o projeto novo fica só para assinante: a idade das travas conta daqui, para quem não assina.
 JANELA_DO_EXCLUSIVO = timedelta(hours=24)
 _DIAS_DA_SEMANA = ("segunda", "terça", "quarta", "quinta", "sexta", "sábado", "domingo")
@@ -389,7 +393,9 @@ def rodar(
         if porque:
             situacao, observacao = PARA_APROVAR, porque
         else:
-            situacao, observacao = _enviar_ou_ensaiar(modo, logada, sessao, oportunidade, formulario, oferta, prazo, escrita.texto, fotos)
+            situacao, observacao = _enviar_ou_ensaiar(
+                modo, logada, sessao, oportunidade, formulario, oferta, prazo, escrita.texto, fotos, dormir=dormir
+            )
         resultado = _registrar(
             memoria,
             oportunidade,
@@ -528,6 +534,8 @@ def _enviar_ou_ensaiar(
     prazo: int,
     texto: str,
     fotos: Path | None,
+    *,
+    dormir: Callable[[float], None] = time.sleep,
 ) -> tuple[str, str]:
     if modo == ENSAIO:
         if not logada:
@@ -543,12 +551,14 @@ def _enviar_ou_ensaiar(
         sessao.preencher_proposta_da_99freelas(formulario, oferta=oferta, dias=prazo, texto=texto, enviar=True, pasta_das_fotos=fotos)
     except _logado.SemNavegador as erro:
         return PULADA, f"o formulário não aceitou, nada foi enviado: {erro}"
-    try:
-        confirmada = _logado.ler_99freelas(sessao.html(oportunidade.link)).situacao == _logado.JA_PROPOS
-    except _logado.SemNavegador:
-        confirmada = False
-    if confirmada:
-        return ENVIADA, ""
+    for leitura in range(LEITURAS_DA_CONFIRMACAO):
+        dormir(ESPERA_DA_CONFIRMACAO_S)
+        try:
+            if _logado.ler_99freelas(sessao.html(oportunidade.link)).situacao == _logado.JA_PROPOS:
+                return ENVIADA, ""
+        except _logado.SemNavegador:
+            pass
+        _log.info("Propostas automáticas: %s ainda sem \"Melhorar proposta\" (leitura %d).", oportunidade.link, leitura + 1)
     return INCERTA, "o Whis clicou em enviar, mas a página do projeto não mostrou \"Melhorar proposta\""
 
 
@@ -642,7 +652,9 @@ def tocou_enviar(
         if decidida is not None:
             return decidida
         with abrir_sessao() as sessao:
-            return _enviar_do_celular(link, memoria, sessao, vault=vault, travas=travas, modo=modo, agora=agora, fotos=fotos)
+            return _enviar_do_celular(
+                link, memoria, sessao, vault=vault, travas=travas, modo=modo, agora=agora, fotos=fotos, dormir=dormir
+            )
     finally:
         segura.liberar()
 
@@ -687,6 +699,7 @@ def _enviar_do_celular(
     modo: str,
     agora: datetime,
     fotos: Path | None,
+    dormir: Callable[[float], None] = time.sleep,
 ) -> Resposta:
     dados = memoria.projetos[link]
     titulo = str(dados.get("titulo") or link)
@@ -732,7 +745,7 @@ def _enviar_do_celular(
         return Resposta(f"Não enviei: o projeto ainda está só para assinantes da 99Freelas{abre}. Toque de novo depois.")
     oferta = max(campos["preco"], proposta.oferta_minima or pagina.valor_minimo or OFERTA_SEM_MINIMO, travas.piso)
     prazo = max(1, min(60, campos["prazo_dias"] or 7))
-    situacao, observacao = _enviar_ou_ensaiar(LIGADO, True, sessao, oportunidade, formulario, oferta, prazo, texto, fotos)
+    situacao, observacao = _enviar_ou_ensaiar(LIGADO, True, sessao, oportunidade, formulario, oferta, prazo, texto, fotos, dormir=dormir)
     if situacao == PULADA:
         return Resposta(f"Não enviei: {observacao}. Toque de novo daqui a pouco.")
     campos.update(preco=oferta, prazo_dias=prazo)
