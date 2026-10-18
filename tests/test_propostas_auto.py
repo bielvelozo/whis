@@ -523,7 +523,7 @@ def test_a_vigia_roda_de_hora_em_hora_e_o_envio_nasce_desligado(tmp_path: Path):
 
     assert configuracao.cacada_horarios_da_vigia_de_freelas == tuple(f"{hora:02d}:00" for hora in range(7, 24))
     assert configuracao.cacada_propostas_auto == "desligado"
-    assert Travas.da_configuracao(configuracao) == Travas(horas=24, max_propostas=80, por_dia=3, reserva=3, exclusivos=False, para_aprovar=5)
+    assert Travas.da_configuracao(configuracao) == Travas(horas=24, max_propostas=40, por_dia=3, reserva=3, exclusivos=False, para_aprovar=5)
     assert configuracao.cacada_propostas_auto_valor_hora == 40
 
 
@@ -697,13 +697,13 @@ def test_com_a_cota_cheia_a_proxima_chega_escrita_para_aprovar_sem_clique(tmp_pa
 
 
 def test_projeto_com_propostas_demais_nunca_sai_sozinho_mas_chega_para_aprovar(tmp_path: Path):
-    sessao = _logada(projeto=_projeto(95))
+    sessao = _logada(projeto=_projeto(45))
 
-    rodada, celular, _ = _rodar(tmp_path, [_freela(propostas=95)], modo=LIGADO, sessao=sessao, travas=Travas(para_aprovar=1))
+    rodada, celular, _ = _rodar(tmp_path, [_freela(propostas=45)], modo=LIGADO, sessao=sessao, travas=Travas(para_aprovar=1))
 
     assert [r.situacao for r in rodada.resultados] == [propostas_auto.PARA_APROVAR]
     assert sessao.preenchidos == []
-    assert celular[0].startswith("Para você aprovar: tem 95 propostas, e o automático só manda abaixo de 80.")
+    assert celular[0].startswith("Para você aprovar: tem 45 propostas, e o automático só manda abaixo de 40.")
 
 
 def test_conexoes_na_reserva_mandam_para_aprovar_em_vez_de_parar(tmp_path: Path):

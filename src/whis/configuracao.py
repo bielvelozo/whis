@@ -128,7 +128,7 @@ piso_freela = 0              # o menor preço de freela que você aceita, em R$:
 horarios_da_vigia_de_freelas = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"]  # quando a tarefa Whis-Vigia-Freelas (whis windows --vigia-freelas) olha a 99Freelas e o Freelancer.com, avisa por toast e no celular o projeto novo do nicho e faz as propostas automáticas
 propostas_auto = "desligado"  # proposta automática na 99Freelas, a cada rodada da vigia: "ensaio" escreve, avisa no celular e não envia; "ligado" envia pelo Chrome da caçada (logado pelo whis navegador); "desligado" não escreve
 propostas_auto_horas = 24    # só propõe em projeto que abriu para você há menos de tantas horas (sem assinatura, o projeto abre 24 h depois de publicado)
-propostas_auto_max_propostas = 80  # só propõe em projeto com menos de tantas propostas (quando abre para quem não assina, já tem de 40 a 140)
+propostas_auto_max_propostas = 40  # só propõe sozinha em projeto com menos de tantas propostas (as fontes chamam 40 a 60 de sala lotada; quando o projeto abre para quem não assina, já tem de 40 a 140, e o que passa disto chega no celular para aprovar)
 propostas_auto_por_dia = 3   # no máximo tantas propostas automáticas por dia (o ensaio conta)
 propostas_auto_reserva = 3   # não propõe se a proposta deixaria menos de tantas conexões da 99Freelas
 propostas_auto_exclusivos = false  # true = você assina a 99Freelas e pode propor no projeto exclusivo de assinante
@@ -358,7 +358,7 @@ class Configuracao:
     cacada_horarios_da_vigia_de_freelas: tuple[str, ...] = HORARIOS_DA_VIGIA_DE_FREELAS
     cacada_propostas_auto: str = "desligado"
     cacada_propostas_auto_horas: int = 24
-    cacada_propostas_auto_max_propostas: int = 80
+    cacada_propostas_auto_max_propostas: int = 40
     cacada_propostas_auto_por_dia: int = 3
     cacada_propostas_auto_reserva: int = 3
     cacada_propostas_auto_exclusivos: bool = False
@@ -522,7 +522,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
             cacada.get("propostas_auto_horas", 24), "[cacada].propostas_auto_horas", 1, 720, arquivo
         ),
         cacada_propostas_auto_max_propostas=_inteiro_entre(
-            cacada.get("propostas_auto_max_propostas", 80), "[cacada].propostas_auto_max_propostas", 1, 1000, arquivo
+            cacada.get("propostas_auto_max_propostas", 40), "[cacada].propostas_auto_max_propostas", 1, 1000, arquivo
         ),
         cacada_propostas_auto_por_dia=_inteiro_entre(
             cacada.get("propostas_auto_por_dia", 3), "[cacada].propostas_auto_por_dia", 0, 50, arquivo

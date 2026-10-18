@@ -111,7 +111,7 @@ class Travas:
     """
 
     horas: int = 24
-    max_propostas: int = 80
+    max_propostas: int = 40
     por_dia: int = 3
     reserva: int = 3
     exclusivos: bool = False
