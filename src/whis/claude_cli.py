@@ -18,6 +18,19 @@ _log = logging.getLogger("whis.claude")
 #: Variáveis de ambiente que fariam o Claude cobrar por fora da conta do usuário.
 VARIAVEIS_DE_API_PAGA = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN")
 
+#: O prazo para o CLI responder ao `initialize` do SDK. O SDK espera 60 s, e em 18/10 o CLI desta
+#: máquina levava de 32 a 48 s só para dizer "ok"; com o Chrome da caçada aberto, passou dos 60 e a
+#: proposta automática caiu com "Control request timeout: initialize".
+INICIO_DO_CLI_MS = 180_000
+
+
+def dar_tempo_ao_inicio() -> None:
+    """O SDK lê o prazo do `initialize` de `CLAUDE_CODE_STREAM_CLOSE_TIMEOUT` no ambiente deste processo."""
+    os.environ.setdefault("CLAUDE_CODE_STREAM_CLOSE_TIMEOUT", str(INICIO_DO_CLI_MS))
+
+
+dar_tempo_ao_inicio()
+
 
 def registrar_stderr_do_cli(linha: str) -> None:
     """O stderr do CLI do Claude vai ao log, em vez de ser herdado do pai.

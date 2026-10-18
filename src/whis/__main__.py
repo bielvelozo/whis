@@ -1045,7 +1045,7 @@ def _propostas_automaticas(configuracao: Configuracao, lidas, nicho: str, *, fak
                     travas=travas,
                     vault=vault,
                     escritor=PropostaClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None),
-                    contexto=propostas_auto.contexto_do_vault(vault, nicho),
+                    contexto=propostas_auto.contexto_do_vault(vault, nicho, configuracao.cacada_propostas_auto_valor_hora),
                     sessao=sessao,
                     estado=propostas_auto.caminho_do_estado(),
                     celular=no_celular,

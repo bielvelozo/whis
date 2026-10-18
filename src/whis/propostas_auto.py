@@ -11,7 +11,11 @@ pelo botão "Melhorar proposta".
 
 `[cacada].propostas_auto` diz o modo: `ensaio` faz tudo menos o clique (a nota
 nasce com `status: ensaio`, que o *Funil* não conta) e `ligado` envia. O preço
-é a oferta mínima do formulário, de propósito: foi o que deu cliente.
+vem do Claude: as horas que o escopo pede vezes `[cacada].propostas_auto_valor_hora`
+(um pouco abaixo do que se cobra na 99Freelas), dentro da faixa do cliente,
+nunca abaixo da oferta mínima do projeto nem do `[cacada].piso_freela`. Até
+18/10 era sempre a oferta mínima, e ele viu que R$ 50 por um sistema inteiro
+lê como quem não entendeu o pedido.
 
 Nada aqui é enviado duas vezes. O que aconteceu com cada projeto fica em
 `%LOCALAPPDATA%\whis\cacada\propostas-auto.json`; um clique sem confirmação
@@ -107,6 +111,7 @@ class Travas:
     reserva: int = 3
     exclusivos: bool = False
     para_aprovar: int = 0
+    piso: int = 0
 
     @classmethod
     def da_configuracao(cls, configuracao) -> Travas:
@@ -117,6 +122,7 @@ class Travas:
             reserva=configuracao.cacada_propostas_auto_reserva,
             exclusivos=configuracao.cacada_propostas_auto_exclusivos,
             para_aprovar=configuracao.cacada_propostas_auto_para_aprovar,
+            piso=configuracao.cacada_piso_freela,
         )
 
 
@@ -130,16 +136,19 @@ class Contexto:
     portfolio: tuple[PecaDoPortfolio, ...]
     exemplos: tuple[str, ...]
     nicho: str = ""
+    valor_hora: int = 0
 
 
 @dataclass(frozen=True)
 class Escrita:
-    """A resposta do Claude: se ele entrega, por quê, a proposta e o prazo."""
+    """A resposta do Claude: se ele entrega, por quê, a proposta, o prazo e o preço (com a conta)."""
 
     entrega: bool
     motivo: str
     texto: str = ""
     prazo_dias: int = 0
+    preco: int = 0
+    motivo_do_preco: str = ""
 
 
 class Escritor(Protocol):
@@ -161,6 +170,7 @@ class Resultado:
     quando: str = ""
     fila: bool = False
     aprovada: str = ""
+    motivo_do_preco: str = ""
 
 
 @dataclass(frozen=True)
@@ -358,7 +368,7 @@ def rodar(
             porque = f"sobrariam {na_reserva} conexões, e a reserva é {travas.reserva}"
         else:
             porque = ""
-        texto_da_pagina = _texto_para_o_claude(html, pagina)
+        texto_da_pagina = _texto_para_o_claude(html, pagina, minimo=oferta)
         try:
             escrita, chamadas_feitas = _escrever(escritor, oportunidade, texto_da_pagina, contexto, limite_de_chamadas - chamadas)
         except LimiteDoPlano as erro:
@@ -370,11 +380,12 @@ def rodar(
         if not escrita.entrega:
             resultados.append(_registrar(memoria, oportunidade, NAO_ENTREGA, agora, motivo=escrita.motivo))
             continue
-        problemas = problemas_do_texto(escrita.texto, oportunidade, texto_da_pagina, contexto.portfolio)
+        problemas = _problemas(escrita, oportunidade, texto_da_pagina, contexto)
         if problemas:
             resultados.append(_registrar(memoria, oportunidade, PULADA, agora, motivo=f"texto reprovado: {'; '.join(problemas)}"))
             continue
         prazo = max(1, min(60, escrita.prazo_dias or 7))
+        oferta = max(escrita.preco, oferta, travas.piso)
         if porque:
             situacao, observacao = PARA_APROVAR, porque
         else:
@@ -392,6 +403,7 @@ def rodar(
             texto=escrita.texto,
             nota=_nota_relativa(oportunidade.link),
             fila=bool(porque),
+            motivo_do_preco=escrita.motivo_do_preco,
         )
         _escrever_nota(vault, resultado, agora)
         resultados.append(resultado)
@@ -460,12 +472,23 @@ def _publicada(oportunidade: Oportunidade, agora: datetime) -> datetime | None:
     return publicada if publicada.tzinfo else publicada.replace(tzinfo=agora.tzinfo)
 
 
-def _texto_para_o_claude(html: str, pagina: _logado.PaginaDa99Freelas) -> str:
+def _texto_para_o_claude(html: str, pagina: _logado.PaginaDa99Freelas, *, minimo: int = 0) -> str:
     texto = _logado.texto_da_pagina(html)
     inicio = texto.find("Descrição do Projeto")
     corpo = texto[inicio:] if inicio >= 0 else texto
-    cabecalho = [f"Cliente: {pagina.cliente}" if pagina.cliente else "", f"Orçamento: {pagina.orcamento}" if pagina.orcamento else ""]
+    cabecalho = [
+        f"Cliente: {pagina.cliente}" if pagina.cliente else "",
+        f"Orçamento: {pagina.orcamento}" if pagina.orcamento else "",
+        f"Oferta mínima do projeto: R$ {minimo}" if minimo else "",
+    ]
     return "\n".join([*(c for c in cabecalho if c), corpo[:6000]])
+
+
+def _problemas(escrita: Escrita, oportunidade: Oportunidade, pagina: str, contexto: Contexto) -> list[str]:
+    problemas = problemas_do_texto(escrita.texto, oportunidade, pagina, contexto.portfolio)
+    if escrita.preco <= 0:
+        problemas.append("faltou o preço (o campo preco, em reais)")
+    return problemas
 
 
 def _escrever(
@@ -480,13 +503,15 @@ def _escrever(
             break
         try:
             escrita = escritor.escrever(oportunidade, pagina, contexto, corrigir=corrigir)
-        except ErroDaCacada as erro:
+        except LimiteDoPlano:
+            raise
+        except Exception as erro:  # noqa: BLE001 — o SDK também cai com Exception crua (timeout ao iniciar); fica para a próxima hora
             _log.warning("Propostas automáticas: o Claude não escreveu a de %s (%s).", oportunidade.link, erro)
             return None, feitas + 1
         feitas += 1
         if not escrita.entrega:
             break
-        problemas = problemas_do_texto(escrita.texto, oportunidade, pagina, contexto.portfolio)
+        problemas = _problemas(escrita, oportunidade, pagina, contexto)
         if not problemas:
             break
         corrigir = "; ".join(problemas)
@@ -551,7 +576,11 @@ def _registrar(memoria: _Estado, oportunidade: Oportunidade, situacao: str, agor
         dados["fila"] = True
     if resultado.aprovada:
         dados["aprovada"] = resultado.aprovada
+    if resultado.motivo_do_preco:
+        dados["motivo_do_preco"] = resultado.motivo_do_preco
     memoria.projetos[resultado.link] = dados
+    # Grava a cada projeto: uma rodada que cai no meio não pode esquecer o que já foi enviado.
+    memoria.guardar(agora)
     return resultado
 
 
@@ -672,13 +701,14 @@ def _enviar_do_celular(
     pagina = _logado.ler_99freelas(html)
     texto = _texto_guardado(vault, dados)
     campos = {
-        "preco": int(dados.get("preco") or 0),
+        "preco": _preco_guardado(vault, dados),
         "prazo_dias": int(dados.get("prazo_dias") or 0),
         "propostas": pagina.propostas if pagina.propostas is not None else dados.get("propostas"),
         "orcamento": pagina.orcamento or str(dados.get("orcamento") or ""),
         "texto": texto,
         "nota": str(dados.get("nota") or _nota_relativa(link)),
         "fila": bool(dados.get("fila")),
+        "motivo_do_preco": str(dados.get("motivo_do_preco") or ""),
     }
     if pagina.situacao == _logado.JA_PROPOS:
         _decidir(memoria, vault, modo, oportunidade, PULADA, agora, motivo="você já tinha proposto pelo site", **campos)
@@ -700,7 +730,7 @@ def _enviar_do_celular(
     if proposta.exclusivo and not travas.exclusivos:
         abre = f" (abre por volta de {pagina.publicada + JANELA_DO_EXCLUSIVO:%d/%m às %H:%M})" if pagina.publicada else ""
         return Resposta(f"Não enviei: o projeto ainda está só para assinantes da 99Freelas{abre}. Toque de novo depois.")
-    oferta = proposta.oferta_minima or campos["preco"] or pagina.valor_minimo or OFERTA_SEM_MINIMO
+    oferta = max(campos["preco"], proposta.oferta_minima or pagina.valor_minimo or OFERTA_SEM_MINIMO, travas.piso)
     prazo = max(1, min(60, campos["prazo_dias"] or 7))
     situacao, observacao = _enviar_ou_ensaiar(LIGADO, True, sessao, oportunidade, formulario, oferta, prazo, texto, fotos)
     if situacao == PULADA:
@@ -710,7 +740,7 @@ def _enviar_do_celular(
     if situacao == ENVIADA:
         sobram = f" · sobram {proposta.restantes} conexões" if proposta.restantes is not None else ""
         dias = "dia" if prazo == 1 else "dias"
-        return Resposta(f"Enviada na 99Freelas: {titulo} · R$ {oferta} em {prazo} {dias}{sobram}\n{link}", tirar_botao=True)
+        return Resposta(f"Enviada na 99Freelas: {titulo} · {_reais(oferta)} em {prazo} {dias}{sobram}\n{link}", tirar_botao=True)
     return Resposta(f"Cliquei em enviar, mas a página não confirmou: confira no site se a proposta saiu.\n{titulo}\n{link}", tirar_botao=True)
 
 
@@ -720,6 +750,24 @@ def _decidir(memoria: _Estado, vault: Path, modo: str, oportunidade: Oportunidad
     memoria.guardar(agora)
     escrever_resumo(vault, memoria, modo, agora)
     return resultado
+
+
+_PRECO_DA_NOTA = re.compile(r'^preco:\s*"?\s*(?:R\$)?\s*([\d.]+)', re.M)
+
+
+def _preco_guardado(vault: Path, dados: dict) -> int:
+    """O `preco` da nota (ele pode ter editado no Obsidian); sem nota, o do estado."""
+    relativo = str(dados.get("nota") or "")
+    arquivo = Path(vault) / relativo
+    if relativo and arquivo.is_file():
+        casou = _PRECO_DA_NOTA.search(arquivo.read_text(encoding="utf-8", errors="replace"))
+        if casou and casou.group(1).replace(".", ""):
+            return int(casou.group(1).replace(".", ""))
+    return int(dados.get("preco") or 0)
+
+
+def _reais(valor: int) -> str:
+    return f"R$ {valor:,}".replace(",", ".")
 
 
 def _texto_guardado(vault: Path, dados: dict) -> str:
@@ -758,6 +806,7 @@ def oferecer_pendentes(
             propostas=dados.get("propostas"),
             orcamento=str(dados.get("orcamento") or ""),
             texto=_texto_guardado(vault, dados),
+            motivo_do_preco=str(dados.get("motivo_do_preco") or ""),
         )
         comeco = f"Esperando o seu toque (escrita em {_hora(dados.get('quando'))})"
         if dados.get("situacao") == PARA_APROVAR and dados.get("motivo"):
@@ -820,7 +869,7 @@ def _nota_relativa(link: str) -> str:
 
 
 def _status(resultado: Resultado, dia: date) -> str:
-    preco = f"R$ {resultado.preco}, {resultado.prazo_dias} {'dia' if resultado.prazo_dias == 1 else 'dias'}"
+    preco = f"{_reais(resultado.preco)}, {resultado.prazo_dias} {'dia' if resultado.prazo_dias == 1 else 'dias'}"
     if resultado.situacao == ENVIADA:
         return f"enviada em {dia.isoformat()} ({preco})"
     if resultado.situacao == INCERTA:
@@ -880,7 +929,9 @@ def _mensagem(resultado: Resultado, usados: int, por_dia: int, *, comeco: str = 
         if parte
     )
     dias = "dia" if resultado.prazo_dias == 1 else "dias"
-    preco = f"R$ {resultado.preco} em {resultado.prazo_dias} {dias}"
+    preco = f"{_reais(resultado.preco)} em {resultado.prazo_dias} {dias}"
+    if resultado.motivo_do_preco:
+        preco += f" ({resultado.motivo_do_preco})"
     if resultado.situacao == NO_ENSAIO and resultado.motivo:
         preco += f" ({resultado.motivo})"
     linhas = [comeco, resultado.titulo, dados, preco, resultado.link, "", resultado.texto]
@@ -928,7 +979,7 @@ def escrever_resumo(vault: Path, memoria: _Estado, modo: str, agora: datetime) -
             partes = [hora, _ROTULOS.get(str(dados.get("situacao")), str(dados.get("situacao"))), f"[{dados.get('titulo', '')}]({dados['link']})"]
             if dados.get("preco"):
                 dias = dados.get("prazo_dias") or 0
-                partes.append(f"R$ {dados['preco']} em {dias} {'dia' if dias == 1 else 'dias'}")
+                partes.append(f"{_reais(int(dados['preco']))} em {dias} {'dia' if dias == 1 else 'dias'}")
             if dados.get("propostas") is not None:
                 partes.append(f"{dados['propostas']} propostas antes")
             if dados.get("nota"):
@@ -946,7 +997,7 @@ _FRONTMATTER = re.compile(r"\A---\r?\n(?P<campos>.*?)\r?\n---\r?\n?(?P<corpo>.*)
 EXEMPLOS = 3
 
 
-def contexto_do_vault(vault: Path, nicho: str = "") -> Contexto:
+def contexto_do_vault(vault: Path, nicho: str = "", valor_hora: int = 0) -> Contexto:
     """Critérios, perfil e as propostas da 99Freelas que ele mandou (as respondidas primeiro) como exemplo."""
     from .cacada import CAMINHO_DO_PERFIL, CAMINHO_DO_PERFIL_DE_FREELAS
 
@@ -964,6 +1015,7 @@ def contexto_do_vault(vault: Path, nicho: str = "") -> Contexto:
         portfolio=criterios.portfolio,
         exemplos=_exemplos(vault),
         nicho=nicho,
+        valor_hora=valor_hora,
     )
 
 
@@ -1012,6 +1064,8 @@ class EscritorDeTeste:
                 "você começaria.\n\nGabriel"
             ),
             prazo_dias=2,
+            preco=150,
+            motivo_do_preco="modo de teste",
         )
 
 

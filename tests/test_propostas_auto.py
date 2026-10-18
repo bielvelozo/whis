@@ -111,7 +111,7 @@ def _logada(projeto: str | None = None, formulario: str | None = None, **opcoes)
 
 @dataclass
 class EscritorFake:
-    respostas: list[Escrita] = field(default_factory=lambda: [Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3)])
+    respostas: list[Escrita] = field(default_factory=lambda: [Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3, preco=50)])
     pedidos: list[tuple[str, str, str]] = field(default_factory=list)
 
     def escrever(self, oportunidade, pagina, contexto, *, corrigir=""):
@@ -362,8 +362,8 @@ def test_o_que_ele_nao_entrega_fica_guardado_e_nao_volta_ao_claude(tmp_path: Pat
 
 
 def test_texto_com_problema_volta_uma_vez_ao_claude_com_o_motivo(tmp_path: Path):
-    ruim = Escrita(entrega=True, motivo="dá", texto=TEXTO.replace("Gabriel", "Gabriel\ngabriel@exemplo.com"), prazo_dias=3)
-    escritor = EscritorFake(respostas=[ruim, Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3)])
+    ruim = Escrita(entrega=True, motivo="dá", texto=TEXTO.replace("Gabriel", "Gabriel\ngabriel@exemplo.com"), prazo_dias=3, preco=50)
+    escritor = EscritorFake(respostas=[ruim, Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3, preco=50)])
 
     rodada, _, _ = _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
 
@@ -372,7 +372,7 @@ def test_texto_com_problema_volta_uma_vez_ao_claude_com_o_motivo(tmp_path: Path)
 
 
 def test_texto_que_continua_com_problema_e_pulado(tmp_path: Path):
-    ruim = Escrita(entrega=True, motivo="dá", texto=TEXTO + " Valor: R$ 50.", prazo_dias=3)
+    ruim = Escrita(entrega=True, motivo="dá", texto=TEXTO + " Valor: R$ 50.", prazo_dias=3, preco=50)
 
     rodada, celular, _ = _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=EscritorFake(respostas=[ruim]))
 
@@ -405,7 +405,7 @@ def contexto_do_portfolio():
 
 
 def test_o_resumo_do_dia_lista_o_que_saiu(tmp_path: Path):
-    escritor = EscritorFake(respostas=[Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3)])
+    escritor = EscritorFake(respostas=[Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3, preco=50)])
     _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
 
     resumo = (tmp_path / "vault" / "cacada" / "propostas-auto.md").read_text(encoding="utf-8")
@@ -427,7 +427,8 @@ def test_o_contexto_usa_as_propostas_que_deram_certo_como_exemplo(tmp_path: Path
             encoding="utf-8",
         )
 
-    contexto = contexto_do_vault(vault, "shopify")
+    contexto = contexto_do_vault(vault, "shopify", valor_hora=45)
+    assert contexto.valor_hora == 45
 
     assert contexto.exemplos[0].startswith("Olá! Texto b.") and len(contexto.exemplos) == 2
     assert "Faz Shopify." in contexto.perfil and "Freela." in contexto.procuro
@@ -442,6 +443,7 @@ def test_a_vigia_roda_de_hora_em_hora_e_o_envio_nasce_desligado(tmp_path: Path):
     assert configuracao.cacada_horarios_da_vigia_de_freelas == tuple(f"{hora:02d}:00" for hora in range(7, 24))
     assert configuracao.cacada_propostas_auto == "desligado"
     assert Travas.da_configuracao(configuracao) == Travas(horas=24, max_propostas=80, por_dia=3, reserva=3, exclusivos=False, para_aprovar=5)
+    assert configuracao.cacada_propostas_auto_valor_hora == 40
 
 
 def test_modo_desconhecido_e_erro_de_configuracao(tmp_path: Path):
@@ -479,17 +481,25 @@ def _claude_gravado(dados: dict):
 
 
 def test_o_claude_le_os_exemplos_o_portfolio_e_o_motivo_da_correcao():
-    claude = _claude_gravado({"entrega": True, "motivo": "dá", "proposta": TEXTO, "prazo_dias": 4})
+    claude = _claude_gravado(
+        {"entrega": True, "motivo": "dá", "proposta": TEXTO, "prazo_dias": 4, "preco": 900, "preco_motivo": "uns R$ 1.100 no mercado"}
+    )
     contexto = Contexto(
-        procuro="Freela.", sobre_mim="- Anos: 3", perfil="Full stack.", portfolio=contexto_do_portfolio(), exemplos=("Olá! Exemplo.",)
+        procuro="Freela.",
+        sobre_mim="- Anos: 3",
+        perfil="Full stack.",
+        portfolio=contexto_do_portfolio(),
+        exemplos=("Olá! Exemplo.",),
+        valor_hora=55,
     )
 
     escrita = claude.escrever(_freela(), "Cliente: Natacha", contexto, corrigir="tem e-mail")
 
-    assert escrita == Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=4)
+    assert escrita == Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=4, preco=900, motivo_do_preco="uns R$ 1.100 no mercado")
     [prompt] = type(claude).prompts
     assert "Olá! Exemplo." in prompt and "https://github.com/bielvelozo/inkly-shopify-theme" in prompt
     assert "Cliente: Natacha" in prompt and "RECUSADA NA CONFERÊNCIA POR: tem e-mail" in prompt
+    assert "VALOR DA HORA DELE: R$ 55" in prompt
 
 
 def test_o_claude_que_diz_que_nao_entrega_volta_sem_texto():
@@ -755,3 +765,69 @@ def test_as_que_esperam_o_toque_voltam_ao_celular_com_o_botao(tmp_path: Path):
     assert oferecidas == 1
     assert celular[0].startswith("Esperando o seu toque (escrita em 10/10 às 10:00)") and TEXTO in celular[0]
     assert celular.botoes == [BOTAO]
+
+
+# -- o preço -----------------------------------------------------------------------------------------
+
+
+def _com_preco(preco: int, motivo: str = "") -> EscritorFake:
+    return EscritorFake(respostas=[Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3, preco=preco, motivo_do_preco=motivo)])
+
+
+def test_o_preco_e_o_do_claude_e_o_celular_mostra_a_conta(tmp_path: Path):
+    sessao = _logada(depois_de_enviar={LINK: _ja_proposto()})
+
+    rodada, celular, escritor = _rodar(
+        tmp_path, [_freela()], modo=LIGADO, sessao=sessao, escritor=_com_preco(1200, "uns R$ 1.400 no mercado para esse escopo")
+    )
+
+    assert rodada.resultados[0].preco == 1200 and sessao.preenchidos[0][1] == 1200
+    assert "R$ 1.200 em 3 dias (uns R$ 1.400 no mercado para esse escopo)" in celular[0]
+    assert 'preco: "R$ 1200"' in _nota(tmp_path) and "status: enviada em 2026-10-10 (R$ 1.200, 3 dias)" in _nota(tmp_path)
+    assert "Oferta mínima do projeto: R$ 50" in escritor.pedidos[0][1]
+
+
+def test_o_preco_nunca_fica_abaixo_da_oferta_minima_nem_do_piso(tmp_path: Path):
+    abaixo, _, _ = _rodar(tmp_path / "a", [_freela()], sessao=_logada(), escritor=_com_preco(30))
+    piso, _, _ = _rodar(tmp_path / "b", [_freela()], sessao=_logada(), escritor=_com_preco(120), travas=Travas(piso=200))
+
+    assert abaixo.resultados[0].preco == 50 and piso.resultados[0].preco == 200
+
+
+def test_sem_preco_o_claude_escreve_de_novo(tmp_path: Path):
+    escritor = EscritorFake(
+        respostas=[
+            Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3),
+            Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=3, preco=400),
+        ]
+    )
+
+    rodada, _, _ = _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=escritor)
+
+    assert "preço" in escritor.pedidos[1][2] and rodada.resultados[0].preco == 400
+
+
+def test_o_toque_usa_o_preco_da_nota_que_ele_pode_editar(tmp_path: Path):
+    _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=_com_preco(300))
+    arquivo = tmp_path / "vault" / "cacada" / "propostas-auto" / "sistema-web-para-gerar-mapas-numerologicos-790517.md"
+    arquivo.write_text(arquivo.read_text(encoding="utf-8").replace('preco: "R$ 300"', 'preco: "R$ 450"'), encoding="utf-8")
+    sessao = _logada(depois_de_enviar={LINK: _ja_proposto()})
+
+    resposta = _tocar(tmp_path, sessao)
+
+    assert sessao.preenchidos[0][1] == 450 and "R$ 450 em 3 dias" in resposta.texto
+
+
+def test_erro_inesperado_do_claude_pula_o_projeto_e_o_estado_fica_gravado(tmp_path: Path):
+    sessao = _com_outro(_logada())
+
+    class Quebra(EscritorFake):
+        def escrever(self, oportunidade, pagina, contexto, *, corrigir=""):
+            if oportunidade.link == OUTRO:
+                raise Exception("Control request timeout: initialize")
+            return super().escrever(oportunidade, pagina, contexto, corrigir=corrigir)
+
+    rodada, _, _ = _rodar(tmp_path, [_freela(), _freela(OUTRO, propostas=9)], sessao=sessao, escritor=Quebra())
+
+    assert [r.link for r in rodada.resultados] == [LINK]
+    assert list(_estado(tmp_path)) == [LINK]
