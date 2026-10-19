@@ -101,6 +101,41 @@ def test_so_uma_vez_por_mes_a_nao_ser_forcando(tmp_path: Path):
     assert nota.count("## Outubro de 2026") == 2 and "## Novembro de 2026" in nota and "_Nada novo nesta busca._" in nota
 
 
+def test_na_procura_busca_so_com_a_fila_curta_uma_vez_por_dia(tmp_path: Path):
+    from whis.agencias import buscar_se_faltar
+
+    vault = _vault(tmp_path)
+    estado = tmp_path / "agencias.json"
+    porta = _Busca([NOVA])
+
+    cheia = buscar_se_faltar(vault, porta, estado=estado, na_fila=5, agora=AGORA)
+    curta = buscar_se_faltar(vault, porta, estado=estado, na_fila=4, agora=AGORA)
+    mesmo_dia = buscar_se_faltar(vault, porta, estado=estado, na_fila=0, agora=AGORA + timedelta(hours=5))
+    amanha = buscar_se_faltar(vault, porta, estado=estado, na_fila=0, agora=AGORA + timedelta(days=1))
+
+    assert cheia.ja_feita and "5 agência(s)" in cheia.motivo
+    assert not curta.ja_feita and [a.nome for a in curta.novas] == ["Estúdio Novo"]
+    assert mesmo_dia.ja_feita and "hoje" in mesmo_dia.motivo
+    assert not amanha.ja_feita and amanha.novas == ()
+    assert len(porta.pedidos) == 2
+    assert buscar_agencias(vault, porta, estado=estado, agora=AGORA + timedelta(days=1)).ja_feita, "a do mês continua valendo"
+
+
+def test_a_busca_que_volta_vazia_espera_sete_dias(tmp_path: Path):
+    from whis.agencias import buscar_se_faltar
+
+    vault = _vault(tmp_path)
+    estado = tmp_path / "agencias.json"
+    porta = _Busca([])
+
+    buscar_se_faltar(vault, porta, estado=estado, na_fila=0, agora=AGORA)
+    seis_dias = buscar_se_faltar(vault, porta, estado=estado, na_fila=0, agora=AGORA + timedelta(days=6))
+    sete_dias = buscar_se_faltar(vault, porta, estado=estado, na_fila=0, agora=AGORA + timedelta(days=7))
+
+    assert seis_dias.ja_feita and "não achou nenhuma nova" in seis_dias.motivo
+    assert not sete_dias.ja_feita and len(porta.pedidos) == 2
+
+
 def test_o_comando_de_teste_nao_usa_o_claude_nem_o_vault(arquivo_de_configuracao: Path, caminho_do_vault: Path, monkeypatch, capsys):
     from whis.__main__ import main
 

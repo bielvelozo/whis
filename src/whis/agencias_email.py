@@ -129,6 +129,12 @@ def ler_alvos(vault: Path) -> list[Alvo]:
     return alvos
 
 
+def na_fila(vault: Path, estado: Path) -> int:
+    """Quantas agências com e-mail da empresa ainda não ganharam e-mail nem ficaram de fora."""
+    memoria = _ler(estado)
+    return sum(1 for alvo in ler_alvos(vault) if alvo.email not in memoria["emails"])
+
+
 def _alvo(casou: re.Match[str], detalhes: list[str]) -> Alvo | None:
     contato = next((d for d in detalhes if d.casefold().startswith("contato:")), "")
     emails = [e.casefold() for e in _EMAIL.findall(contato) if e.split("@", 1)[0].casefold() in DA_EMPRESA]

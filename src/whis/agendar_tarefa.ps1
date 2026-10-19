@@ -9,7 +9,8 @@ param(
     [Parameter(Mandatory = $true)][string]$Executavel,
     [Parameter(Mandatory = $true)][string]$Argumentos,
     [Parameter(Mandatory = $true)][string]$Diretorio,
-    [Parameter(Mandatory = $true)][string]$Gatilhos
+    [Parameter(Mandatory = $true)][string]$Gatilhos,
+    [int]$LimiteMinutos = 30
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,7 +40,7 @@ $settings = New-ScheduledTaskSettingsSet `
     -WakeToRun `
     -AllowStartIfOnBatteries `
     -DontStopIfGoingOnBatteries `
-    -ExecutionTimeLimit (New-TimeSpan -Minutes 30) `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes $LimiteMinutos) `
     -MultipleInstances IgnoreNew
 
 Register-ScheduledTask -TaskName $Nome -Action $acao -Trigger $triggers -Settings $settings -Force | Out-Null

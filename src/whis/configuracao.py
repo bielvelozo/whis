@@ -133,6 +133,8 @@ propostas_auto_por_dia = 3   # no máximo tantas propostas automáticas por dia 
 propostas_auto_reserva = 3   # não propõe se a proposta deixaria menos de tantas conexões da 99Freelas
 propostas_auto_exclusivos = false  # true = você assina a 99Freelas e pode propor no projeto exclusivo de assinante
 agencias_por_dia = 1         # quantos e-mails de apresentação para agências Shopify da sua lista chegam por dia no celular, escritos, com o botão Enviar e-mail (sai do seu Gmail, de [cacada].email com a senha de app); 0 = nenhum
+lojas_por_dia = 1            # quantos e-mails para lojas Shopify lentas de cacada/lojas-shopify.md chegam por dia no celular, com o número medido e o botão Enviar e-mail; 0 = nenhum
+horario_da_procura = "12:30"  # quando a tarefa Whis-Procura busca agências e lojas novas, se a fila de e-mails ficou curta (whis windows --procura)
 propostas_auto_valor_hora = 40  # o valor da sua hora na proposta automática, em R$: o preço é as horas que o Claude estima vezes isto, dentro da faixa de orçamento do cliente e nunca abaixo da oferta mínima (fica um pouco abaixo do que se cobra na 99Freelas, porque você ainda não tem avaliação)
 max_propostas_freelancer = 30  # a vigia de freelas e a caçada deixam de fora o projeto do Freelancer.com com tantas propostas ou mais (lá um projeto de Shopify passa de 50 em uma hora, e a conta grátis tem 6 lances por mês); 0 = sem limite
 propostas_auto_para_aprovar = 5  # por dia, até tantas propostas que não saem sozinhas (cota cheia, propostas demais, reserva) chegam escritas no celular com o botão Enviar; 0 = nenhuma
@@ -244,6 +246,8 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "propostas_auto_para_aprovar", "cacada_propostas_auto_para_aprovar", Tipo.INTEIRO),
     Chave("cacada", "propostas_auto_valor_hora", "cacada_propostas_auto_valor_hora", Tipo.INTEIRO),
     Chave("cacada", "agencias_por_dia", "cacada_agencias_por_dia", Tipo.INTEIRO),
+    Chave("cacada", "lojas_por_dia", "cacada_lojas_por_dia", Tipo.INTEIRO),
+    Chave("cacada", "horario_da_procura", "cacada_horario_da_procura", Tipo.HORA),
     Chave("cacada", "max_propostas_freelancer", "cacada_max_propostas_freelancer", Tipo.INTEIRO),
     Chave("celular", "telegram_token", "celular_telegram_token", Tipo.SEGREDO),
     Chave("celular", "telegram_chat", "celular_telegram_chat", Tipo.TEXTO),
@@ -365,6 +369,8 @@ class Configuracao:
     cacada_propostas_auto_para_aprovar: int = 5
     cacada_propostas_auto_valor_hora: int = 40
     cacada_agencias_por_dia: int = 1
+    cacada_lojas_por_dia: int = 1
+    cacada_horario_da_procura: str = "12:30"
     cacada_max_propostas_freelancer: int = 30
     celular_telegram_token: str = ""
     celular_telegram_chat: str = ""
@@ -540,6 +546,8 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
             cacada.get("propostas_auto_valor_hora", 40), "[cacada].propostas_auto_valor_hora", 1, 1000, arquivo
         ),
         cacada_agencias_por_dia=_inteiro_entre(cacada.get("agencias_por_dia", 1), "[cacada].agencias_por_dia", 0, 10, arquivo),
+        cacada_lojas_por_dia=_inteiro_entre(cacada.get("lojas_por_dia", 1), "[cacada].lojas_por_dia", 0, 10, arquivo),
+        cacada_horario_da_procura=_hora(cacada.get("horario_da_procura", "12:30"), "[cacada].horario_da_procura", arquivo),
         cacada_max_propostas_freelancer=_inteiro_entre(
             cacada.get("max_propostas_freelancer", 30), "[cacada].max_propostas_freelancer", 0, 1000, arquivo
         ),

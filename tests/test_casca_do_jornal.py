@@ -234,8 +234,9 @@ def test_o_vigia_so_olha_o_jornal_se_ele_existe_no_agendador():
 def test_o_teto_da_tarefa_comporta_uma_edicao_de_quinze_minutos():
     texto = automacao.SCRIPT_DE_AGENDAMENTO.read_text(encoding="utf-8-sig")
 
-    teto = re.search(r"-ExecutionTimeLimit \(New-TimeSpan -Minutes (\d+)\)", texto)
+    teto = re.search(r"\[int\]\$LimiteMinutos = (\d+)", texto)
 
+    assert "-ExecutionTimeLimit (New-TimeSpan -Minutes $LimiteMinutos)" in texto
     assert teto is not None and int(teto.group(1)) >= 15
 
 

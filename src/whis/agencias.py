@@ -9,7 +9,11 @@ conferido aqui: agência conhecida pelo nome ou pelo domínio sai, e e-mail com
 nome de pessoa vira aviso. A seção do mês vai no fim de `agencias-shopify-novas.md`.
 
 Roda uma vez por mês (o mês fica em `%LOCALAPPDATA%\whis\cacada\agencias.json`),
-pelo comando ou no fim de uma caçada de freelas inteira.
+pelo comando ou no fim de uma caçada de freelas inteira. Na procura diária
+(`whis procurar`) ela roda também quando a fila do e-mail das agências fica
+com menos de 5 por escrever, no máximo uma vez por dia; a busca que não acha
+nenhuma nova faz a próxima esperar 7 dias. Pedido dele em 18/10: com um e-mail
+por dia, as 11 que sobravam acabariam em 11 dias.
 """
 
 from __future__ import annotations
@@ -20,7 +24,7 @@ import os
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -36,6 +40,8 @@ CAMINHO_DAS_NOVAS = f"{PASTA_CACADA}/agencias-shopify-novas.md"
 NOME_DO_ESTADO = "agencias.json"
 TIMEOUT_DA_BUSCA_S = 2400.0
 TURNOS_DA_BUSCA = 60
+MINIMO_NA_FILA = 5
+ESPERA_DEPOIS_DE_VAZIA = timedelta(days=7)
 
 MESES = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro")
 
@@ -82,6 +88,7 @@ class ResultadoDasAgencias:
     conhecidas: int = 0
     devolvidas: int = 0
     repetidas: tuple[str, ...] = field(default_factory=tuple)
+    motivo: str = ""
 
 
 class PortaDasAgencias(Protocol):
@@ -133,6 +140,39 @@ def buscar_agencias(
     _gravar_mes(estado, mes)
     _log.info("Agências do mês: %d nova(s), %d repetida(s).", len(novas), len(repetidas))
     return ResultadoDasAgencias(tuple(novas), False, CAMINHO_DAS_NOVAS, len(nomes), len(devolvidas), tuple(repetidas))
+
+
+def buscar_se_faltar(
+    vault: Path,
+    porta: PortaDasAgencias,
+    *,
+    estado: Path,
+    na_fila: int,
+    minimo: int = MINIMO_NA_FILA,
+    agora: datetime | None = None,
+    forcar: bool = False,
+) -> ResultadoDasAgencias:
+    """A busca da procura: só com a fila curta, uma vez por dia, e 7 dias depois de uma que voltou vazia."""
+    agora = agora or datetime.now().astimezone()
+    hoje = agora.date().isoformat()
+    memoria = {} if forcar else _ler_estado(estado)
+    motivo = ""
+    if not forcar and na_fila >= minimo:
+        motivo = f"a fila ainda tem {na_fila} agência(s) para escrever"
+    elif memoria.get("dia") == hoje:
+        motivo = "a busca de hoje já foi feita"
+    elif memoria.get("vazia_em"):
+        try:
+            vazia = date.fromisoformat(str(memoria["vazia_em"]))
+        except ValueError:
+            vazia = None
+        if vazia is not None and agora.date() - vazia < ESPERA_DEPOIS_DE_VAZIA:
+            motivo = f"a busca de {vazia:%d/%m} não achou nenhuma nova"
+    if motivo:
+        return ResultadoDasAgencias(ja_feita=True, caminho=CAMINHO_DAS_NOVAS, motivo=motivo)
+    resultado = buscar_agencias(vault, porta, estado=estado, agora=agora, forcar=True)
+    _gravar_estado(estado, dia=hoje, vazia_em=None if resultado.novas else hoje)
+    return resultado
 
 
 def so_contato_da_empresa(contato: str) -> str:
@@ -255,17 +295,27 @@ def _nomes_como_estao(vault: Path) -> list[str]:
     return list(vistos.values())
 
 
-def _mes_feito(estado: Path) -> str:
+def _ler_estado(estado: Path) -> dict:
     try:
-        return str(json.loads(estado.read_text(encoding="utf-8")).get("mes", ""))
-    except (OSError, ValueError, AttributeError):
-        return ""
+        dados = json.loads(estado.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return dados if isinstance(dados, dict) else {}
+
+
+def _mes_feito(estado: Path) -> str:
+    return str(_ler_estado(estado).get("mes", ""))
 
 
 def _gravar_mes(estado: Path, mes: str) -> None:
+    _gravar_estado(estado, mes=mes)
+
+
+def _gravar_estado(estado: Path, **campos: str | None) -> None:
+    memoria = {**_ler_estado(estado), **campos}
     estado.parent.mkdir(parents=True, exist_ok=True)
     temporario = estado.with_name(estado.name + ".tmp")
-    temporario.write_text(json.dumps({"mes": mes}), encoding="utf-8")
+    temporario.write_text(json.dumps({chave: valor for chave, valor in memoria.items() if valor is not None}), encoding="utf-8")
     os.replace(temporario, estado)
 
 

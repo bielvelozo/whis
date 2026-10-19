@@ -64,8 +64,16 @@ _Avoid_: pipeline, CRM
 _Avoid_: especialidade, foco
 
 **Agências do mês**:
-A busca de agências e estúdios Shopify do Brasil que ainda não estão em `cacada/agencias-shopify.md` (a pesquisa de 14/10) nem em `cacada/agencias-shopify-novas.md`, para ele oferecer trabalho por baixo delas: `whis agencias`, ou sozinha no fim de uma caçada de freelas inteira, uma vez por mês. O Claude só busca e lê na web; nada é enviado a ninguém. Fica só contato da empresa: e-mail com nome de pessoa vira aviso. A seção do mês vai no fim de `agencias-shopify-novas.md`, e ele escreve à mão.
+A busca de agências e estúdios Shopify do Brasil que ainda não estão em `cacada/agencias-shopify.md` (a pesquisa de 14/10) nem em `cacada/agencias-shopify-novas.md`, para ele oferecer trabalho por baixo delas: `whis agencias`, ou sozinha no fim de uma caçada de freelas inteira, uma vez por mês. O Claude só busca e lê na web; nada é enviado a ninguém. Fica só contato da empresa: e-mail com nome de pessoa vira aviso. A seção do mês vai no fim de `agencias-shopify-novas.md`, e ele escreve à mão. A **Procura do dia** roda a mesma busca quando a fila do **E-mail das agências** acaba.
 _Avoid_: prospecção, outreach, CRM
+
+**Procura do dia**:
+`whis procurar` e a tarefa `Whis-Procura` (`whis windows --procura`, em `[cacada].horario_da_procura`, com 90 min de teto): quando a fila do **E-mail das agências** ou do **E-mail das lojas** tem menos de 5 por escrever, o Claude busca na web agências novas (a busca das **Agências do mês**) e lojas Shopify do Brasil com e-mail da empresa. No máximo uma vez por dia, e a busca que não acha nenhuma faz a próxima esperar 7 dias. A loja só entra em `cacada/lojas-shopify.md` depois de o Python ver o tema da Shopify na página inicial, conferir que ela não é cliente de uma agência das listas (link ou nome dela no tema) nem está na seção *Nunca contatar* da lista (domínios e ramos que ele escreve lá, só no vault), e medir no celular emulado em 4G (`medida_no_celular.py`) que a maior imagem aparece depois de 4 s. "Design ruim" não entra porque não se mede. Pedido dele em 18/10; fica fora da **Vigia de freelas** porque a busca passa dos 30 min dela.
+_Avoid_: prospecção, scraping, lead
+
+**E-mail das lojas**:
+O primeiro e-mail para uma loja Shopify lenta da **Procura do dia** (`lojas_email.py`), um por dia (`[cacada].lojas_por_dia`), na **Vigia de freelas**. A página é medida de novo na hora (a que ficou rápida sai), o Claude abre com o número medido, liga a peça de velocidade do portfólio e pergunta se faz sentido mandar o que mudaria, com prazo e preço fechados; o Python confere o número no texto e a linha "é só responder que eu não escrevo de novo". Chega no **Celular** com o botão "Enviar e-mail" e sai pelo Gmail como o **E-mail das agências**. Cada loja recebe um só.
+_Avoid_: mala direta, disparo, cold mail
 
 **Registro de ações**:
 `%LOCALAPPDATA%\whis\cacada\acoes.jsonl`: tudo o que o Whis fez fora do PC em nome dele — conta criada, e-mail confirmado, perfil completado, candidatura enviada. Só acrescenta; cada ação nasce como intenção, gravada antes de agir, e ganha o desfecho depois. Intenção sem desfecho nunca é refeita sozinha, e nada é feito duas vezes (ADR 0004).

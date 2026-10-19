@@ -239,5 +239,15 @@ def test_a_chave_do_botao_cabe_no_telegram():
 
 
 
+def test_a_fila_conta_as_agencias_que_ainda_nao_ganharam_email(tmp_path: Path):
+    _vault(tmp_path)
+    estado = tmp_path / "agencias-emails.json"
+
+    antes = agencias_email.na_fila(tmp_path / "vault", estado)
+    _preparar(tmp_path)
+
+    assert antes == 2 and agencias_email.na_fila(tmp_path / "vault", estado) == 1
+
+
 def test_o_pedido_do_email_lembra_do_site_do_portfolio():
     assert "Site do portfólio" in agencias_email.SISTEMA_DO_EMAIL

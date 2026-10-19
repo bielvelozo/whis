@@ -22,6 +22,8 @@ Este módulo faz poucas coisas, todas **explícitas e reversíveis**:
   que consulta o Agendador e dispara toast quando uma peça do Whis não subiu;
 - `agendar_vigia_de_freelas()` registra `Whis-Vigia-Freelas`, que várias vezes
   por dia roda `whis vigia-freelas --agendada` e avisa o projeto novo do nicho;
+- `agendar_procura()` registra `Whis-Procura`, que uma vez por dia roda
+  `whis procurar --agendada` e busca agências e lojas quando a fila acaba;
 - `remover_legado()` tira da máquina o atalho e as tarefas que chamam um
   módulo ou um comando que não existe mais.
 
@@ -64,6 +66,9 @@ NOME_DA_TAREFA_DO_JORNAL = "Whis-Noticias"
 NOME_DA_TAREFA_DAS_REUNIOES = "Whis-Reunioes"
 NOME_DA_TAREFA_DO_LEMBRETE = "Whis-Lembrete-Cacada"
 NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS = "Whis-Vigia-Freelas"
+NOME_DA_TAREFA_DA_PROCURA = "Whis-Procura"
+#: A busca de agências e a de lojas chamam o Claude com busca na web (até 40 e 30 min) e medem as lojas.
+LIMITE_DA_PROCURA_MIN = 90
 
 #: O script que registra uma tarefa pelo módulo `ScheduledTasks`, com os
 #: gatilhos como `Dia=HH:MM` (dia em inglês, ou `Daily`) separados por vírgula.
@@ -328,15 +333,17 @@ def _registrar_tarefa(
     argumentos: str,
     gatilhos: list[str],
     executar: Executor,
+    limite_minutos: int | None = None,
 ) -> None:
     """Registra (ou substitui) uma tarefa pelo `agendar_tarefa.ps1`.
 
     Os gatilhos vão numa string só, separados por vírgula: em modo `-File` o
     PowerShell entrega cada argumento como texto literal, e um `[string[]]`
-    receberia só o primeiro.
+    receberia só o primeiro. Sem `limite_minutos`, o Agendador para a tarefa em 30 min.
     """
     if not gatilhos:
         raise ErroDeAutomacao(f"a tarefa '{nome}' precisa de pelo menos um gatilho.")
+    limite = ["-LimiteMinutos", str(limite_minutos)] if limite_minutos else []
     resultado = executar(
         [
             "powershell",
@@ -356,6 +363,7 @@ def _registrar_tarefa(
             str(_diretorio_do_projeto()),
             "-Gatilhos",
             ",".join(gatilhos),
+            *limite,
         ]
     )
     if resultado.returncode != 0:
@@ -549,6 +557,28 @@ def desagendar_vigia_de_freelas(*, executar: Executor = _rodar) -> bool:
 
 def vigia_de_freelas_agendada(*, executar: Executor = _rodar) -> bool:
     return _tarefa_agendada(NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS, executar=executar)
+
+
+def agendar_procura(configuracao: Configuracao, *, executar: Executor = _rodar) -> str:
+    """Registra `Whis-Procura`: um gatilho diário em `[cacada].horario_da_procura`, com 90 min de teto.
+
+    Fora da vigia porque a busca na web passa dos 30 min que a vigia tem. Com
+    `-StartWhenAvailable`, o dia em que o PC estava desligado no horário busca
+    assim que ele ligar; sem fila curta, ela termina em segundos.
+    """
+    _registrar_tarefa(
+        NOME_DA_TAREFA_DA_PROCURA,
+        executavel=str(interpretador_sem_console()),
+        argumentos=_argumentos_do_whis("procurar --agendada", configuracao.origem or caminho_padrao()),
+        gatilhos=[f"Daily={configuracao.cacada_horario_da_procura}"],
+        executar=executar,
+        limite_minutos=LIMITE_DA_PROCURA_MIN,
+    )
+    return NOME_DA_TAREFA_DA_PROCURA
+
+
+def desagendar_procura(*, executar: Executor = _rodar) -> bool:
+    return _desregistrar_tarefa(NOME_DA_TAREFA_DA_PROCURA, executar=executar)
 
 
 def _depois(hora: str, atraso: timedelta) -> str:

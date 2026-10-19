@@ -8,7 +8,7 @@ para as reuniões da Granola::
 
     python -m whis init
     python -m whis bandeja
-    python -m whis windows [--daily] [--news] [--meetings] [--hunt] [--vigia-freelas] [--remover] [--remover-legado]
+    python -m whis windows [--daily] [--news] [--meetings] [--hunt] [--vigia-freelas] [--procura] [--remover] [--remover-legado]
     python -m whis diario [YYYY-MM-DD] [--simular]
     python -m whis daily [--anotar TEXTO] [--simular] [--fakes] [--agendada]
     python -m whis news [--agendada] [--fakes] [--simular]
@@ -19,6 +19,7 @@ para as reuniões da Granola::
     python -m whis lembrete [--agendada] | candidaturas
     python -m whis vigia-freelas [--agendada] [--fakes] | celular [--teste | --pendentes]
     python -m whis o-que-pedem [--nicho NICHO] | agencias [--forcar] [--fakes]
+    python -m whis procurar [--agendada] [--forcar] [--fakes]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -1016,6 +1017,12 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
             print(f"O e-mail das agências falhou nesta rodada: {erro}")
             saida = SAIDA_PARCIAL
         try:
+            _emails_das_lojas(configuracao)
+        except Exception as erro:  # noqa: BLE001 — o e-mail das lojas tenta de novo na próxima hora
+            _log.exception("O e-mail das lojas falhou nesta rodada.")
+            print(f"O e-mail das lojas falhou nesta rodada: {erro}")
+            saida = SAIDA_PARCIAL
+        try:
             _lembrete_das_agencias(configuracao)
         except Exception as erro:  # noqa: BLE001 — o lembrete tenta de novo na próxima hora
             _log.exception("O lembrete às agências falhou nesta rodada.")
@@ -1090,6 +1097,25 @@ def _emails_das_agencias(configuracao: Configuracao) -> None:
     )
     for preparado in preparados:
         print(f"E-mail para a agência {preparado.nome} ({preparado.email}) no celular, esperando o toque: {preparado.nota}")
+
+
+def _emails_das_lojas(configuracao: Configuracao) -> None:
+    """O e-mail do dia para uma loja Shopify lenta da procura: medida de novo, escrita e mandada ao celular com o botão."""
+    from . import celular, lojas_email
+    from .medida_no_celular import medir
+
+    if configuracao.cacada_lojas_por_dia <= 0:
+        return
+    preparados = lojas_email.preparar(
+        _vault.preparar(configuracao.vault),
+        escritor=lojas_email.EmailDaLojaClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None),
+        estado=lojas_email.caminho_do_estado(),
+        celular=lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes),
+        por_dia=configuracao.cacada_lojas_por_dia,
+        medir_no_celular=medir,
+    )
+    for preparado in preparados:
+        print(f"E-mail para a loja {preparado.nome} ({preparado.email}) no celular, esperando o toque: {preparado.nota}")
 
 
 def _propostas_automaticas(configuracao: Configuracao, lidas, nicho: str, *, fakes: bool = False) -> None:
@@ -1266,11 +1292,18 @@ def _tocar_num_processo_novo(configuracao: Configuracao, dados: str, *, rodar=No
 
 def _tocou_no_celular(configuracao: Configuracao, dados: str):
     """O toque num botão do Telegram, que a bandeja ouve: "Enviar esta proposta" e "Enviar e-mail"."""
-    from . import agencias_email, propostas_auto
+    from . import agencias_email, lojas_email, propostas_auto
     from .celular import Resposta
     from .corrida import cacada_correndo, pasta_da_cacada
     from .navegador_logado import NavegadorLogado
 
+    if dados.startswith(lojas_email.PREFIXO_DO_TOQUE):
+        return lojas_email.tocou_enviar_email(
+            dados,
+            vault=_vault.preparar(configuracao.vault),
+            estado=lojas_email.caminho_do_estado(),
+            enviar=agencias_email.gmail(configuracao.cacada_email, configuracao.cacada_senha_de_app),
+        )
     if dados.startswith(agencias_email.PREFIXO_DO_TOQUE):
         return agencias_email.tocou_enviar_email(
             dados,
@@ -1352,6 +1385,74 @@ def _agencias_do_mes(configuracao: Configuracao, *, fakes: bool = False, forcar:
     for agencia in resultado.novas:
         print(f"  {agencia.nome} · {agencia.cidade} · {agencia.site}")
     return SAIDA_COMPLETA
+
+
+def _comando_procurar(args: argparse.Namespace) -> int:
+    """A procura do dia (tarefa Whis-Procura): agências e lojas Shopify lentas novas quando a fila de e-mails ficou curta."""
+    from . import agencias, agencias_email, lojas_email, lojas_shopify
+    from .medida_no_celular import MedidaNoCelular
+
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    if args.fakes:
+        import tempfile
+
+        raiz = Path(tempfile.mkdtemp(prefix="whis-procura-"))
+        vault = raiz / "vault"
+        (vault / "cacada").mkdir(parents=True)
+        porta_das_agencias, porta_das_lojas = agencias.AgenciasFake(), lojas_shopify.LojasFake()
+        estado_das_agencias, estado_das_lojas = raiz / "agencias.json", raiz / "lojas.json"
+        fila_das_agencias, fila_das_lojas = 0, 0
+        tema = '<script>Shopify.theme = {"name":"Dawn","schema_name":"Dawn","schema_version":"15.0.0"};</script>'
+        abrir = lambda url: lojas_shopify.PaginaInicial(tema, url)  # noqa: E731
+        medir = lambda url: MedidaNoCelular(9.4, 3.2, 140)  # noqa: E731
+        print(f"Modo de teste: um vault temporário em {vault}, sem Claude nem Chrome.")
+    else:
+        vault = _vault.preparar(configuracao.vault)
+        opcoes_do_claude = {"cli": configuracao.claude_cli or None}
+        porta_das_agencias = agencias.AgenciasClaude(**opcoes_do_claude)
+        porta_das_lojas = lojas_shopify.LojasClaude(**opcoes_do_claude)
+        estado_das_agencias, estado_das_lojas = agencias.caminho_do_estado(), lojas_shopify.caminho_do_estado()
+        fila_das_agencias = agencias_email.na_fila(vault, agencias_email.caminho_do_estado())
+        fila_das_lojas = lojas_email.na_fila(vault, lojas_email.caminho_do_estado())
+        abrir, medir = None, None
+    saida = SAIDA_COMPLETA
+    if configuracao.cacada_agencias_por_dia > 0:
+        try:
+            resultado = agencias.buscar_se_faltar(
+                vault, porta_das_agencias, estado=estado_das_agencias, na_fila=fila_das_agencias,
+                minimo=agencias.MINIMO_NA_FILA * configuracao.cacada_agencias_por_dia, forcar=args.forcar,
+            )
+        except Exception as erro:  # noqa: BLE001 — a busca de lojas roda mesmo assim, e a de agências tenta amanhã
+            _log.exception("A busca de agências da procura falhou.")
+            print(f"A busca de agências não saiu ({erro}); tenta de novo amanhã.")
+            saida = SAIDA_PARCIAL
+        else:
+            if resultado.ja_feita:
+                print(f"Agências: sem busca hoje, {resultado.motivo}.")
+            else:
+                print(f"Agências: {len(resultado.novas)} nova(s) em {resultado.caminho}; {len(resultado.repetidas)} já estavam na lista.")
+                for agencia in resultado.novas:
+                    print(f"  {agencia.nome} · {agencia.cidade} · {agencia.site}")
+    if configuracao.cacada_lojas_por_dia > 0:
+        try:
+            lojas = lojas_shopify.buscar_se_faltar(
+                vault, porta_das_lojas, estado=estado_das_lojas, na_fila=fila_das_lojas, abrir=abrir, medir_no_celular=medir,
+                minimo=lojas_shopify.MINIMO_NA_FILA * configuracao.cacada_lojas_por_dia, forcar=args.forcar,
+            )
+        except Exception as erro:  # noqa: BLE001 — tenta de novo amanhã
+            _log.exception("A busca de lojas da procura falhou.")
+            print(f"A busca de lojas não saiu ({erro}); tenta de novo amanhã.")
+            saida = SAIDA_PARCIAL
+        else:
+            if lojas.ja_feita:
+                print(f"Lojas: sem busca hoje, {lojas.motivo}.")
+            else:
+                fora = ", ".join(f"{motivo}: {quantas}" for motivo, quantas in lojas.descartadas.items()) or "nenhuma"
+                print(f"Lojas: {len(lojas.novas)} lenta(s) nova(s) em {lojas_shopify.CAMINHO_DA_LISTA_DE_LOJAS} de {lojas.devolvidas} achada(s); fora: {fora}.")
+                for loja in lojas.novas:
+                    print(f"  {loja.nome} · {loja.site} · LCP {loja.medida.lcp_s:.1f} s · {loja.medida.mb:.1f} MB")
+    return saida
 
 
 def _comando_candidaturas(args: argparse.Namespace) -> int:
@@ -1695,13 +1796,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
     from . import automacao
 
     precisa_da_configuracao = bool(args.config) or (
-        (args.daily or args.news or args.meetings or args.hunt or args.vigia_freelas) and not args.remover
+        (args.daily or args.news or args.meetings or args.hunt or args.vigia_freelas or args.procura) and not args.remover
     )
     configuracao = _configuracao(args) if precisa_da_configuracao else None
     origem = (configuracao.origem if configuracao else None) or caminho_padrao()
     feitos: list[str] = []
     so_remover_legado = args.remover_legado and not (
-        args.atendente or args.daily or args.news or args.meetings or args.hunt or args.vigia_freelas
+        args.atendente or args.daily or args.news or args.meetings or args.hunt or args.vigia_freelas or args.procura
     )
 
     if args.daily and not args.remover and not configuracao.daily_horarios:
@@ -1760,6 +1861,13 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"Tarefa '{automacao.NOME_DA_TAREFA_DA_VIGIA_DE_FREELAS}' removida do Agendador."
                     if removida
                     else "Não havia vigia de freelas agendada."
+                )
+            if args.procura:
+                removida = automacao.desagendar_procura()
+                feitos.append(
+                    f"Tarefa '{automacao.NOME_DA_TAREFA_DA_PROCURA}' removida do Agendador."
+                    if removida
+                    else "Não havia procura agendada."
                 )
             if args.news:
                 removida = automacao.desagendar_noticias()
@@ -1844,6 +1952,16 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"Freelancer.com e avisa por toast (e no celular, o do Freelancer.com) o projeto novo de "
                     f"{configuracao.cacada_nicho_freela or '[cacada].nicho_freela (ainda vazio: ela não roda sem ele)'}; "
                     f"proposta automática na 99Freelas: {configuracao.cacada_propostas_auto}."
+                )
+            if args.procura:
+                from .agencias import MINIMO_NA_FILA
+
+                automacao.agendar_procura(configuracao)
+                feitos.append(
+                    f"Procura agendada como '{automacao.NOME_DA_TAREFA_DA_PROCURA}': todo dia às "
+                    f"{configuracao.cacada_horario_da_procura} ela busca na web agências e lojas Shopify lentas "
+                    f"novas quando a fila de e-mails ficou com menos de {MINIMO_NA_FILA}; os e-mails "
+                    f"chegam pela vigia de freelas, um por dia de cada."
                 )
             if args.meetings:
                 automacao.agendar_reunioes(configuracao)
@@ -2222,6 +2340,16 @@ def construir_parser() -> argparse.ArgumentParser:
     agencias_cmd.add_argument("--fakes", action="store_true", help="uma agência fictícia num vault temporário, sem Claude")
     agencias_cmd.set_defaults(funcao=_comando_agencias)
 
+    procurar_cmd = subcomandos.add_parser(
+        "procurar",
+        help="busca na web agências e lojas Shopify lentas do Brasil quando a fila de e-mails ficou curta (só leitura; tarefa Whis-Procura)",
+    )
+    _acrescentar_config(procurar_cmd)
+    procurar_cmd.add_argument("--agendada", action="store_true", help="é como a tarefa Whis-Procura chama")
+    procurar_cmd.add_argument("--forcar", action="store_true", help="busca agora mesmo com a fila cheia ou a busca de hoje feita")
+    procurar_cmd.add_argument("--fakes", action="store_true", help="uma agência e uma loja fictícias num vault temporário, sem Claude nem Chrome")
+    procurar_cmd.set_defaults(funcao=_comando_procurar)
+
     candidaturas_cmd = subcomandos.add_parser(
         "candidaturas", help="atualiza cacada/candidaturas.md: pacotes, o que o Whis enviou e as respostas no Gmail"
     )
@@ -2337,6 +2465,14 @@ def construir_parser() -> argparse.ArgumentParser:
         help=(
             "também agenda a vigia de freelas nas horas de [cacada].horarios_da_vigia_de_freelas "
             "(tarefa Whis-Vigia-Freelas): o projeto novo de [cacada].nicho_freela vira toast"
+        ),
+    )
+    windows_cmd.add_argument(
+        "--procura",
+        action="store_true",
+        help=(
+            "também agenda a procura diária em [cacada].horario_da_procura (tarefa Whis-Procura): "
+            "agências e lojas Shopify lentas novas quando a fila de e-mails acaba"
         ),
     )
     windows_cmd.add_argument(
