@@ -141,7 +141,7 @@ def test_so_a_shopify_lenta_com_email_da_empresa_entra_na_lista_a_mais_lenta_pri
         "já está na lista": 1,
         "sem e-mail da empresa": 1,
         "não é Shopify": 1,
-        "a página não é lenta": 1,
+        "a página não é lenta nem tem o tema de fábrica": 1,
         "fechada com senha": 1,
         "o site leva o nome ou o link de uma agência das listas": 2,
     }
@@ -208,7 +208,7 @@ def test_o_comando_de_teste_da_procura_nao_usa_claude_nem_o_vault(arquivo_de_con
 
     saida = capsys.readouterr().out
     assert "Agências: 2 nova(s)" in saida
-    assert "Lojas: 1 lenta(s) nova(s)" in saida and "sem e-mail da empresa: 1" in saida
+    assert "Lojas: 1 nova(s)" in saida and "sem e-mail da empresa: 1" in saida
     assert not (caminho_do_vault / CAMINHO_DA_LISTA_DE_LOJAS).exists()
     assert not (caminho_do_vault.parent / "local" / "whis" / "cacada" / "lojas.json").exists()
 
@@ -219,7 +219,7 @@ def test_a_procura_de_verdade_conta_a_fila_e_nao_busca_com_ela_cheia(tmp_path: P
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setattr(agencias_email, "na_fila", lambda vault, estado: 9)
-    monkeypatch.setattr(lojas_email, "na_fila", lambda vault, estado: 7)
+    monkeypatch.setattr(lojas_email, "na_fila", lambda vault, estado: 12)
     monkeypatch.setattr(agencias.AgenciasClaude, "buscar", lambda self, conhecidas: pytest.fail("buscou agência com a fila cheia"))
     monkeypatch.setattr(lojas_shopify.LojasClaude, "buscar", lambda self, conhecidas: pytest.fail("buscou loja com a fila cheia"))
     arquivo = tmp_path / "config.toml"
@@ -229,7 +229,7 @@ def test_a_procura_de_verdade_conta_a_fila_e_nao_busca_com_ela_cheia(tmp_path: P
 
     saida = capsys.readouterr().out
     assert "Agências: sem busca hoje, a fila ainda tem 9 agência(s) para escrever." in saida
-    assert "Lojas: sem busca hoje, a fila ainda tem 7 loja(s) para escrever." in saida
+    assert "Lojas: sem busca hoje, a fila ainda tem 12 loja(s) para escrever." in saida
 
 
 def test_whis_windows_liga_e_desliga_a_procura(tmp_path: Path, monkeypatch, capsys):

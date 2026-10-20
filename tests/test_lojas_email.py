@@ -267,12 +267,13 @@ def test_a_vigia_prepara_o_email_do_dia_das_lojas_e_a_falha_nao_derruba(tmp_path
 
     [opcoes] = chamadas
     assert opcoes["por_dia"] == 2 and opcoes["estado"] == lojas_email.caminho_do_estado() and callable(opcoes["medir_no_celular"])
+    assert opcoes["por_dia_redesenho"] == 1 and callable(opcoes["conferir_tema"])
     assert "E-mail para a loja Bela Pele (contato@belapele.com.br) no celular" in capsys.readouterr().out
 
     monkeypatch.setattr(lojas_email, "preparar", lambda vault, **_opcoes: (_ for _ in ()).throw(RuntimeError("quebrou")))
     assert main(["vigia-freelas", "--config", str(_config(tmp_path))]) == 3
     monkeypatch.setattr(lojas_email, "preparar", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("rodou desligado")))
-    assert main(["vigia-freelas", "--config", str(_config(tmp_path, "lojas_por_dia = 0\n"))]) == 0
+    assert main(["vigia-freelas", "--config", str(_config(tmp_path, "lojas_por_dia = 0\nlojas_redesenho_por_dia = 0\n"))]) == 0
 
 
 def test_o_toque_de_loja_vai_para_o_email_das_lojas(tmp_path: Path, monkeypatch):

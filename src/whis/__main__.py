@@ -1100,11 +1100,11 @@ def _emails_das_agencias(configuracao: Configuracao) -> None:
 
 
 def _emails_das_lojas(configuracao: Configuracao) -> None:
-    """O e-mail do dia para uma loja Shopify lenta da procura: medida de novo, escrita e mandada ao celular com o botão."""
-    from . import celular, lojas_email
+    """Os e-mails do dia para as lojas Shopify da procura (lenta, ou com o tema de fábrica): medida ou comparada de novo, escrita e mandada ao celular com o botão."""
+    from . import celular, lojas_email, lojas_shopify, tema_de_fabrica
     from .medida_no_celular import medir
 
-    if configuracao.cacada_lojas_por_dia <= 0:
+    if configuracao.cacada_lojas_por_dia <= 0 and configuracao.cacada_lojas_redesenho_por_dia <= 0:
         return
     preparados = lojas_email.preparar(
         _vault.preparar(configuracao.vault),
@@ -1113,6 +1113,8 @@ def _emails_das_lojas(configuracao: Configuracao) -> None:
         celular=lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes),
         por_dia=configuracao.cacada_lojas_por_dia,
         medir_no_celular=medir,
+        por_dia_redesenho=configuracao.cacada_lojas_redesenho_por_dia,
+        conferir_tema=lambda site: lojas_shopify.conferir_tema_do_site(site, tema_de_fabrica.caminho_do_estado()),
     )
     for preparado in preparados:
         print(f"E-mail para a loja {preparado.nome} ({preparado.email}) no celular, esperando o toque: {preparado.nota}")
@@ -1434,11 +1436,12 @@ def _comando_procurar(args: argparse.Namespace) -> int:
                 print(f"Agências: {len(resultado.novas)} nova(s) em {resultado.caminho}; {len(resultado.repetidas)} já estavam na lista.")
                 for agencia in resultado.novas:
                     print(f"  {agencia.nome} · {agencia.cidade} · {agencia.site}")
-    if configuracao.cacada_lojas_por_dia > 0:
+    lojas_por_dia = configuracao.cacada_lojas_por_dia + configuracao.cacada_lojas_redesenho_por_dia
+    if lojas_por_dia > 0:
         try:
             lojas = lojas_shopify.buscar_se_faltar(
                 vault, porta_das_lojas, estado=estado_das_lojas, na_fila=fila_das_lojas, abrir=abrir, medir_no_celular=medir,
-                minimo=lojas_shopify.MINIMO_NA_FILA * configuracao.cacada_lojas_por_dia, forcar=args.forcar,
+                minimo=lojas_shopify.MINIMO_NA_FILA * lojas_por_dia, forcar=args.forcar,
             )
         except Exception as erro:  # noqa: BLE001 — tenta de novo amanhã
             _log.exception("A busca de lojas da procura falhou.")
@@ -1449,9 +1452,10 @@ def _comando_procurar(args: argparse.Namespace) -> int:
                 print(f"Lojas: sem busca hoje, {lojas.motivo}.")
             else:
                 fora = ", ".join(f"{motivo}: {quantas}" for motivo, quantas in lojas.descartadas.items()) or "nenhuma"
-                print(f"Lojas: {len(lojas.novas)} lenta(s) nova(s) em {lojas_shopify.CAMINHO_DA_LISTA_DE_LOJAS} de {lojas.devolvidas} achada(s); fora: {fora}.")
+                print(f"Lojas: {len(lojas.novas)} nova(s) em {lojas_shopify.CAMINHO_DA_LISTA_DE_LOJAS} de {lojas.devolvidas} achada(s); fora: {fora}.")
                 for loja in lojas.novas:
-                    print(f"  {loja.nome} · {loja.site} · LCP {loja.medida.lcp_s:.1f} s · {loja.medida.mb:.1f} MB")
+                    fabrica = f" · tema de fábrica: {loja.fabrica.como_linha()}" if loja.fabrica is not None else ""
+                    print(f"  {loja.nome} · {loja.site} · LCP {loja.medida.lcp_s:.1f} s · {loja.medida.mb:.1f} MB{fabrica}")
     return saida
 
 
