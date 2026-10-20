@@ -11,7 +11,8 @@ loja com a demonstração oficial do mesmo tema, que a loja de temas da Shopify 
 - os tipos de seção da página inicial, na ordem.
 
 É de fábrica o tema que veio da loja de temas (`theme_store_id`, ou um nome de tema público)
-e bate com a demonstração em pelo menos duas das três. O e-mail só cita o que bateu. A
+e bate com a demonstração nas cores e em mais uma das três: as cores são a primeira coisa que
+uma marca troca, e o e-mail diz que a marca aparece pouco. O e-mail só cita o que bateu. A
 demonstração muda pouco: a impressão dela fica guardada por 30 dias em
 `%LOCALAPPDATA%\whis\cacada\temas-de-fabrica.json`. Um tema com várias predefinições é
 comparado só com a demonstração principal; a loja que partiu de outra fica de fora (perde-se
@@ -112,7 +113,7 @@ class TemaDeFabrica:
 
     @property
     def de_fabrica(self) -> bool:
-        return len(self.iguais) >= IGUAIS_PARA_SER_DE_FABRICA
+        return CORES in self.iguais and len(self.iguais) >= IGUAIS_PARA_SER_DE_FABRICA
 
     def frases(self) -> list[str]:
         """O que bateu, em português, do jeito que o e-mail pode dizer."""

@@ -81,6 +81,9 @@ def test_a_loja_com_fonte_cor_e_secoes_proprias_nao_e_de_fabrica(tmp_path: Path)
 
     assert resultado is not None and resultado.iguais == () and not resultado.de_fabrica and resultado.renomeado
     assert so_uma is not None and so_uma.iguais == (FONTES,) and not so_uma.de_fabrica
+    com_as_cores_da_marca = tema_de_fabrica.conferir(_pagina(fundo="241 235 218"), abrir=abrir, estado=tmp_path / "t.json", agora=AGORA)
+    assert com_as_cores_da_marca is not None and com_as_cores_da_marca.iguais == (FONTES, SECOES)
+    assert not com_as_cores_da_marca.de_fabrica, "a loja que trocou as cores já tem a marca dela"
 
 
 def test_tema_sob_medida_ou_demonstracao_que_nao_abre_nao_vira_comparacao(tmp_path: Path):
@@ -259,6 +262,7 @@ def test_as_duas_cotas_correm_juntas_no_mesmo_dia(tmp_path: Path):
 def test_o_tema_que_mudou_sai_da_fila_e_a_proxima_de_fabrica_e_comparada(tmp_path: Path):
     mudou = TemaDeFabrica("Horizon", "3.2.0", DEMONSTRACAO, (FONTES,))
     dawn = TemaDeFabrica("Dawn", "15.0.0", "https://theme-dawn-demo.myshopify.com/", (CORES, SECOES))
+    assert not TemaDeFabrica("Dawn", "15.0.0", "", (FONTES, SECOES)).de_fabrica
     escritor = _Escritor([_corpo_do_redesenho().replace("Horizon", "Dawn")])
 
     feitos, _celular, comparadas = _preparar(tmp_path, escritor, comparacoes=[mudou, dawn])
