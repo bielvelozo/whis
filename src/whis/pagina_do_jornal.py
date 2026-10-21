@@ -37,7 +37,6 @@ CORES = {
     "tecnologia": "#1d5fb8",
     "mundo": "#21705a",
     "brasil": "#2f7d3a",
-    "musica": "#a8382f",
     "futebol": "#0f0f0f",
     "carros": "#8a5a2b",
 }

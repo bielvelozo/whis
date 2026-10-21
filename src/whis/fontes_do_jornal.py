@@ -64,25 +64,6 @@ MODELO_DAS_FONTES = """# Fontes do jornal
 - Agência Brasil: https://agenciabrasil.ebc.com.br/rss/politica/feed.xml
 - Poder360: https://www.poder360.com.br/feed/
 
-## Música (musica) · 3 a 6 itens
-- Guitar World: https://www.guitarworld.com/feeds/all
-- MusicRadar: https://www.musicradar.com/feeds/all
-- Premier Guitar: https://www.premierguitar.com/feeds/feed.rss
-- Gearnews: https://www.gearnews.com/feed/
-- Guitar.com: https://guitar.com/feed/
-- MusicTech: https://musictech.com/feed/
-- Production Expert: https://www.production-expert.com/production-expert-1?format=rss
-- Guitar Load: https://guitarload.com.br/feed/
-- Stereogum: https://www.stereogum.com/feed/
-- Consequence: https://consequence.net/feed/
-- Relix: https://relix.com/feed/
-- Jesus Freak Hideout: https://www.jesusfreakhideout.com/news/feed.xml
-- YouTube · Nord Keyboards: https://www.youtube.com/feeds/videos.xml?channel_id=UCGrw4WarRRC66qQg8YHhrCw
-- YouTube · Joe Satriani: https://www.youtube.com/feeds/videos.xml?channel_id=UCiynI3-MFYbiZ6FQqWNLh7w
-- YouTube · Mateus Asato: https://www.youtube.com/feeds/videos.xml?channel_id=UCdJvnbX52LgGrmNvREvZZoQ
-- YouTube · Rick Beato: https://www.youtube.com/feeds/videos.xml?channel_id=UCcp-HjtmTMeIJ-0RrSHSGLA
-- YouTube · Andertons: https://www.youtube.com/feeds/videos.xml?channel_id=UCSNxIry_FPFcQDFRbi3VOAw
-
 ## Futebol (futebol) · 3 a 5 itens
 - ge.globo: https://ge.globo.com/rss/ge/futebol/
 - ge · internacional: https://ge.globo.com/rss/ge/futebol/futebol-internacional/
@@ -99,11 +80,6 @@ MODELO_DAS_FONTES = """# Fontes do jornal
 
 ## Time
 - Corinthians: https://ge.globo.com/rss/ge/futebol/times/corinthians/
-
-## Nomes
-Joe Satriani, Steve Vai, Mateus Asato, Guthrie Govan, Cory Wong, Tim Henson, Nord, Studiologic,
-Numa, Korg, Roland, Yamaha, Kemper, Neural DSP, Line 6, Fender, Gibson, PRS, Ibanez, Suhr,
-Strandberg, Universal Audio, Focusrite
 """
 
 _CABECALHO = re.compile(r"^##(?!#)\s*(?P<resto>.*?)\s*$")

@@ -15,26 +15,28 @@ from whis.fontes_do_jornal import (
 )
 
 
-def test_o_modelo_tem_as_sete_secoes_o_time_e_os_nomes_da_spec():
+def test_o_modelo_tem_as_seis_secoes_e_o_time_sem_musica_nem_nomes():
     fontes = interpretar_fontes(MODELO_DAS_FONTES)
 
-    assert [s.id for s in fontes.secoes] == ["ia", "tecnologia", "mundo", "brasil", "musica", "futebol", "carros"]
+    assert [s.id for s in fontes.secoes] == ["ia", "tecnologia", "mundo", "brasil", "futebol", "carros"]
     assert [s.titulo for s in fontes.secoes][3] == "Política no Brasil"
     assert fontes.time == Fonte("Corinthians", "https://ge.globo.com/rss/ge/futebol/times/corinthians/")
-    assert fontes.nomes[0] == "Joe Satriani"
-    assert fontes.nomes[-1] == "Focusrite"
-    assert len(fontes.nomes) == 23
+    assert fontes.nomes == ()
     assert fontes.avisos == ()
 
 
 def test_nomes_de_fonte_com_ponto_e_url_com_query_string_sao_lidos_inteiros():
-    musica = interpretar_fontes(MODELO_DAS_FONTES).secoes[4]
+    fontes = interpretar_fontes(
+        "## Música (musica)\n"
+        "- YouTube · Nord Keyboards: https://www.youtube.com/feeds/videos.xml?channel_id=UCGrw4WarRRC66qQg8YHhrCw\n"
+    )
 
-    assert Fonte(
-        "YouTube · Nord Keyboards",
-        "https://www.youtube.com/feeds/videos.xml?channel_id=UCGrw4WarRRC66qQg8YHhrCw",
-    ) in musica.fontes
-    assert len(musica.fontes) == 17
+    assert fontes.secoes[0].fontes == (
+        Fonte(
+            "YouTube · Nord Keyboards",
+            "https://www.youtube.com/feeds/videos.xml?channel_id=UCGrw4WarRRC66qQg8YHhrCw",
+        ),
+    )
 
 
 def test_limites_sao_lidos_do_titulo_e_sem_eles_valem_3_a_5():
@@ -60,7 +62,7 @@ def test_secao_nova_vira_secao_do_jornal_com_id_sem_acento_na_ordem_do_arquivo()
     assert fontes.secoes[0].id == "ciencia-e-saude"
     assert fontes.secoes[0].titulo == "Ciência e Saúde"
     assert (fontes.secoes[0].minimo, fontes.secoes[0].maximo) == (1, 2)
-    assert len(fontes.secoes) == 8
+    assert len(fontes.secoes) == 7
 
 
 def test_linha_invalida_e_ignorada_com_aviso(caplog):

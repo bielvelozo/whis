@@ -86,7 +86,6 @@ def coleta_padrao() -> Coleta:
             ),
             "mundo": (),
             "brasil": (candidato("brasil", 1),),
-            "musica": (candidato("musica", 1),),
             "futebol": (candidato("futebol", 1),),
             "carros": (candidato("carros", 1),),
         },
@@ -244,7 +243,7 @@ def test_a_nota_segue_a_ordem_de_fontes_md_e_o_futebol_tem_time_placar_e_curiosi
     gerar(cenario)
 
     nota = nota_de(cenario)
-    posicoes = [nota.index(f"## {titulo}\n") for titulo in ("Aprender hoje", "Tecnologia", "Mundo", "Política no Brasil", "Música", "Futebol", "Carros")]
+    posicoes = [nota.index(f"## {titulo}\n") for titulo in ("Aprender hoje", "Tecnologia", "Mundo", "Política no Brasil", "Futebol", "Carros")]
     assert posicoes == sorted(posicoes)
     futebol = nota[nota.index("## Futebol"):nota.index("## Carros")]
     assert futebol.index("### Corinthians") < futebol.index("### Placares") < futebol.index("### Curiosidade do dia")

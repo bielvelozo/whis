@@ -672,6 +672,12 @@ def test_esquema_recusado_vira_aula_sem_figura_mas_a_aula_fica():
     assert aula.titulo == "Margem" and (aula.visual, aula.esquema) == ("", "")
 
 
+def test_a_historia_dos_carros_roda_entre_paises_e_o_editor_nao_fala_de_musica():
+    assert all(pais in SISTEMA_FORMACAO for pais in ("Alemanha", "França", "Inglaterra", "Itália", "Japão"))
+    assert "não é só japonesa" in SISTEMA_FORMACAO
+    assert "música" not in SISTEMA_ESCOLHA.lower() and "músico" not in SISTEMA_ESCOLHA
+
+
 def test_a_regra_da_figura_esta_no_prompt_e_no_esquema():
     assert "esquema" in SISTEMA_FORMACAO and "Wikipédia" in SISTEMA_FORMACAO
     assert "Nunca desenhe carro" in SISTEMA_FORMACAO
