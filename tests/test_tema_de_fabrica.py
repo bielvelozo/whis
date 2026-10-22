@@ -170,7 +170,7 @@ def _corpo_do_redesenho(extra: str = "") -> str:
         "Oi, pessoal da Moda Boa,\n\n"
         "Reparei que a loja de vocês usa o tema Horizon com as mesmas fontes e cores da demonstração oficial dele. "
         f"Quem conhece o tema reconhece a loja, e a marca aparece pouco além do logo.{extra}\n\n"
-        "Sou o Gabriel, desenvolvedor Shopify em Matão (SP), e desde março cuido do tema de uma loja Shopify Plus. "
+        "Sou o Gabriel, desenvolvedor Shopify, e desde março cuido do tema de uma loja Shopify Plus. "
         f"Fiz este tema do zero: {INKLY}\n\n"
         "Redesenho a página inicial com a tipografia, as cores e as seções da marca, mantendo produtos, apps e checkout, "
         "com escopo, prazo e preço combinados antes. Faz sentido eu mandar como redesenharia, com prazo e preço fechados?\n\n"
@@ -299,7 +299,7 @@ def test_o_toque_no_redesenho_confere_o_tema_e_manda_pelo_gmail(tmp_path: Path):
 
     resposta = lojas_email.tocou_enviar_email(
         lojas_email.chave_do_toque("contato@modaboa.com.br"), vault=tmp_path / "vault", estado=tmp_path / "lojas-emails.json",
-        enviar=lambda para, assunto, corpo: enviados.append((para, assunto, corpo)), agora=AGORA + timedelta(minutes=10),
+        enviar=lambda para, assunto, corpo, imagem=None: enviados.append((para, assunto, corpo)), agora=AGORA + timedelta(minutes=10),
     )
 
     assert resposta.texto == "E-mail enviado para a loja Moda Boa (contato@modaboa.com.br), do seu Gmail."

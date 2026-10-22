@@ -11,6 +11,7 @@ import pytest
 
 from whis import agencias_email, funil
 from whis.agencias_email import EmailEscrito, ErroDoEmail
+from whis.criterios_da_cacada import PecaDoPortfolio
 
 AGORA = datetime(2026, 10, 18, 13, 0, tzinfo=timezone(timedelta(hours=-3)))
 
@@ -64,10 +65,10 @@ PORTFOLIO = "https://github.com/bielvelozo/inkly-shopify-theme"
 CORPO = (
     "Oi, pessoal da Check Commerce,\n\n"
     "Vi que vocês fazem o diagnóstico da loja antes de começar e cuidam de lojas Shopify Plus do começo ao fim.\n\n"
-    "Eu sou o Gabriel, desenvolvedor Shopify em Matão (SP). Desde março cuido do tema de uma loja Shopify Plus, em "
+    "Eu sou o Gabriel, desenvolvedor Shopify. Desde março cuido do tema de uma loja Shopify Plus, em "
     "Liquid, JavaScript e SCSS, e também escrevo extensões de checkout. O tema que montei para portfólio está aqui: "
     f"{PORTFOLIO}\n\n"
-    "Trabalho à noite e nos fins de semana, com o escopo combinado antes. Vocês costumam chamar alguém de fora quando "
+    "Pego tarefa de tema e de checkout. Vocês costumam chamar alguém de fora quando "
     "uma seção ou um ajuste de checkout aperta o prazo?\n\n"
     "Abraço,\nGabriel Velozo\ngithub.com/bielvelozo"
 )
@@ -85,9 +86,11 @@ def _vault(tmp_path: Path) -> Path:
 class EscritorFake:
     respostas: list[EmailEscrito] = field(default_factory=lambda: [EmailEscrito(assunto="Dev Shopify para a Check Commerce", corpo=CORPO)])
     pedidos: list[tuple[str, str]] = field(default_factory=list)
+    exemplos: tuple[str, ...] = ()
 
     def escrever(self, alvo, exemplos, portfolio, *, corrigir=""):
         self.pedidos.append((alvo.email, corrigir))
+        self.exemplos = tuple(exemplos)
         return self.respostas[min(len(self.pedidos), len(self.respostas)) - 1]
 
 
@@ -126,7 +129,7 @@ def _nota(tmp_path: Path) -> str:
 
 
 def _tocar(tmp_path: Path, enviados: list, *, dados: str | None = None, falha: Exception | None = None):
-    def enviar(para: str, assunto: str, corpo: str) -> None:
+    def enviar(para: str, assunto: str, corpo: str, imagem=None) -> None:
         if falha is not None:
             raise falha
         enviados.append((para, assunto, corpo))
@@ -175,6 +178,19 @@ def test_texto_com_preco_colchete_ou_sem_portfolio_volta_ao_claude(tmp_path: Pat
 
     motivo = escritor.pedidos[1][1]
     assert "colchete" in motivo and "preço" in motivo and "portfólio" in motivo
+    assert len(feitos) == 1
+
+
+def test_texto_que_fala_do_horario_dele_volta_ao_claude(tmp_path: Path):
+    ruim = EmailEscrito(
+        assunto="Dev Shopify para a Check Commerce",
+        corpo=CORPO.replace("Pego tarefa de tema e de checkout.", "Trabalho à noite e nos fins de semana."),
+    )
+    escritor = EscritorFake(respostas=[ruim, EmailEscrito(assunto="Dev Shopify para a Check Commerce", corpo=CORPO)])
+
+    feitos, _, _ = _preparar(tmp_path, escritor=escritor)
+
+    assert "quando ele trabalha" in escritor.pedidos[1][1]
     assert len(feitos) == 1
 
 
@@ -251,3 +267,181 @@ def test_a_fila_conta_as_agencias_que_ainda_nao_ganharam_email(tmp_path: Path):
 
 def test_o_pedido_do_email_lembra_do_site_do_portfolio():
     assert "Site do portfólio" in agencias_email.SISTEMA_DO_EMAIL
+
+
+def test_a_agencia_de_marketing_ou_de_design_ganha_outro_pedido():
+    alvo = agencias_email.Alvo(
+        "Tráfego Bom", "Recife/PE", "https://trafegobom.com.br", "contato@trafegobom.com.br",
+        "Contato: contato@trafegobom.com.br\nTipo: marketing e tráfego (sem desenvolvimento de loja à mostra)",
+    )
+
+    assert "Tipo: marketing e tráfego" in agencias_email.pedido(alvo, (), ())
+    assert "Tipo: marketing" in agencias_email.SISTEMA_DO_EMAIL and "Tipo: design" in agencias_email.SISTEMA_DO_EMAIL
+
+
+@pytest.mark.parametrize(
+    "trecho",
+    ["desenvolvedor Shopify em Matão (SP).", "parceiros da Shopify desde 2022.", "o que mais se parece com isso", "com o escopo combinado antes."],
+)
+def test_o_que_soa_como_modelo_volta_ao_claude(trecho: str):
+    escrito = EmailEscrito(assunto="Dev Shopify", corpo=CORPO.replace("desenvolvedor Shopify.", f"desenvolvedor Shopify, {trecho}"))
+
+    assert any("soa como modelo" in problema for problema in agencias_email.problemas_do_email(escrito, ()))
+
+
+def test_os_exemplos_vem_do_modelo_que_ele_aprovou(tmp_path: Path):
+    vault = _vault(tmp_path)
+    (vault / agencias_email.CAMINHO_DO_MODELO).write_text(
+        "# Modelo\n\n## 1. Akag\n\nOi, pessoal da Akag,\n\nVi as lojas.\n\nAbraço,\nGabriel Velozo\n", encoding="utf-8"
+    )
+
+    _, _, escritor = _preparar(tmp_path)
+
+    assert escritor.exemplos == ("Oi, pessoal da Akag,\n\nVi as lojas.\n\nAbraço,\nGabriel Velozo",)
+
+
+def _imagem_do_tema(tmp_path: Path) -> agencias_email.ImagemDoEmail | None:
+    vault = _vault(tmp_path)
+    arquivo = vault / agencias_email.PASTA_DAS_IMAGENS / "tema-shopify-inkly.jpg"
+    arquivo.parent.mkdir(parents=True)
+    arquivo.write_bytes(b"\xff\xd8imagem")
+    portfolio = (
+        PecaDoPortfolio("Site do portfólio", "https://velozo.dev", "tudo"),
+        PecaDoPortfolio("Tema Shopify Inkly", PORTFOLIO, "tema", "https://youtu.be/NEYUIo16DfA"),
+    )
+    return agencias_email.imagem_do_email(vault, CORPO, portfolio)
+
+
+def test_o_email_sai_em_html_com_a_imagem_da_peca_abrindo_o_video(tmp_path: Path):
+    imagem = _imagem_do_tema(tmp_path)
+
+    mensagem = agencias_email.montar_email("eu@gmail.com", "comercial@checkcommerce.com.br", "Oi", CORPO, imagem)
+
+    html = mensagem.get_body(("html",)).get_content()
+    (anexo,) = [parte for parte in mensagem.walk() if parte.get_content_type() == "image/jpeg"]
+    assert mensagem.get_body(("plain",)).get_content().strip() == CORPO
+    assert 'href="https://youtu.be/NEYUIo16DfA"' in html and f'src="cid:{anexo["Content-ID"].strip("<>")}"' in html
+    assert html.index(">github.com/bielvelozo/inkly-shopify-theme</a>") < html.index("<img") < html.index("Pego tarefa")
+    assert "<strong>Gabriel Velozo</strong>" in html and 'href="https://github.com/bielvelozo"' in html
+    assert anexo.get_content() == b"\xff\xd8imagem"
+
+
+def test_sem_a_imagem_da_peca_o_html_sai_so_com_o_texto(tmp_path: Path):
+    imagem = agencias_email.imagem_do_email(_vault(tmp_path), CORPO, (PecaDoPortfolio("Tema Shopify Inkly", PORTFOLIO, "tema"),))
+
+    mensagem = agencias_email.montar_email("eu@gmail.com", "comercial@checkcommerce.com.br", "Oi", CORPO, imagem)
+
+    assert imagem is None
+    assert "<img" not in mensagem.get_body(("html",)).get_content()
+    assert not [parte for parte in mensagem.walk() if parte.get_content_maintype() == "image"]
+
+
+def test_o_toque_manda_a_imagem_da_peca_ligada_na_nota(tmp_path: Path):
+    _preparar(tmp_path)
+    vault = tmp_path / "vault"
+    (vault / "cacada" / "criterios.md").write_text(
+        f"## Portfólio\n\n- Tema Shopify Inkly: {PORTFOLIO} — tema · vídeo: https://youtu.be/NEYUIo16DfA\n", encoding="utf-8"
+    )
+    (vault / agencias_email.PASTA_DAS_IMAGENS).mkdir(parents=True)
+    (vault / agencias_email.PASTA_DAS_IMAGENS / "tema-shopify-inkly.jpg").write_bytes(b"\xff\xd8imagem")
+    imagens = []
+
+    resposta = agencias_email.tocou_enviar_email(
+        agencias_email.chave_do_toque("comercial@checkcommerce.com.br"),
+        vault=vault,
+        estado=tmp_path / "agencias-emails.json",
+        enviar=lambda para, assunto, corpo, imagem=None: imagens.append(imagem),
+        agora=AGORA + timedelta(minutes=30),
+    )
+
+    assert resposta.tirar_botao is True
+    assert [(i.nome, i.abre) for i in imagens] == [("Tema Shopify Inkly", "https://youtu.be/NEYUIo16DfA")]
+
+
+class SmtpFake:
+    enviadas: list = []
+
+    def __init__(self, servidor, porta, timeout):
+        self.servidor, self.login_feito = servidor, ()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *erro):
+        return False
+
+    def login(self, usuario, senha):
+        self.login_feito = (usuario, senha)
+
+    def send_message(self, mensagem):
+        SmtpFake.enviadas.append((self.servidor, self.login_feito, mensagem["From"], mensagem["To"]))
+
+
+class ImapFake:
+    guardadas: list = []
+    falha: Exception | None = None
+
+    def __init__(self, servidor):
+        self.servidor = servidor
+
+    def login(self, usuario, senha):
+        if ImapFake.falha is not None:
+            raise ImapFake.falha
+
+    def list(self):
+        return "OK", [rb'(\HasNoChildren \All) "/" "[Gmail]/Todos os e-mails"', rb'(\HasNoChildren \Sent) "/" "[Gmail]/E-mails enviados"']
+
+    def append(self, pasta, flags, quando, mensagem):
+        ImapFake.guardadas.append((self.servidor, pasta, flags, mensagem))
+
+    def logout(self):
+        pass
+
+
+@pytest.fixture
+def servidores(monkeypatch: pytest.MonkeyPatch):
+    SmtpFake.enviadas, ImapFake.guardadas, ImapFake.falha = [], [], None
+    monkeypatch.setattr(agencias_email.smtplib, "SMTP_SSL", SmtpFake)
+    monkeypatch.setattr(agencias_email.imaplib, "IMAP4_SSL", ImapFake)
+
+
+def test_sem_a_chave_da_resend_sai_pelo_gmail_e_assina_com_o_remetente(servidores):
+    agencias_email.gmail("eu@gmail.com", "senha", "gabriel@velozo.dev")("contato@example.com", "Oi", CORPO)
+    agencias_email.gmail("eu@gmail.com", "senha")("contato@example.com", "Oi", CORPO)
+
+    assert SmtpFake.enviadas == [
+        ("smtp.gmail.com", ("eu@gmail.com", "senha"), "Gabriel Velozo <gabriel@velozo.dev>", "contato@example.com"),
+        ("smtp.gmail.com", ("eu@gmail.com", "senha"), "Gabriel Velozo <eu@gmail.com>", "contato@example.com"),
+    ]
+    assert ImapFake.guardadas == []
+
+
+def test_com_a_chave_sai_pela_resend_e_a_copia_entra_nos_enviados_do_gmail(servidores):
+    agencias_email.gmail("eu@gmail.com", "senha", "gabriel@velozo.dev", "re_chave")("contato@example.com", "Oi", CORPO)
+
+    assert SmtpFake.enviadas == [
+        ("smtp.resend.com", ("resend", "re_chave"), "Gabriel Velozo <gabriel@velozo.dev>", "contato@example.com")
+    ]
+    ((servidor, pasta, flags, mensagem),) = ImapFake.guardadas
+    assert (servidor, pasta, flags) == ("imap.gmail.com", '"[Gmail]/E-mails enviados"', r"(\Seen)")
+    assert b"To: contato@example.com" in mensagem and b"Subject: Oi" in mensagem
+
+
+def test_a_copia_que_nao_entra_nos_enviados_nao_desfaz_o_envio(servidores, caplog: pytest.LogCaptureFixture):
+    ImapFake.falha = OSError("sem rede")
+
+    agencias_email.gmail("eu@gmail.com", "senha", "gabriel@velozo.dev", "re_chave")("contato@example.com", "Oi", CORPO)
+
+    assert len(SmtpFake.enviadas) == 1 and ImapFake.guardadas == []
+    assert "não entrou nos Enviados" in caplog.text
+
+
+def test_a_resend_que_recusa_a_chave_diz_qual_e(servidores, monkeypatch: pytest.MonkeyPatch):
+    def recusa(self, usuario, senha):
+        raise agencias_email.smtplib.SMTPAuthenticationError(535, b"bad key")
+
+    monkeypatch.setattr(SmtpFake, "login", recusa)
+
+    with pytest.raises(ErroDoEmail, match=r"a Resend recusou a chave de \[cacada\]\.resend_chave"):
+        agencias_email.gmail("eu@gmail.com", "senha", "gabriel@velozo.dev", "re_ruim")("contato@example.com", "Oi", CORPO)
+    assert ImapFake.guardadas == []

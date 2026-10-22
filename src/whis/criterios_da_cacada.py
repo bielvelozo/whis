@@ -118,7 +118,7 @@ Uma fonte por linha: `- Nome: tipo argumento`. Apague a linha para desligar a fo
 
 ## Portfólio
 
-As peças que a proposta de freela cita, uma por linha: `- Nome: link — o que ela mostra`. Em cada freela, o resumo diz qual peça citar e põe o link. Sem nenhuma linha, o resumo não sugere peça.
+As peças que a proposta de freela cita, uma por linha: `- Nome: link — o que ela mostra`. Em cada freela, o resumo diz qual peça citar e põe o link. Sem nenhuma linha, o resumo não sugere peça. No fim da linha, `· vídeo: link` dá o vídeo da peça: nos e-mails, a imagem dela (`cacada/portfolio/email/<nome-da-peça>.jpg`) abre esse vídeo.
 
 ## Contas
 
@@ -155,11 +155,12 @@ class Conta:
 
 @dataclass(frozen=True)
 class PecaDoPortfolio:
-    """Uma linha de *Portfólio*: a peça que a proposta de freela cita, o link e o que ela mostra."""
+    """Uma linha de *Portfólio*: a peça que a proposta de freela cita, o link, o que ela mostra e o vídeo dela."""
 
     nome: str
     link: str
     mostra: str = ""
+    video: str = ""
 
     def como_prova(self) -> str:
         return f"{self.nome}: {self.link}" + (f" — {self.mostra}" if self.mostra else "")
@@ -196,6 +197,7 @@ class Criterios:
 
 _LINHA_DE_FONTE = re.compile(r"^-\s*(?P<nome>[^:]+?):\s*(?P<tipo>[\w-]+)\b\s*(?P<argumento>.*)$")
 _LINHA_DO_PORTFOLIO = re.compile(r"^-\s*(?P<nome>[^:]+?):\s*(?P<link>https?://\S+)\s*(?:[—–-]\s*(?P<mostra>.*))?$")
+_VIDEO_DA_PECA = re.compile(r"\s*·\s*v[íi]deo:\s*(?P<video>https?://\S+)\s*$", re.I)
 
 
 def interpretar_criterios(texto: str) -> Criterios:
@@ -244,7 +246,11 @@ def interpretar_criterios(texto: str) -> Criterios:
         if casou is None:
             _avisar(avisos, f"Peça do portfólio ignorada (falta o link): {texto_da_linha}")
             continue
-        portfolio.append(PecaDoPortfolio(casou["nome"].strip(), casou["link"], (casou["mostra"] or "").strip()))
+        mostra = (casou["mostra"] or "").strip()
+        video = _VIDEO_DA_PECA.search(mostra)
+        if video is not None:
+            mostra = mostra[: video.start()].strip()
+        portfolio.append(PecaDoPortfolio(casou["nome"].strip(), casou["link"], mostra, video["video"] if video else ""))
 
     return Criterios(
         portfolio=tuple(portfolio),

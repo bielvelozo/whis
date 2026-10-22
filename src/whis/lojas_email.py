@@ -38,13 +38,17 @@ from .agencias_email import (
     ENVIADO,
     PARA_APROVAR,
     PULADO,
+    COMO_GENTE,
     ROTULO_DO_BOTAO,
     EmailEscrito,
     ErroDoEmail,
+    ImagemDoEmail,
     _da_nota,
     _guardar,
     _ler,
     _slug,
+    imagem_do_email,
+    linha_da_imagem,
     problemas_do_email,
 )
 from .cacada_claude import ESTILO_DOS_TEXTOS, REGRAS_DE_DISCRICAO, _ChamadaDoClaude
@@ -289,7 +293,8 @@ def preparar(
             "escrito": quando,
         }
         _guardar(estado, memoria)
-        celular(_mensagem(alvo, escrito, medida), botoes=((ROTULO_DO_BOTAO, chave_do_toque(alvo.email)),))
+        imagem = imagem_do_email(vault, escrito.corpo, portfolio)
+        celular(_mensagem(alvo, escrito, medida, imagem), botoes=((ROTULO_DO_BOTAO, chave_do_toque(alvo.email)),))
         preparados.append(Preparado(alvo.email, alvo.nome, nota))
     return preparados
 
@@ -346,7 +351,8 @@ def _preparar_redesenho(
         "escrito": quando,
     }
     _guardar(estado, memoria)
-    celular(_mensagem_do_redesenho(alvo, escrito, fabrica), botoes=((ROTULO_DO_BOTAO, chave_do_toque(alvo.email)),))
+    imagem = imagem_do_email(vault, escrito.corpo, portfolio)
+    celular(_mensagem_do_redesenho(alvo, escrito, fabrica, imagem), botoes=((ROTULO_DO_BOTAO, chave_do_toque(alvo.email)),))
     return Preparado(alvo.email, alvo.nome, nota)
 
 
@@ -392,22 +398,24 @@ def _escrever(
     return escrito, problemas
 
 
-def _mensagem(alvo: AlvoLoja, escrito: EmailEscrito, medida: MedidaNoCelular) -> str:
+def _mensagem(alvo: AlvoLoja, escrito: EmailEscrito, medida: MedidaNoCelular, imagem: ImagemDoEmail | None) -> str:
     onde = f" ({alvo.cidade})" if alvo.cidade else ""
     lcp = f"{medida.lcp_s:.1f}".replace(".", ",")
     mb = f"{medida.mb:.1f}".replace(".", ",")
     return (
         f"E-mail para a loja {alvo.nome}{onde}, para você aprovar\n"
-        f"Para: {alvo.email}\nAssunto: {escrito.assunto}\n{alvo.site}\n"
+        f"Para: {alvo.email}\nAssunto: {escrito.assunto}\n{linha_da_imagem(imagem)}{alvo.site}\n"
         f"Medida de agora: LCP de {lcp} s no celular em 4G, {mb} MB\n\n{escrito.corpo.strip()}"
     )
 
 
-def _mensagem_do_redesenho(alvo: AlvoLoja, escrito: EmailEscrito, fabrica: TemaDeFabrica) -> str:
+def _mensagem_do_redesenho(
+    alvo: AlvoLoja, escrito: EmailEscrito, fabrica: TemaDeFabrica, imagem: ImagemDoEmail | None
+) -> str:
     onde = f" ({alvo.cidade})" if alvo.cidade else ""
     return (
         f"E-mail de redesenho para a loja {alvo.nome}{onde}, para você aprovar\n"
-        f"Para: {alvo.email}\nAssunto: {escrito.assunto}\n{alvo.site}\n"
+        f"Para: {alvo.email}\nAssunto: {escrito.assunto}\n{linha_da_imagem(imagem)}{alvo.site}\n"
         f"Tema comparado agora: {fabrica.como_linha()}\n\n{escrito.corpo.strip()}"
     )
 
@@ -416,7 +424,7 @@ def _mensagem_do_redesenho(alvo: AlvoLoja, escrito: EmailEscrito, fabrica: TemaD
 
 
 def tocou_enviar_email(
-    dados: str, *, vault: Path, estado: Path, enviar: Callable[[str, str, str], None], agora: datetime | None = None
+    dados: str, *, vault: Path, estado: Path, enviar: Callable[..., None], agora: datetime | None = None
 ) -> Resposta:
     """O toque em "Enviar e-mail" de uma loja: manda o texto da nota pelo Gmail e marca enviado."""
     agora = (agora or datetime.now()).astimezone()
@@ -441,7 +449,7 @@ def tocou_enviar_email(
     if problemas:
         return Resposta(f"Não enviei: o e-mail não passou na conferência ({'; '.join(problemas)}). Arrume a nota e toque de novo.")
     try:
-        enviar(email, assunto, corpo)
+        enviar(email, assunto, corpo, imagem_do_email(vault, corpo, portfolio))
     except ErroDoEmail as erro:
         return Resposta(f"Não enviei: {erro}. Toque de novo depois de arrumar.")
     registro.update(situacao=ENVIADO, enviado=agora.isoformat(timespec="minutes"))
@@ -487,16 +495,15 @@ SISTEMA_DO_EMAIL_DA_LOJA = f"""\
 Você escreve, em nome de Gabriel Velozo, o primeiro e-mail para uma loja online brasileira que roda na \
 Shopify, oferecendo deixar a página inicial mais rápida no celular. Ele toca "Enviar" no celular depois de \
 ler, então o texto sai pronto.
+{COMO_GENTE}
 - Começa com "Oi, pessoal da <loja>,".
 - Abre com o que foi medido: os números da MEDIDA, com o tempo escrito exatamente como o pedido manda e o \
 peso em MB, dizendo que foi num teste que simula um celular em 4G. Nunca diga que viu a loja de outro jeito, \
 nunca invente a causa (imagem, app, script) que a MEDIDA não traz, nunca cite estatística de venda, \
 conversão ou abandono.
-- Apresenta ele numa frase: desenvolvedor Shopify em Matão (SP) que, desde março, cuida do tema de uma loja \
-Shopify Plus. Nunca diga o nome da loja nem da empresa em que ele trabalha.
 - Liga a peça de velocidade do PORTFÓLIO (o caso medido antes e depois), com o link copiado exatamente. O \
 "Site do portfólio" pode ir junto quando fizer sentido mostrar o todo.
-- Diz que faz o ajuste com escopo, prazo e preço combinados antes, sem mexer no visual da loja.
+- Diz que o ajuste não mexe no visual da loja.
 - Termina com UMA pergunta: se faz sentido ele mandar o que mudaria, com prazo e preço fechados. Na linha \
 seguinte: "Se não for prioridade agora, {FRASE_DE_SAIDA}." Assina, cada um numa linha: "Abraço,", \
 "Gabriel Velozo", "github.com/bielvelozo".
@@ -511,6 +518,7 @@ SISTEMA_DO_REDESENHO = f"""\
 Você escreve, em nome de Gabriel Velozo, o primeiro e-mail para uma loja online brasileira que roda na \
 Shopify com um tema da loja de temas quase como ele vem, oferecendo redesenhar a loja com a cara da marca. Ele \
 toca "Enviar" no celular depois de ler, então o texto sai pronto.
+{COMO_GENTE}
 - Começa com "Oi, pessoal da <loja>,".
 - Abre com o que foi comparado, em tom de quem reparou, nunca de quem critica: a loja usa o tema da COMPARAÇÃO \
 (escreva o nome do tema) e a página inicial tem o que a COMPARAÇÃO diz que bateu com a demonstração oficial \
@@ -518,12 +526,10 @@ do tema. Só isso: nunca chame o visual de feio, genérico, amador, datado, ruim
 diga que viu algo que a COMPARAÇÃO não traz, nunca cite estatística de venda, conversão ou confiança.
 - Diz numa frase por que isso importa para eles: quem conhece o tema reconhece a loja como mais uma com ele, e \
 a marca de vocês aparece pouco além do logo. Sem exagero e sem prometer resultado.
-- Apresenta ele numa frase: desenvolvedor Shopify em Matão (SP) que, desde março, cuida do tema de uma loja \
-Shopify Plus. Nunca diga o nome da loja nem da empresa em que ele trabalha.
 - Liga o tema que ele fez do zero (a peça "Tema Shopify" do PORTFÓLIO), com o link copiado exatamente. O "Site do \
 portfólio" pode ir junto para mostrar outras lojas.
 - Diz o que o redesenho faz: tipografia, cores e seções da página inicial pensadas para a marca deles, \
-mantendo os produtos, os apps e o checkout como estão, com escopo, prazo e preço combinados antes.
+mantendo os produtos, os apps e o checkout como estão.
 - Termina com UMA pergunta: se faz sentido ele mandar como redesenharia a página inicial, com prazo e preço \
 fechados. Na linha seguinte: "Se não for prioridade agora, {FRASE_DE_SAIDA}." Assina, cada um numa linha: \
 "Abraço,", "Gabriel Velozo", "github.com/bielvelozo".

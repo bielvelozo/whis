@@ -58,7 +58,7 @@ def _corpo(segundos: str = "9 segundos") -> str:
         "Oi, pessoal da Bela Pele,\n\n"
         f"Testei a página inicial de vocês simulando um celular em 4G: a maior imagem levou {segundos} para aparecer, "
         "e a página baixou 3,2 MB.\n\n"
-        "Sou o Gabriel, desenvolvedor Shopify em Matão (SP), e desde março cuido do tema de uma loja Shopify Plus. "
+        "Sou o Gabriel, desenvolvedor Shopify, e desde março cuido do tema de uma loja Shopify Plus. "
         f"Na minha loja de portfólio levei o mesmo tipo de página de 11,9 s para 3,5 s: {VELOCIDADE}\n\n"
         "Faço o ajuste com escopo, prazo e preço combinados antes, sem mexer no visual. Faz sentido eu mandar o que "
         "mudaria, com prazo e preço fechados?\n\n"
@@ -119,7 +119,7 @@ def _estado(tmp_path: Path) -> dict:
 
 
 def _tocar(tmp_path: Path, enviados: list, *, falha: Exception | None = None, email: str = "contato@belapele.com.br"):
-    def enviar(para: str, assunto: str, corpo: str) -> None:
+    def enviar(para: str, assunto: str, corpo: str, imagem=None) -> None:
         if falha is not None:
             raise falha
         enviados.append((para, assunto, corpo))

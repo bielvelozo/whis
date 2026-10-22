@@ -48,6 +48,15 @@ def test_a_secao_portfolio_vira_a_lista_de_pecas():
     assert interpretar_criterios(MODELO_DOS_CRITERIOS).portfolio == ()
 
 
+def test_o_video_no_fim_da_linha_e_da_peca_e_fica_fora_da_prova():
+    linha = f"- App Inkly ERP Sync: {APP} — app embutido, webhook de pedido · vídeo: https://youtu.be/J6ymdCDhGMs\n"
+
+    (peca,) = interpretar_criterios(MODELO_DOS_CRITERIOS + PORTFOLIO.split("- Tema")[0] + linha).portfolio
+
+    assert peca == PecaDoPortfolio("App Inkly ERP Sync", APP, "app embutido, webhook de pedido", "https://youtu.be/J6ymdCDhGMs")
+    assert "youtu" not in peca.como_prova()
+
+
 class _ResumoComProva(PreparoFake):
     def __init__(self, prova: str) -> None:
         super().__init__()

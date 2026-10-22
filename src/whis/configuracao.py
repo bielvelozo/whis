@@ -111,6 +111,8 @@ cloudflare_projeto = ""      # nome do projeto do Pages (vira <nome>.pages.dev);
 enviar_sozinho = false       # true = na caçada, o Whis se candidata sozinho às vagas de tentar a sorte em formulário grátis e sem limite (Gupy, ATS); nunca freela, nunca LinkedIn
 maximo_de_envios = 10        # quantas candidaturas sozinho por caçada, no máximo
 senha_de_app = ""            # senha de app do Google do Gmail dedicado: o Whis lê a caixa (só leitura) para confirmar contas e listar respostas
+remetente = ""               # quem assina os e-mails às agências e lojas (ex.: voce@seudominio.dev); vazio = o próprio Gmail
+resend_chave = ""            # chave da Resend com acesso de envio (Resend > API Keys), do domínio do remetente: os e-mails às agências e lojas saem por ela, assinados pelo domínio, e a cópia vai para os Enviados do Gmail; vazio = saem pelo Gmail, que mostra "por gmail.com"
 nome = ""                    # seu nome completo, como vai nos cadastros e candidaturas
 telefone = ""                # telefone com DDD, para os formulários que exigem
 cidade = ""                  # cidade e estado, como vai nos formulários (ex.: Matão - SP)
@@ -223,6 +225,8 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "enviar_sozinho", "cacada_enviar_sozinho", Tipo.BOOLEANO),
     Chave("cacada", "maximo_de_envios", "cacada_maximo_de_envios", Tipo.INTEIRO),
     Chave("cacada", "senha_de_app", "cacada_senha_de_app", Tipo.SEGREDO),
+    Chave("cacada", "remetente", "cacada_remetente", Tipo.TEXTO),
+    Chave("cacada", "resend_chave", "cacada_resend_chave", Tipo.SEGREDO),
     Chave("cacada", "nome", "cacada_nome", Tipo.TEXTO),
     Chave("cacada", "telefone", "cacada_telefone", Tipo.TEXTO),
     Chave("cacada", "cidade", "cacada_cidade", Tipo.TEXTO),
@@ -347,6 +351,8 @@ class Configuracao:
     cacada_enviar_sozinho: bool = False
     cacada_maximo_de_envios: int = 10
     cacada_senha_de_app: str = ""
+    cacada_remetente: str = ""
+    cacada_resend_chave: str = ""
     cacada_nome: str = ""
     cacada_telefone: str = ""
     cacada_cidade: str = ""
@@ -501,6 +507,8 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         cacada_enviar_sozinho=_booleano(cacada.get("enviar_sozinho", False), "[cacada].enviar_sozinho", arquivo),
         cacada_maximo_de_envios=_inteiro_entre(cacada.get("maximo_de_envios", 10), "[cacada].maximo_de_envios", 0, 100, arquivo),
         cacada_senha_de_app=str(cacada.get("senha_de_app", "")).replace(" ", "").strip(),
+        cacada_remetente=str(cacada.get("remetente", "")).strip(),
+        cacada_resend_chave=str(cacada.get("resend_chave", "")).strip(),
         cacada_nome=str(cacada.get("nome", "")).strip(),
         cacada_telefone=str(cacada.get("telefone", "")).strip(),
         cacada_cidade=str(cacada.get("cidade", "")).strip(),

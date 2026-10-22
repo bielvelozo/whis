@@ -1304,14 +1304,18 @@ def _tocou_no_celular(configuracao: Configuracao, dados: str):
             dados,
             vault=_vault.preparar(configuracao.vault),
             estado=lojas_email.caminho_do_estado(),
-            enviar=agencias_email.gmail(configuracao.cacada_email, configuracao.cacada_senha_de_app),
+            enviar=agencias_email.gmail(
+                configuracao.cacada_email, configuracao.cacada_senha_de_app, configuracao.cacada_remetente, configuracao.cacada_resend_chave
+            ),
         )
     if dados.startswith(agencias_email.PREFIXO_DO_TOQUE):
         return agencias_email.tocou_enviar_email(
             dados,
             vault=_vault.preparar(configuracao.vault),
             estado=agencias_email.caminho_do_estado(),
-            enviar=agencias_email.gmail(configuracao.cacada_email, configuracao.cacada_senha_de_app),
+            enviar=agencias_email.gmail(
+                configuracao.cacada_email, configuracao.cacada_senha_de_app, configuracao.cacada_remetente, configuracao.cacada_resend_chave
+            ),
         )
     if not dados.startswith(propostas_auto.PREFIXO_DO_TOQUE):
         return Resposta("Esse botão não faz mais nada no Whis.", tirar_botao=True)
