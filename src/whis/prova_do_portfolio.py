@@ -5,7 +5,7 @@ conferido aqui: precisa ser um da lista dele; se não for (ou se o resumo não
 trouxe nada), fica a peça com mais palavras em comum com o título e a descrição
 do freela, e nenhuma quando nada casa.
 
-A vitrine (gabrielvelozo.pages.dev) nunca vai em proposta: desde 18/10 ela mostra
+A vitrine (velozo.dev) nunca vai em proposta: desde 18/10 ela mostra
 o e-mail dele e o botão do Fiverr, o que numa plataforma conta como contato de
 fora. Pedido dele em 18/10: o link fica só nos e-mails para agências.
 """
@@ -20,7 +20,8 @@ from urllib.parse import urlsplit
 from .criterios_da_cacada import PecaDoPortfolio
 from .oportunidades import Oportunidade
 
-VITRINE = "gabrielvelozo.pages.dev"
+VITRINE = "velozo.dev"
+_ENDERECOS_DA_VITRINE = (VITRINE, "gabrielvelozo.pages.dev")
 
 _POUCO_SENTIDO = frozenset({"para", "pela", "pelo", "como", "mais", "sobre", "entre", "with", "from", "that", "this", "your"})
 
@@ -28,11 +29,12 @@ _POUCO_SENTIDO = frozenset({"para", "pela", "pelo", "como", "mais", "sobre", "en
 def e_a_vitrine(link: str) -> bool:
     endereco = link.strip()
     host = urlsplit(endereco if "//" in endereco else f"https://{endereco}").hostname or ""
-    return host.removeprefix("www.") == VITRINE
+    return host.removeprefix("www.") in _ENDERECOS_DA_VITRINE
 
 
 def cita_a_vitrine(texto: str) -> bool:
-    return VITRINE in (texto or "").casefold()
+    texto = (texto or "").casefold()
+    return any(endereco in texto for endereco in _ENDERECOS_DA_VITRINE)
 
 
 def sem_a_vitrine(pecas: Sequence[PecaDoPortfolio]) -> tuple[PecaDoPortfolio, ...]:

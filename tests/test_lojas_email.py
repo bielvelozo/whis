@@ -49,7 +49,7 @@ CRITERIOS = f"""\
 ## Portfólio
 
 - Velocidade da loja: {VELOCIDADE} — LCP de 11,9 s para 3,5 s no celular
-- Site do portfólio: https://gabrielvelozo.pages.dev — o portfólio inteiro
+- Site do portfólio: https://velozo.dev — o portfólio inteiro
 """
 
 

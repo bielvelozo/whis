@@ -988,10 +988,10 @@ def test_o_chrome_que_abre_zera_a_contagem_de_falhas(tmp_path: Path):
 def test_a_vitrine_nunca_vai_na_proposta_nem_quando_esta_no_portfolio():
     from whis.criterios_da_cacada import PecaDoPortfolio
 
-    portfolio = (*contexto_do_portfolio(), PecaDoPortfolio("Site do portfólio", "https://gabrielvelozo.pages.dev", "o portfólio inteiro"))
+    portfolio = (*contexto_do_portfolio(), PecaDoPortfolio("Site do portfólio", "https://velozo.dev", "o portfólio inteiro"))
     peca = TEXTO.replace("todo dia", "todo dia (https://github.com/bielvelozo/inkly-shopify-theme)")
-    com_a_vitrine = TEXTO.replace("todo dia", "todo dia (https://gabrielvelozo.pages.dev)")
-    sem_esquema = TEXTO.replace("todo dia", "todo dia, veja em gabrielvelozo.pages.dev/br")
+    com_a_vitrine = TEXTO.replace("todo dia", "todo dia (https://velozo.dev)")
+    sem_esquema = TEXTO.replace("todo dia", "todo dia, veja em velozo.dev/br")
     dois = peca.replace("Gabriel", "https://github.com/bielvelozo/inkly-shopify-theme#cart\n\nGabriel")
 
     assert problemas_do_texto(peca, _freela(), "", portfolio) == []
@@ -1006,7 +1006,7 @@ def test_o_claude_da_proposta_nao_recebe_a_vitrine(tmp_path: Path):
     (vault / "cacada" / "criterios.md").write_text(
         "## O que eu procuro\n\n- Freela.\n\n## Portfólio\n\n"
         "- Tema Shopify Inkly: https://github.com/bielvelozo/inkly-shopify-theme — tema\n"
-        "- Site do portfólio: https://gabrielvelozo.pages.dev — o portfólio inteiro\n",
+        "- Site do portfólio: https://velozo.dev — o portfólio inteiro\n",
         encoding="utf-8",
     )
 

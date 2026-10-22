@@ -159,7 +159,7 @@ CRITERIOS = f"""\
 ## Portfólio
 
 - Tema Shopify Inkly: {INKLY} — tema Online Store 2.0 feito do zero
-- Site do portfólio: https://gabrielvelozo.pages.dev — o portfólio inteiro
+- Site do portfólio: https://velozo.dev — o portfólio inteiro
 """
 
 FABRICA = TemaDeFabrica("Horizon", "3.2.0", DEMONSTRACAO, (FONTES, CORES), ("Inter",), False)

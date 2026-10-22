@@ -129,13 +129,14 @@ def test_freela_que_nao_casa_com_nenhuma_peca_fica_sem_prova():
 def test_a_vitrine_nao_vira_prova_no_rascunho_da_cacada():
     from whis.prova_do_portfolio import conferir_prova, sem_a_vitrine
 
-    vitrine = PecaDoPortfolio("Site do portfólio", "https://gabrielvelozo.pages.dev", "o portfólio inteiro, carrinho e tema")
+    vitrine = PecaDoPortfolio("Site do portfólio", "https://velozo.dev", "o portfólio inteiro, carrinho e tema")
     pecas = (*interpretar_criterios(PORTFOLIO).portfolio, vitrine)
 
     assert vitrine not in sem_a_vitrine(pecas) and len(sem_a_vitrine(pecas)) == len(pecas) - 1
-    assert conferir_prova("Site do portfólio: https://gabrielvelozo.pages.dev", CARRINHO_FREELA, pecas).startswith("Carrinho em gaveta:")
-    assert conferir_prova(f"{CARRINHO} e https://gabrielvelozo.pages.dev", CARRINHO_FREELA, pecas) == f"Carrinho em gaveta: {CARRINHO} — cart drawer com upsell e barra de frete grátis"
-    assert conferir_prova("https://gabrielvelozo.pages.dev", CARRINHO_FREELA, (vitrine,)) == ""
+    assert conferir_prova("Site do portfólio: https://velozo.dev", CARRINHO_FREELA, pecas).startswith("Carrinho em gaveta:")
+    assert conferir_prova(f"{CARRINHO} e https://velozo.dev", CARRINHO_FREELA, pecas) == f"Carrinho em gaveta: {CARRINHO} — cart drawer com upsell e barra de frete grátis"
+    assert conferir_prova("https://velozo.dev", CARRINHO_FREELA, (vitrine,)) == ""
+    assert conferir_prova("veja gabrielvelozo.pages.dev/br/", CARRINHO_FREELA, (vitrine,)) == ""
 
 
 def test_a_prova_que_o_claude_escolheu_da_lista_fica(configuracao: Configuracao, tmp_path: Path):
