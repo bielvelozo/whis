@@ -13,3 +13,7 @@ Default vocabulary — the five canonical labels (`needs-triage`, `needs-info`, 
 ### Domain docs
 
 Single-context layout — one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
+
+## Máquinas
+
+Antes de começar, confira com `$env:COMPUTERNAME` se você está no note-biel ou no servidor (`DESKTOP-FVOEMG4`). O Whis, a config, as tarefas e o vault com o Obsidian vivem só no note-biel. O site velozo.dev se publica do servidor. Ver `docs/agents/maquinas.md`.
