@@ -52,6 +52,8 @@ CAMINHO_DOS_JA_ESCRITOS = f"{PASTA_CACADA}/emails-agencias.md"
 CAMINHO_DO_MODELO = f"{PASTA_CACADA}/emails-agencias-modelo.md"
 PASTA_DAS_NOTAS = f"{PASTA_CACADA}/agencias-emails"
 PASTA_DAS_IMAGENS = f"{PASTA_CACADA}/portfolio/email"
+CARGO = "Desenvolvedor Shopify"
+SITE = "velozo.dev"
 SMTP_DO_GMAIL = ("smtp.gmail.com", 465)
 SMTP_DA_RESEND = ("smtp.resend.com", 465)
 IMAP_DO_GMAIL = "imap.gmail.com"
@@ -79,6 +81,15 @@ _HORARIO_DELE = re.compile(
 #: a ponte "como vocês X, o que mais se parece é Y" e o "escopo combinado antes".
 _CARA_DE_MODELO = re.compile(
     r"\bMatão\b|\bdesde (?:19|20)\d\d\b|\bservice partner\b|\bfull commerce\b|o que mais se parece|escopo combinado", re.I
+)
+#: As cores e as fontes do velozo.dev ("Grafite e papel"); a fonte do site não carrega no e-mail, então vai a do sistema.
+_PAPEL, _TINTA, _LINHA, _SINAL, _CINZA, _COR_DO_LINK = "#F3F1EC", "#17181B", "#D3CEC4", "#FF5B2E", "#6B6862", "#C23B14"
+_FONTE = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif"
+_MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace"
+#: O papel pontilhado com o brilho laranja no topo.
+_FUNDO = (
+    "background-image:radial-gradient(rgba(23,24,27,.13) 1.1px,transparent 1.7px),"
+    "radial-gradient(circle at 50% 0%,rgba(255,91,46,.16),transparent 55%);background-size:18px 18px,100% 100%"
 )
 _PASTA_DE_ENVIADOS = re.compile(rb'\\Sent\b.*?\s("[^"]+"|[^\s"]+)$')
 _LINK_DO_HTML = re.compile(r"https?://[^\s<>\"]+|\bgithub\.com/[\w./#-]+", re.I)
@@ -432,12 +443,15 @@ def _guardar_nos_enviados(endereco: str, senha_de_app: str, mensagem: EmailMessa
 
 
 def imagem_do_email(vault: Path, corpo: str, portfolio: Sequence[PecaDoPortfolio]) -> ImagemDoEmail | None:
-    """A imagem da peça ligada no texto que tem vídeo (senão a primeira ligada), se ela existe em `PASTA_DAS_IMAGENS`."""
+    """A vitrine da peça ligada no texto que tem vídeo (senão a primeira ligada): o JPG de `PASTA_DAS_IMAGENS`, ou o GIF."""
     ligadas: list[tuple[PecaDoPortfolio, Path]] = []
     for link in _links(corpo):
         for peca in portfolio:
-            arquivo = Path(vault) / PASTA_DAS_IMAGENS / f"{_slug(peca.nome)}.jpg"
-            if peca.link.rstrip("/") == link and arquivo.is_file() and all(peca != p for p, _ in ligadas):
+            arquivo = next(
+                (a for a in (Path(vault) / PASTA_DAS_IMAGENS / f"{_slug(peca.nome)}{fim}" for fim in (".jpg", ".gif")) if a.is_file()),
+                None,
+            )
+            if peca.link.rstrip("/") == link and arquivo is not None and all(peca != p for p, _ in ligadas):
                 ligadas.append((peca, arquivo))
     if not ligadas:
         return None
@@ -455,52 +469,141 @@ def montar_email(de: str, para: str, assunto: str, corpo: str, imagem: ImagemDoE
     cid = make_msgid(domain="whis") if imagem is not None else ""
     mensagem.add_alternative(html_do_email(corpo, imagem, cid.strip("<>")), subtype="html")
     if imagem is not None:
+        tipo = "gif" if imagem.arquivo.suffix.casefold() == ".gif" else "jpeg"
         mensagem.get_payload()[1].add_related(
-            imagem.arquivo.read_bytes(), "image", "jpeg", cid=cid, disposition="inline", filename=imagem.arquivo.name
+            imagem.arquivo.read_bytes(), "image", tipo, cid=cid, disposition="inline", filename=imagem.arquivo.name
         )
     return mensagem
 
 
+_ESTILO = """\
+@media (max-width:520px){
+.fora{padding:14px 8px 28px !important}
+.cartao{padding:26px 20px 22px !important}
+.legenda,.acao{display:block !important;width:100% !important;text-align:left !important}
+.acao{padding-top:14px !important}
+.ir{display:none !important}
+}"""
+
+
 def html_do_email(corpo: str, imagem: ImagemDoEmail | None = None, cid: str = "") -> str:
-    """Parágrafos com os links clicáveis, a imagem depois do parágrafo da peça e a assinatura com o nome em negrito."""
+    """O texto da nota no molde do velozo.dev: a marca em cima, o texto num cartão e a vitrine da peça num palco grafite."""
+    paragrafos = [p.strip() for p in re.split(r"\n\s*\n", corpo.strip()) if p.strip()]
     blocos = []
-    for paragrafo in re.split(r"\n\s*\n", corpo.strip()):
-        linhas = paragrafo.strip().splitlines()
+    for paragrafo in paragrafos:
+        linhas = paragrafo.splitlines()
         if ASSINATURA in linhas:
             blocos.append(_assinatura_em_html(linhas))
         else:
-            blocos.append(f'<p style="margin:0 0 14px 0">{"<br>".join(_com_links(linha) for linha in linhas)}</p>')
+            blocos.append(f'<p style="margin:0 0 18px">{"<br>".join(_com_links(linha) for linha in linhas)}</p>')
         if imagem is not None and cid and imagem.depois_de in _links(paragrafo):
-            blocos.append(
-                f'<p style="margin:2px 0 18px 0"><a href="{escape(imagem.abre)}" target="_blank">'
-                f'<img src="cid:{cid}" width="560" alt="{escape(imagem.nome)}" style="display:block;width:100%;'
-                f'max-width:560px;height:auto;border:1px solid #e3e3e3;border-radius:10px"></a></p>'
-            )
+            blocos.append(_palco(imagem, cid))
             imagem = None
+    previa = escape(" ".join(" ".join(paragrafos[:3]).split())[:140])
+    return f"""\
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="supported-color-schemes" content="light">
+<style>
+{_ESTILO}
+</style>
+</head>
+<body style="margin:0;padding:0;background:{_PAPEL}">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all">{previa}{"&#847;&zwnj;&nbsp;" * 60}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:{_PAPEL}">
+<tr><td class="fora" align="center" style="padding:30px 12px 40px;background-color:#EFEBE3;{_FUNDO}">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px">
+<tr><td style="padding:0 4px 18px">{_cabecalho()}</td></tr>
+<tr><td class="cartao" style="background-color:#FFFFFF;border:1px solid {_LINHA};border-top:4px solid {_SINAL};\
+border-radius:18px;padding:34px 32px 28px;font-family:{_FONTE};font-size:15px;line-height:1.65;color:{_TINTA};\
+box-shadow:0 1px 2px rgba(23,24,27,.04),0 14px 36px rgba(23,24,27,.07)">
+{"".join(blocos)}
+</td></tr>
+<tr><td align="center" style="padding:22px 4px 0;font-family:{_MONO};font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:{_CINZA}">
+<a href="https://{SITE}" target="_blank" style="color:{_CINZA};text-decoration:none">{SITE}</a>
+&nbsp;·&nbsp; {CARGO}
+</td></tr>
+</table>
+</td></tr>
+</table>
+</body>
+</html>"""
+
+
+def _cabecalho() -> str:
     return (
-        '<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.55;color:#222222;'
-        f'max-width:600px">{"".join(blocos)}</div>'
+        f'<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+        f'<td width="38" style="vertical-align:middle">'
+        f'<div style="width:34px;height:34px;border-radius:10px;background:{_TINTA};text-align:center;line-height:34px">'
+        f'<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:{_SINAL};'
+        f'vertical-align:middle"></span></div></td>'
+        f'<td style="vertical-align:middle;padding-left:10px;font-family:{_FONTE}">'
+        f'<div style="font-size:16px;font-weight:700;color:{_TINTA};letter-spacing:-.01em;line-height:1.2">{escape(ASSINATURA)}</div>'
+        f'<div style="font-family:{_MONO};font-size:10.5px;letter-spacing:.09em;text-transform:uppercase;color:{_CINZA};'
+        f'line-height:1.6">{CARGO}</div></td>'
+        f'<td align="right" style="vertical-align:middle;font-family:{_MONO};font-size:12px">'
+        f'<a class="ir" href="https://{SITE}" target="_blank" style="color:{_CINZA};text-decoration:none">{SITE}&nbsp;&#8599;</a></td>'
+        f"</tr></table>"
+    )
+
+
+def _palco(imagem: ImagemDoEmail, cid: str) -> str:
+    """A vitrine num bloco grafite, com o nome da peça e o botão; a janela do navegador já vem desenhada na imagem."""
+    com_video = imagem.abre.rstrip("/") != imagem.depois_de
+    return (
+        f'<table class="palco" role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+        f'style="background:{_TINTA};border-radius:16px;margin:4px 0 26px;box-shadow:0 12px 30px rgba(23,24,27,.18)">'
+        f'<tr><td style="padding:14px 14px 0">'
+        f'<a href="{escape(imagem.abre)}" target="_blank" style="text-decoration:none">'
+        f'<img src="cid:{cid}" width="504" alt="{escape(imagem.nome)}" style="display:block;width:100%;max-width:504px;'
+        f'height:auto;border:0;border-radius:10px"></a></td></tr>'
+        f'<tr><td style="padding:16px 18px 18px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>'
+        f'<td class="legenda" style="vertical-align:middle;font-family:{_FONTE}">'
+        f'<div style="font-family:{_MONO};font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:{_SINAL};'
+        f'line-height:1.6">{"Demonstração em vídeo" if com_video else "Portfólio"}</div>'
+        f'<div style="font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.35">{escape(imagem.nome)}</div></td>'
+        f'<td class="acao" align="right" style="vertical-align:middle;white-space:nowrap">'
+        f'<a href="{escape(imagem.abre)}" target="_blank" style="display:inline-block;background:{_SINAL};'
+        f"color:{_TINTA};font-family:{_FONTE};font-size:14px;font-weight:700;text-decoration:none;padding:11px 18px;"
+        f'border-radius:999px">{"&#9654;&nbsp; Ver o vídeo" if com_video else "Abrir&nbsp; &#8599;"}</a></td>'
+        f"</tr></table></td></tr></table>"
     )
 
 
 def _assinatura_em_html(linhas: list[str]) -> str:
     nome = linhas.index(ASSINATURA)
-    antes = "".join(f"{_com_links(linha)}<br>" for linha in linhas[:nome])
-    depois = "".join(f"<br>{_com_links(linha)}" for linha in linhas[nome + 1:])
+    antes = "".join(f'<p style="margin:0 0 16px">{_com_links(linha)}</p>' for linha in linhas[:nome])
+    links = " &nbsp;·&nbsp; ".join(_com_links(linha, cor=_CINZA) for linha in linhas[nome + 1:])
     return (
-        f'<p style="margin:0">{antes}<strong>{escape(ASSINATURA)}</strong>'
-        f'<span style="color:#6b6b6b;font-size:13px">{depois}</span></p>'
+        f'{antes}<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" '
+        f'style="border-top:1px solid {_LINHA};margin-top:6px"><tr>'
+        f'<td width="52" style="padding:18px 14px 0 0;vertical-align:top">'
+        f'<div style="width:44px;height:44px;border-radius:50%;background:{_TINTA};color:{_PAPEL};font-size:15px;'
+        f'font-weight:700;line-height:44px;text-align:center;letter-spacing:.03em;border:2px solid #FFFFFF;'
+        f'box-shadow:0 0 0 2px {_SINAL}">GV</div></td>'
+        f'<td style="padding:18px 0 0;vertical-align:top;font-size:14px;line-height:1.5">'
+        f'<div style="font-size:15px;font-weight:700;color:{_TINTA}">{escape(ASSINATURA)}</div>'
+        f'<div style="font-size:13px;color:{_CINZA}">{CARGO}</div>'
+        + (f'<div style="font-size:13px;margin-top:2px">{links}</div>' if links else "")
+        + "</td></tr></table>"
     )
 
 
-def _com_links(texto: str) -> str:
+def _com_links(texto: str, cor: str = "") -> str:
     saida, inicio = [], 0
     for casou in _LINK_DO_HTML.finditer(texto):
         link = casou.group(0).rstrip(_PONTUACAO_DO_FIM)
         href = link if link.casefold().startswith("http") else f"https://{link}"
         visivel = re.sub(r"^https?://", "", link, flags=re.I).rstrip("/")
         saida.append(escape(texto[inicio:casou.start()]))
-        saida.append(f'<a href="{escape(href)}" target="_blank" style="color:#1a56db">{escape(visivel)}</a>')
+        saida.append(
+            f'<a href="{escape(href)}" target="_blank" style="color:{cor or _COR_DO_LINK};text-decoration:underline">'
+            f"{escape(visivel)}</a>"
+        )
         inicio = casou.start() + len(link)
     saida.append(escape(texto[inicio:]))
     return "".join(saida)

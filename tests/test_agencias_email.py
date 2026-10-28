@@ -321,9 +321,21 @@ def test_o_email_sai_em_html_com_a_imagem_da_peca_abrindo_o_video(tmp_path: Path
     (anexo,) = [parte for parte in mensagem.walk() if parte.get_content_type() == "image/jpeg"]
     assert mensagem.get_body(("plain",)).get_content().strip() == CORPO
     assert 'href="https://youtu.be/NEYUIo16DfA"' in html and f'src="cid:{anexo["Content-ID"].strip("<>")}"' in html
-    assert html.index(">github.com/bielvelozo/inkly-shopify-theme</a>") < html.index("<img") < html.index("Pego tarefa")
-    assert "<strong>Gabriel Velozo</strong>" in html and 'href="https://github.com/bielvelozo"' in html
+    assert html.index(">github.com/bielvelozo/inkly-shopify-theme</a>") < html.index("<img") < html.rindex("Pego tarefa")
+    assert "Ver o vídeo" in html[html.index("<img"):html.rindex("Pego tarefa")]
+    assert 'href="https://github.com/bielvelozo"' in html
     assert anexo.get_content() == b"\xff\xd8imagem"
+
+
+def test_o_html_tem_a_marca_em_cima_a_assinatura_e_o_site_embaixo():
+    html = agencias_email.html_do_email(CORPO)
+
+    corpo_visivel = html[html.index('class="cartao"'):]
+    assert html.startswith("<!doctype html>")
+    assert "Oi, pessoal da Check Commerce, Vi que vocês" in html[:html.index('class="cartao"')]
+    assert html.index(agencias_email.CARGO) < html.index('class="cartao"')
+    assert ">GV</div>" in corpo_visivel and corpo_visivel.count(agencias_email.CARGO) == 2
+    assert html.rstrip().endswith("</html>") and 'href="https://velozo.dev"' in corpo_visivel
 
 
 def test_sem_a_imagem_da_peca_o_html_sai_so_com_o_texto(tmp_path: Path):
@@ -445,3 +457,24 @@ def test_a_resend_que_recusa_a_chave_diz_qual_e(servidores, monkeypatch: pytest.
     with pytest.raises(ErroDoEmail, match=r"a Resend recusou a chave de \[cacada\]\.resend_chave"):
         agencias_email.gmail("eu@gmail.com", "senha", "gabriel@velozo.dev", "re_ruim")("contato@example.com", "Oi", CORPO)
     assert ImapFake.guardadas == []
+
+
+def test_o_jpg_parado_ganha_do_gif_e_o_gif_so_vai_sem_ele(tmp_path: Path):
+    imagem = _imagem_do_tema(tmp_path)
+    gif = imagem.arquivo.with_suffix(".gif")
+    gif.write_bytes(b"GIF89a")
+    peca = (PecaDoPortfolio("Tema Shopify Inkly", PORTFOLIO, "tema", "https://youtu.be/NEYUIo16DfA"),)
+
+    com_os_dois = agencias_email.imagem_do_email(tmp_path / "vault", CORPO, peca)
+    imagem.arquivo.unlink()
+    so_o_gif = agencias_email.imagem_do_email(tmp_path / "vault", CORPO, peca)
+    mensagem = agencias_email.montar_email("eu@gmail.com", "contato@example.com", "Oi", CORPO, so_o_gif)
+
+    assert com_os_dois.arquivo == imagem.arquivo and so_o_gif.arquivo == gif
+    assert [p.get_content_type() for p in mensagem.walk() if p.get_content_maintype() == "image"] == ["image/gif"]
+
+
+def test_o_html_nao_tem_hover_nem_animacao():
+    html = agencias_email.html_do_email(CORPO)
+
+    assert ":hover" not in html and "animation" not in html and ";transform:" not in html
