@@ -1063,7 +1063,7 @@ def _sequencia_fria(configuracao: Configuracao) -> None:
         print(f"E-mail frio: o próximo de {email} está no celular, esperando o toque.")
 
 
-def _envio_frio(configuracao: Configuracao):
+def _envio_frio(configuracao: Configuracao, segmento: str = "agencia"):
     from . import sequencia_fria
 
     return sequencia_fria.Envio(
@@ -1072,6 +1072,7 @@ def _envio_frio(configuracao: Configuracao):
         sequencia_fria.smtp_do_gmail,
         sequencia_fria.posthog(configuracao.cacada_posthog_chave),
         configuracao.cacada_envios_frios_por_dia,
+        segmento,
     )
 
 
@@ -1350,14 +1351,14 @@ def _tocou_no_celular(configuracao: Configuracao, dados: str):
             dados,
             vault=_vault.preparar(configuracao.vault),
             estado=lojas_email.caminho_do_estado(),
-            enviar=_envio_frio(configuracao),
+            enviar=_envio_frio(configuracao, sequencia_fria.LOJA),
         )
     if dados.startswith(agencias_email.PREFIXO_DO_TOQUE):
         return agencias_email.tocou_enviar_email(
             dados,
             vault=_vault.preparar(configuracao.vault),
             estado=agencias_email.caminho_do_estado(),
-            enviar=_envio_frio(configuracao),
+            enviar=_envio_frio(configuracao, sequencia_fria.AGENCIA),
         )
     if dados.startswith(sequencia_fria.PREFIXO_DO_TOQUE):
         envio = _envio_frio(configuracao)

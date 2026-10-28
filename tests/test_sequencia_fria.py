@@ -88,7 +88,7 @@ def _rodada(tmp_path, estado, *, recebidas=(), enviadas=(), escritor=None, agora
         estado=estado,
         contas=CONTAS,
         carteiro=carteiro,
-        leitor=lambda conta, desde: [r for qual, r in recebidas if qual == conta.qual],
+        leitor=lambda conta, desde, interessa, marca: [r for qual, r in recebidas if qual == conta.qual],
         leitor_dos_enviados=lambda conta, desde: [e for qual, e in enviadas if qual == conta.qual],
         eventos=eventos,
         celular=celular,
@@ -339,11 +339,11 @@ def test_o_toque_manda_o_reenvio_na_mesma_conversa(tmp_path: Path):
     )
 
     (_, mensagem), = carteiro
-    assert resposta.texto == "2º e-mail enviado para hello@kindbeauty.com.br (hello@kindbeauty.com.br), na mesma conversa."
+    assert resposta.texto == "2º e-mail enviado para KIND (hello@kindbeauty.com.br), na mesma conversa."
     assert mensagem["Subject"] == "Re: KIND" and mensagem["In-Reply-To"] == primeiro_id
     assert eventos[0][2]["tipo"] == "reenvio" and eventos[0][2]["passo"] == 2
     assert "proximo" not in sequencia_fria.ler(estado)["alvos"]["hello@kindbeauty.com.br"]
-    assert "status: enviado em 2026-11-03" in (tmp_path / "vault" / "cacada" / "reenvios" / "hello-kindbeauty-com-br-2.md").read_text(encoding="utf-8")
+    assert "status: enviado em 2026-11-03" in (tmp_path / "vault" / "cacada" / "reenvios" / "kind-2.md").read_text(encoding="utf-8")
 
 
 def test_quem_respondeu_nao_recebe_o_reenvio(tmp_path: Path):
@@ -562,3 +562,79 @@ def test_importar_de_novo_completa_o_nome_de_quem_ficou_so_com_o_codigo(tmp_path
 
     nypets = sequencia_fria.ler(estado)["alvos"]["atendimento@nypets.com.br"]
     assert (nypets["nome"], nypets["segmento"], [e["passo"] for e in nypets["enviados"]]) == ("New York Pets", "loja", [1, 2])
+
+
+def test_o_toque_sem_reserva_usa_o_codigo_e_a_variante_do_link_do_texto(tmp_path: Path):
+    estado = tmp_path / "s.json"
+    corpo = PRIMEIRO.replace("pessoal da KIND", "pessoal da Bela Pele").replace("r=kind", "r=bela-pele").replace("=conversa", "=direto")
+
+    _, _, eventos = _entregar(estado, "contato@belapele.com.br", corpo=corpo, segmento="loja")
+
+    alvo = sequencia_fria.ler(estado)["alvos"]["contato@belapele.com.br"]
+    assert (alvo["codigo"], alvo["variante"], alvo["campanha"], alvo["nome"], alvo["segmento"]) == ("bela-pele", DIRETO, "2026-11", "Bela Pele", "loja")
+    assert eventos[0][1] == "bela-pele" and eventos[0][2]["variante"] == DIRETO
+
+
+class ImapFake:
+    def __init__(self, mensagens: dict[int, bytes]):
+        self.mensagens = mensagens
+        self.pedidos: list[tuple[int, str]] = []
+
+    def login(self, usuario, senha):
+        pass
+
+    def select(self, pasta, readonly=False):
+        return "OK", [b"3"]
+
+    def response(self, codigo):
+        return codigo, [b"777"]
+
+    def uid(self, comando, *args):
+        if comando == "SEARCH":
+            criterio = args[-1]
+            menor = int(criterio.split("UID ")[1].split(":")[0]) if "UID " in criterio else 1
+            achados = [u for u in self.mensagens if u >= menor] or [max(self.mensagens)]
+            return "OK", [" ".join(map(str, achados)).encode()]
+        uid, parte = int(args[0]), args[1]
+        self.pedidos.append((uid, parte))
+        return "OK", [(b"x", self.mensagens[uid]), b")"]
+
+    def logout(self):
+        pass
+
+
+def test_a_caixa_e_lida_por_uid_e_so_o_cabecalho_de_quem_nao_interessa(monkeypatch: pytest.MonkeyPatch):
+    imap = ImapFake({
+        5: _bruto({"From": "news@loja.com", "Message-ID": "<5@x>", "Subject": "Promo"}),
+        6: _bruto({"From": "marina@kind.com.br", "Message-ID": "<6@x>", "Subject": "Re: KIND"}, "Sou o Fin e vou te ajudar."),
+    })
+    monkeypatch.setattr(sequencia_fria.imaplib, "IMAP4_SSL", lambda servidor: imap)
+    marca: dict = {}
+
+    primeira = sequencia_fria.imap_do_gmail(CONTAS.nova, date(2026, 10, 28), lambda r: r.de.endswith("@kind.com.br"), marca)
+    segunda = sequencia_fria.imap_do_gmail(CONTAS.nova, date(2026, 10, 28), lambda r: True, marca)
+
+    assert [r.message_id for r in primeira] == ["<5@x>", "<6@x>"] and primeira[1].automatica
+    assert imap.pedidos == [(5, "(BODY.PEEK[HEADER])"), (6, "(BODY.PEEK[HEADER])"), (6, "(BODY.PEEK[])")]
+    assert segunda == [] and marca == {"uidvalidity": "777", "uid": 6}
+
+
+def test_os_enviados_sao_lidos_uma_vez_por_dia(tmp_path: Path):
+    vault = tmp_path / "vault"
+    (vault / "cacada").mkdir(parents=True)
+    (vault / "cacada" / "envios.md").write_text(TABELA, encoding="utf-8")
+    estado = tmp_path / "s.json"
+    sequencia_fria.importar_envios(vault, "cacada/envios.md", estado=estado, nomes={})
+    leituras = []
+
+    def leitor_dos_enviados(conta, desde):
+        leituras.append((conta.qual, desde))
+        return []
+
+    for agora in (SABADO, SABADO + timedelta(hours=1), SABADO + timedelta(days=1)):
+        sequencia_fria.rodada(
+            vault, estado=estado, contas=CONTAS, carteiro=Carteiro(), leitor=lambda *a: [], leitor_dos_enviados=leitor_dos_enviados,
+            eventos=Eventos(), celular=Celular(), escritor=Escritor(*[SEGUNDO] * 10), por_dia=10, agora=agora,
+        )
+
+    assert [d for _, d in leituras if _ == ANTIGA] == [date(2026, 10, 1), date(2026, 10, 2)]

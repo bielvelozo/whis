@@ -114,6 +114,8 @@ _AUTOMATICA_NO_TEXTO = re.compile(
 )
 _DEVOLUCAO = re.compile(r"^(?:mailer-daemon|postmaster)@", re.I)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_DO_LINK = re.compile(r"[?&]r=(?P<codigo>[\w-]+).*?[?&]utm_campaign=(?P<campanha>[\w-]+).*?[?&]utm_content=(?P<variante>\w+)")
+_NOME_NA_ABERTURA = re.compile(r"^Oi, pessoal d[aoe]s? (?P<nome>.+?), tudo certo\?", re.M)
 _PASTA_DE_ENVIADOS = re.compile(rb'\\Sent\b.*?\s("[^"]+"|[^\s"]+)$')
 _DOMINIOS_DE_TODO_MUNDO = frozenset(
     ("gmail.com", "googlemail.com", "hotmail.com", "outlook.com", "live.com", "yahoo.com", "yahoo.com.br", "uol.com.br",
@@ -204,7 +206,7 @@ class Rodada:
 
 Carteiro = Callable[[Conta, EmailMessage], None]
 Eventos = Callable[[str, str, dict], None]
-Leitor = Callable[[Conta, date], list[Recebida]]
+Leitor = Callable[[Conta, date, Callable[["Recebida"], bool], dict], list[Recebida]]
 LeitorDosEnviados = Callable[[Conta, date], list[Enviada]]
 
 
@@ -485,7 +487,7 @@ def entregar(
     agora = (agora or datetime.now()).astimezone()
     email = email.strip().casefold()
     memoria = ler(estado)
-    alvo = memoria["alvos"].get(email) or _novo_alvo(memoria, email, nome or email, segmento, agora)
+    alvo = memoria["alvos"].get(email) or _alvo_do_texto(memoria, email, corpo, nome, segmento, agora)
     if na_janela(agora) and _cabe_hoje(memoria, alvo, por_dia, agora):
         _mandar_passo(email, alvo, passo, assunto, corpo, contas, carteiro, eventos, agora)
         alvo.pop("fila", None)
@@ -494,6 +496,16 @@ def entregar(
     alvo["fila"] = {"passo": passo, "assunto": assunto, "corpo": corpo, "desde": agora.isoformat(timespec="minutes")}
     guardar(estado, memoria)
     return f"Ficou na fila e sai {quando_sai(proxima_janela(agora, depois_de_hoje=na_janela(agora)))}."
+
+
+def _alvo_do_texto(memoria: dict, email: str, corpo: str, nome: str, segmento: str, agora: datetime) -> dict:
+    """O alvo que não foi reservado (o texto escrito antes da sequência): o código e a variante saem do link que já está no texto."""
+    casou = _NOME_NA_ABERTURA.search(corpo)
+    alvo = _novo_alvo(memoria, email, nome or (casou["nome"] if casou else email), segmento, agora)
+    link_do_texto = next((_DO_LINK.search(link) for link in _links(corpo) if link.startswith(INICIO_DO_LINK)), None)
+    if link_do_texto is not None and link_do_texto["variante"] in (CONVERSA, DIRETO):
+        alvo.update(codigo=link_do_texto["codigo"], variante=link_do_texto["variante"], campanha=link_do_texto["campanha"])
+    return alvo
 
 
 def _mandar_passo(
@@ -538,10 +550,12 @@ class Envio:
     carteiro: Carteiro
     eventos: Eventos
     por_dia: int
+    segmento: str = AGENCIA
 
     def __call__(self, para: str, assunto: str, corpo: str, imagem: object = None) -> str:
         return entregar(
-            self.estado, para, 1, assunto, corpo, contas=self.contas, carteiro=self.carteiro, eventos=self.eventos, por_dia=self.por_dia
+            self.estado, para, 1, assunto, corpo, contas=self.contas, carteiro=self.carteiro, eventos=self.eventos,
+            por_dia=self.por_dia, segmento=self.segmento,
         )
 
 
@@ -566,7 +580,7 @@ def rodada(
     agora = (agora or datetime.now()).astimezone()
     feito = Rodada()
     memoria = ler(estado)
-    _completar(memoria, contas, leitor_dos_enviados)
+    _completar(memoria, contas, leitor_dos_enviados, agora)
     guardar(estado, memoria)
     _ler_respostas(memoria, contas, leitor, eventos, celular, agora, feito)
     guardar(estado, memoria)
@@ -856,8 +870,9 @@ def _ler_respostas(
         if not alvos:
             continue
         desde = min(_primeiro_envio(alvo) for alvo in alvos.values()).date()  # type: ignore[union-attr]
+        marca = memoria["caixas"].setdefault(conta.qual, {})
         try:
-            recebidas = leitor(conta, desde)
+            recebidas = leitor(conta, desde, lambda r: bool(r.falhou_para) or _DEVOLUCAO.match(r.de) is not None or _de_quem(r, alvos) is not None, marca)
         except (ErroDoEmail, imaplib.IMAP4.error, OSError) as erro:
             _log.warning("Sequência fria: a caixa de %s não abriu (%s).", conta.endereco, erro)
             continue
@@ -922,15 +937,38 @@ def _ultimo_envio(alvo: dict) -> datetime:
     return max(datas).astimezone()
 
 
-def imap_do_gmail(conta: Conta, desde: date) -> list[Recebida]:
-    """A caixa de entrada desde `desde`, sem marcar nada como lido."""
+def imap_do_gmail(conta: Conta, desde: date, interessa: Callable[[Recebida], bool], marca: dict) -> list[Recebida]:
+    """A caixa de entrada desde `desde`, sem marcar nada como lido: só o que chegou depois do último UID lido (`marca`),
+    só o cabeçalho, e a mensagem inteira só de quem `interessa` (a caixa antiga é a pessoal dele, cheia)."""
     imap = imaplib.IMAP4_SSL(IMAP_DO_GMAIL)
     try:
         _entrar(imap, conta)
         imap.select("INBOX", readonly=True)
-        return [recebida(bruto) for bruto in _buscar(imap, f"(SINCE {desde:%d-%b-%Y})")]
+        validade = (imap.response("UIDVALIDITY")[1] or [b""])[0]
+        validade = validade.decode() if isinstance(validade, bytes) else str(validade or "")
+        if marca.get("uidvalidity") != validade:
+            marca.clear()
+            marca["uidvalidity"] = validade
+        ultimo = int(marca.get("uid") or 0)
+        criterio = f"(SINCE {desde:%d-%b-%Y})" + (f" UID {ultimo + 1}:*" if ultimo else "")
+        _, dados = imap.uid("SEARCH", None, criterio)
+        uids = sorted(int(u) for u in (dados[0] or b"").split() if int(u) > ultimo)
+        saida = []
+        for uid in uids:
+            r = recebida(_uma(imap, uid, "BODY.PEEK[HEADER]"))
+            if interessa(r):
+                r = recebida(_uma(imap, uid, "BODY.PEEK[]"))
+            saida.append(r)
+        if uids:
+            marca["uid"] = uids[-1]
+        return saida
     finally:
         _sair(imap)
+
+
+def _uma(imap: imaplib.IMAP4_SSL, uid: int, parte: str) -> bytes:
+    _, partes = imap.uid("FETCH", str(uid), f"({parte})")
+    return next((p[1] for p in partes or [] if isinstance(p, tuple)), b"")
 
 
 def enviados_do_gmail(conta: Conta, desde: date) -> list[Enviada]:
@@ -942,7 +980,7 @@ def enviados_do_gmail(conta: Conta, desde: date) -> list[Enviada]:
         pasta = next(c[1] for linha in pastas or [] if (c := _PASTA_DE_ENVIADOS.search(linha or b"")) is not None)
         imap.select(pasta.decode(), readonly=True)
         saida = []
-        for bruto in _buscar(imap, f"(SINCE {desde:%d-%b-%Y})"):
+        for bruto in _buscar(imap, f"(SINCE {desde:%d-%b-%Y})", "BODY.PEEK[HEADER]"):
             mensagem = message_from_bytes(bruto, policy=policy.default)
             para = tuple(e.casefold() for _, e in getaddresses([str(mensagem.get(c, "")) for c in ("To", "Cc")]) if e)
             try:
@@ -964,10 +1002,10 @@ def _entrar(imap: imaplib.IMAP4_SSL, conta: Conta) -> None:
         raise ErroDoEmail(f"o Gmail recusou a senha de app de {conta.endereco} na leitura") from erro
 
 
-def _buscar(imap: imaplib.IMAP4_SSL, criterio: str) -> Iterable[bytes]:
+def _buscar(imap: imaplib.IMAP4_SSL, criterio: str, parte: str) -> Iterable[bytes]:
     _, dados = imap.search(None, criterio)
     for numero in (dados[0] or b"").split():
-        _, partes = imap.fetch(numero, "(BODY.PEEK[])")
+        _, partes = imap.fetch(numero, f"({parte})")
         for parte in partes or []:
             if isinstance(parte, tuple):
                 yield parte[1]
@@ -983,17 +1021,18 @@ def _sair(imap: imaplib.IMAP4_SSL) -> None:
 # -- os Message-IDs que faltam e os envios de 28/10 ------------------------------------------------
 
 
-def _completar(memoria: dict, contas: Contas, leitor_dos_enviados: LeitorDosEnviados) -> None:
-    """O Message-ID e a data que faltam (os envios importados), lidos dos Enviados da conta de cada alvo."""
+def _completar(memoria: dict, contas: Contas, leitor_dos_enviados: LeitorDosEnviados, agora: datetime) -> None:
+    """O Message-ID e a data que faltam (os envios importados), lidos dos Enviados da conta de cada alvo, uma vez por dia."""
     faltando: dict[str, dict[str, dict]] = {}
     for email, alvo in memoria["alvos"].items():
         if alvo.get("situacao") == ATIVA and any(not e.get("message_id") for e in alvo.get("enviados", [])):
             faltando.setdefault(str(alvo.get("conta") or NOVA), {})[email] = alvo
     for qual, alvos in faltando.items():
         conta = contas.da(qual)
-        if conta is None or not conta.pronta:
+        if conta is None or not conta.pronta or memoria["completado"].get(qual) == agora.date().isoformat():
             continue
-        desde = date.today() - timedelta(days=DIAS_LENDO_A_CAIXA)
+        memoria["completado"][qual] = agora.date().isoformat()
+        desde = agora.date() - timedelta(days=DIAS_LENDO_A_CAIXA)
         try:
             enviadas = leitor_dos_enviados(conta, desde)
         except (ErroDoEmail, imaplib.IMAP4.error, OSError) as erro:
@@ -1076,8 +1115,10 @@ def ler(estado: Path) -> dict:
         dados = {}
     dados = dados if isinstance(dados, dict) else {}
     alvos = dados.get("alvos") if isinstance(dados.get("alvos"), dict) else {}
-    lidas = dados.get("lidas") if isinstance(dados.get("lidas"), dict) else {}
-    return {"alvos": {str(k): v for k, v in alvos.items() if isinstance(v, dict)}, "lidas": lidas}
+    return {
+        "alvos": {str(k): v for k, v in alvos.items() if isinstance(v, dict)},
+        **{chave: dados[chave] if isinstance(dados.get(chave), dict) else {} for chave in ("lidas", "caixas", "completado")},
+    }
 
 
 def guardar(estado: Path, memoria: dict) -> None:
