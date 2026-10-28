@@ -1,4 +1,4 @@
-"""O e-mail para a loja Shopify lenta: medida de novo, um por dia no celular com o botão, e o toque manda pelo Gmail."""
+"""O e-mail para a loja Shopify lenta: medida de novo, um por dia no celular com o botão, e o toque passa à sequência fria."""
 
 from __future__ import annotations
 
@@ -11,9 +11,11 @@ from whis import lojas_email
 from whis.agencias_email import EmailEscrito, ErroDoEmail
 from whis.lojas_shopify import CAMINHO_DA_LISTA_DE_LOJAS
 from whis.medida_no_celular import MedidaNoCelular
+from whis.sequencia_fria import Reserva
 
 AGORA = datetime(2026, 10, 18, 14, 0, tzinfo=timezone(timedelta(hours=-3)))
 VELOCIDADE = "https://github.com/bielvelozo/inkly-shopify-theme#3-speed-measured"
+LINK = "https://velozo.dev/br/?r=bela-pele&utm_source=email&utm_medium=frio&utm_campaign=2026-10&utm_content=conversa"
 
 LISTA = """\
 # Lojas Shopify lentas no Brasil
@@ -55,14 +57,13 @@ CRITERIOS = f"""\
 
 def _corpo(segundos: str = "9 segundos") -> str:
     return (
-        "Oi, pessoal da Bela Pele,\n\n"
-        f"Testei a página inicial de vocês simulando um celular em 4G: a maior imagem levou {segundos} para aparecer, "
-        "e a página baixou 3,2 MB.\n\n"
-        "Sou o Gabriel, desenvolvedor Shopify, e desde março cuido do tema de uma loja Shopify Plus. "
-        f"Na minha loja de portfólio levei o mesmo tipo de página de 11,9 s para 3,5 s: {VELOCIDADE}\n\n"
-        "O ajuste não mexe no visual da loja. Posso te mandar o que eu mudaria na página de vocês?\n\n"
-        "Se não for prioridade agora, é só responder que eu não escrevo de novo.\n\n"
-        "Abraço,\nGabriel Velozo\ngithub.com/bielvelozo"
+        "Oi, pessoal da Bela Pele, tudo certo?\n\n"
+        "Aqui é o Gabriel, faço lojas Shopify. Dei uma olhada na loja de vocês pelo celular e reparei que a página "
+        f"inicial demora para aparecer: no 4G, a imagem principal levou {segundos}.\n\n"
+        "Trabalho com e-commerce há mais de 3 anos, com otimização e redesign, e agora tô me especializando em Shopify. "
+        f"Dá uma olhada no meu portfólio: {LINK}\n\n"
+        "Posso te mandar o que eu mudaria na página de vocês?\n\n"
+        "Abraço,\nGabriel"
     )
 
 
@@ -70,9 +71,11 @@ def _corpo(segundos: str = "9 segundos") -> str:
 class EscritorFake:
     respostas: list[EmailEscrito] = field(default_factory=lambda: [EmailEscrito("Página inicial da Bela Pele no celular", _corpo())])
     pedidos: list[tuple[str, float, str]] = field(default_factory=list)
+    reservas: list[Reserva] = field(default_factory=list)
 
-    def escrever(self, alvo, medida, portfolio, *, corrigir=""):
+    def escrever(self, alvo, medida, voz, reserva, *, corrigir=""):
         self.pedidos.append((alvo.email, medida.lcp_s, corrigir))
+        self.reservas.append(reserva)
         return self.respostas[min(len(self.pedidos), len(self.respostas)) - 1]
 
 
@@ -118,10 +121,11 @@ def _estado(tmp_path: Path) -> dict:
 
 
 def _tocar(tmp_path: Path, enviados: list, *, falha: Exception | None = None, email: str = "contato@belapele.com.br"):
-    def enviar(para: str, assunto: str, corpo: str, imagem=None) -> None:
+    def enviar(para: str, assunto: str, corpo: str, imagem=None) -> str:
         if falha is not None:
             raise falha
         enviados.append((para, assunto, corpo))
+        return ""
 
     return lojas_email.tocou_enviar_email(
         lojas_email.chave_do_toque(email), vault=tmp_path / "vault", estado=tmp_path / "lojas-emails.json", enviar=enviar,
@@ -147,6 +151,7 @@ def test_um_email_por_dia_com_a_medida_de_agora_chega_no_celular_com_o_botao(tmp
     [mensagem] = celular
     assert mensagem.startswith("E-mail para a loja Bela Pele (Recife/PE), para você aprovar")
     assert "Medida de agora: LCP de 9,2 s no celular em 4G, 3,2 MB" in mensagem and _corpo() in mensagem
+    assert "Variante: conversa" in mensagem and escritor.reservas[0].link == LINK
     assert celular.botoes == [((lojas_email.ROTULO_DO_BOTAO, lojas_email.chave_do_toque("contato@belapele.com.br")),)]
     nota = (tmp_path / "vault" / "cacada" / "lojas-emails" / "bela-pele.md").read_text(encoding="utf-8")
     assert "para: contato@belapele.com.br" in nota and "status: para aprovar em 2026-10-18" in nota and _corpo() in nota
@@ -176,21 +181,21 @@ def test_a_medida_que_falha_tenta_de_novo_e_na_segunda_sai(tmp_path: Path, monke
     assert primeira["situacao"] == lojas_email.MEDIDA_FALHOU and segunda["situacao"] == lojas_email.PULADO
 
 
-def test_o_texto_sem_o_numero_medido_ou_sem_a_saida_volta_ao_claude(tmp_path: Path):
-    sem_numero = EmailEscrito("Oi", _corpo("uns segundos").replace("é só responder que eu não escrevo de novo", "me avise"))
+def test_o_texto_sem_o_numero_medido_ou_com_a_saida_volta_ao_claude(tmp_path: Path):
+    sem_numero = EmailEscrito("Oi", _corpo("uns segundos").replace("Posso", "Se não for o momento, é só responder que eu não escrevo mais. Posso"))
     escritor = EscritorFake(respostas=[sem_numero, EmailEscrito("Página inicial da Bela Pele no celular", _corpo())])
 
     feitos, _, _, _ = _preparar(tmp_path, escritor=escritor)
 
     motivo = escritor.pedidos[1][2]
-    assert '"9 segundos"' in motivo and "não escrevo de novo" in motivo
+    assert '"9 segundos"' in motivo and "não escrevo de novo" in motivo and "primeiro e-mail" in motivo
     assert len(feitos) == 1
 
 
-def test_o_toque_manda_o_texto_da_nota_pelo_gmail_e_marca_enviado(tmp_path: Path):
+def test_o_toque_passa_o_texto_da_nota_a_sequencia_e_marca_enviado(tmp_path: Path):
     _preparar(tmp_path)
     arquivo = tmp_path / "vault" / "cacada" / "lojas-emails" / "bela-pele.md"
-    arquivo.write_text(arquivo.read_text(encoding="utf-8").replace("Oi, pessoal da Bela Pele,", "Oi, pessoal,"), encoding="utf-8")
+    arquivo.write_text(arquivo.read_text(encoding="utf-8").replace("Oi, pessoal da Bela Pele,", "Oi, pessoal da Bela,"), encoding="utf-8")
     enviados: list = []
 
     resposta = _tocar(tmp_path, enviados)
@@ -198,7 +203,7 @@ def test_o_toque_manda_o_texto_da_nota_pelo_gmail_e_marca_enviado(tmp_path: Path
 
     [(para, assunto, corpo)] = enviados
     assert para == "contato@belapele.com.br" and assunto == "Página inicial da Bela Pele no celular"
-    assert corpo.startswith("Oi, pessoal,\n") and corpo.endswith("github.com/bielvelozo")
+    assert corpo.startswith("Oi, pessoal da Bela, tudo certo?\n") and corpo.endswith("Abraço,\nGabriel")
     assert resposta.tirar_botao is True and "E-mail enviado para a loja Bela Pele" in resposta.texto
     assert "status: enviado em 2026-10-18" in arquivo.read_text(encoding="utf-8")
     assert segunda.tirar_botao is True and "já foi enviado" in segunda.texto
@@ -229,15 +234,17 @@ def test_a_chave_do_botao_cabe_no_telegram_e_nao_cruza_com_a_das_agencias():
     assert not chave.startswith(agencias_email.PREFIXO_DO_TOQUE)
 
 
-def test_o_pedido_leva_a_medida_e_o_jeito_de_escrever_o_tempo():
-    from whis.criterios_da_cacada import PecaDoPortfolio
-
+def test_o_pedido_leva_a_medida_o_jeito_de_escrever_o_tempo_a_variante_e_o_link():
     alvo = lojas_email.AlvoLoja("Bela Pele", "Recife/PE", "https://belapele.com.br", "contato@belapele.com.br")
-    texto = lojas_email.pedido(alvo, MedidaNoCelular(9.2, 3.2, 140), (PecaDoPortfolio("Velocidade da loja", VELOCIDADE, "LCP"),))
+    texto = lojas_email.pedido(alvo, MedidaNoCelular(9.2, 3.2, 140), "Oi, Marina, tudo certo?", Reserva("bela-pele", "direto", LINK))
 
-    assert 'Escreva o tempo exatamente assim: "9 segundos"' in texto and "3,2 MB" in texto and VELOCIDADE in texto
-    assert lojas_email.FRASE_DE_SAIDA in lojas_email.SISTEMA_DO_EMAIL_DA_LOJA
+    assert 'Escreva o tempo exatamente assim: "9 segundos"' in texto and "3,2 MB" in texto and LINK in texto
+    assert "VARIANTE: direto" in texto and "Oi, Marina, tudo certo?" in texto
     assert "nunca invente a causa" in lojas_email.SISTEMA_DO_EMAIL_DA_LOJA
+
+
+def test_o_primeiro_da_loja_no_jeito_do_voz_passa():
+    assert lojas_email.problemas_da_loja(EmailEscrito("Bela Pele", _corpo()), MedidaNoCelular(9.2, 3.2, 140)) == []
 
 
 def _config(tmp_path: Path, extra: str = "") -> Path:
@@ -267,6 +274,7 @@ def test_a_vigia_prepara_o_email_do_dia_das_lojas_e_a_falha_nao_derruba(tmp_path
     [opcoes] = chamadas
     assert opcoes["por_dia"] == 2 and opcoes["estado"] == lojas_email.caminho_do_estado() and callable(opcoes["medir_no_celular"])
     assert opcoes["por_dia_redesenho"] == 1 and callable(opcoes["conferir_tema"])
+    assert opcoes["sequencia"] == tmp_path / "local" / "whis" / "cacada" / "sequencia-fria.json"
     assert "E-mail para a loja Bela Pele (contato@belapele.com.br) no celular" in capsys.readouterr().out
 
     monkeypatch.setattr(lojas_email, "preparar", lambda vault, **_opcoes: (_ for _ in ()).throw(RuntimeError("quebrou")))

@@ -10,6 +10,7 @@ from whis import lojas_email, lojas_shopify, tema_de_fabrica
 from whis.agencias_email import EmailEscrito
 from whis.lojas_shopify import CAMINHO_DA_LISTA_DE_LOJAS, Candidata, PaginaInicial
 from whis.medida_no_celular import MedidaNoCelular
+from whis.sequencia_fria import Reserva
 from whis.tema_de_fabrica import CORES, FONTES, LAYOUT, SECOES, Impressao, TemaDeFabrica
 
 AGORA = datetime(2026, 10, 19, 12, 30, tzinfo=timezone(timedelta(hours=-3)))
@@ -268,11 +269,11 @@ class _Escritor:
         self.redesenhos = redesenhos or [_corpo_do_redesenho()]
         self.pedidos: list[tuple[str, str, str]] = []
 
-    def escrever(self, alvo, medida, portfolio, *, corrigir=""):
+    def escrever(self, alvo, medida, voz, reserva, *, corrigir=""):
         self.pedidos.append(("velocidade", alvo.email, corrigir))
         return EmailEscrito("Página inicial no celular", "x")
 
-    def escrever_redesenho(self, alvo, fabrica, portfolio, *, corrigir=""):
+    def escrever_redesenho(self, alvo, fabrica, voz, reserva, *, corrigir=""):
         self.pedidos.append(("redesenho", alvo.email, corrigir))
         corpo = self.redesenhos[min(len([p for p in self.pedidos if p[0] == "redesenho"]), len(self.redesenhos)) - 1]
         return EmailEscrito("A Moda Boa com a cara da marca", corpo)
@@ -357,28 +358,21 @@ def test_o_tema_que_mudou_sai_da_fila_e_a_proxima_de_fabrica_e_comparada(tmp_pat
 
 
 def test_o_redesenho_que_julga_o_visual_ou_esquece_o_tema_volta_ao_claude():
-    from whis.criterios_da_cacada import PecaDoPortfolio
-
-    pecas = (PecaDoPortfolio("Tema Shopify Inkly", INKLY, "tema feito do zero"), PecaDoPortfolio("Site do portfólio", "https://velozo.dev", "o todo"))
-
-    assert lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_do_redesenho()), pecas, "Horizon") == []
-    julga = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_do_redesenho(" O visual está genérico.")), pecas, "Horizon")
+    assert lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_do_redesenho()), "Horizon") == []
+    julga = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_do_redesenho(" O visual está genérico.")), "Horizon")
     assert julga == ['julga o visual da loja ("genérico"); diga só o que bateu com a demonstração']
-    sem_tema = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_do_redesenho()), pecas, "Prestige")
+    sem_tema = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_do_redesenho()), "Prestige")
     assert sem_tema == ['falta o nome do tema, "Prestige"']
 
 
 def test_o_redesenho_no_jeito_antigo_volta_ao_claude():
-    from whis.criterios_da_cacada import PecaDoPortfolio
-
-    pecas = (PecaDoPortfolio("Tema Shopify Inkly", INKLY, "tema feito do zero"), PecaDoPortfolio("Site do portfólio", "https://velozo.dev", "o todo"))
-
-    problemas = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_antigo()), pecas, "Horizon")
+    problemas = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_antigo()), "Horizon")
 
     assert problemas == [
-        'soa como modelo ("Faz sentido"); escreva como uma pessoa escreveria',
+        'usa "Faz sentido", que ele recusou (cacada/voz.md, "Nunca usar")',
         "tem de 50 a 100 palavras (este tem 117)",
-        f'falta o link do velozo.dev com o código, copiado da linha LINK ("{lojas_email.LINK_RASTREADO.split("?")[0]}?r=")',
+        'falta o link do velozo.dev com o código, copiado da linha LINK ("https://velozo.dev/br/?r=")',
+        f"tem mais de um link ({INKLY}); o único é o do velozo.dev",
         'tem o GitHub ou a linha de "não escrevo de novo", que não vão no primeiro e-mail',
         'falta o fim "Abraço,\\nGabriel"',
     ]
@@ -393,7 +387,7 @@ def test_o_julgamento_vai_de_volta_ao_claude_e_o_corrigido_sai(tmp_path: Path):
     assert escritor.pedidos[1][2].startswith('julga o visual da loja ("feio")')
 
 
-def test_o_toque_no_redesenho_confere_o_tema_e_manda_pelo_gmail(tmp_path: Path):
+def test_o_toque_no_redesenho_confere_o_tema_e_passa_a_sequencia(tmp_path: Path):
     _preparar(tmp_path, _Escritor())
     enviados: list[tuple[str, str, str]] = []
 
@@ -402,7 +396,7 @@ def test_o_toque_no_redesenho_confere_o_tema_e_manda_pelo_gmail(tmp_path: Path):
         enviar=lambda para, assunto, corpo, imagem=None: enviados.append((para, assunto, corpo)), agora=AGORA + timedelta(minutes=10),
     )
 
-    assert resposta.texto == "E-mail enviado para a loja Moda Boa (contato@modaboa.com.br), do seu Gmail."
+    assert resposta.texto == "E-mail enviado para a loja Moda Boa (contato@modaboa.com.br)."
     assert [e[0] for e in enviados] == ["contato@modaboa.com.br"] and "tema Horizon" in enviados[0][2]
     registro = _estado(tmp_path)["contato@modaboa.com.br"]
     assert registro["situacao"] == lojas_email.ENVIADO
@@ -413,7 +407,7 @@ def test_o_toque_no_redesenho_confere_o_tema_e_manda_pelo_gmail(tmp_path: Path):
 def test_o_pedido_do_redesenho_leva_a_comparacao_e_nao_a_medida():
     alvo = lojas_email.AlvoLoja("Moda Boa", "Recife/PE", "https://modaboa.com.br", "contato@modaboa.com.br", "Tema de fábrica: Horizon")
 
-    texto = lojas_email.pedido_do_redesenho(alvo, FABRICA, agora=AGORA)
+    texto = lojas_email.pedido_do_redesenho(alvo, FABRICA, "", Reserva("moda-boa", "conversa", LINK_DA_MODA_BOA))
 
     assert "COMPARAÇÃO (feita agora pelo Whis" in texto and "MEDIDA" not in texto
     assert f"comparada com a demonstração oficial do tema ({DEMONSTRACAO}): o mesmo layout da demonstração do Horizon" in texto

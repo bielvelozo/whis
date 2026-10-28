@@ -430,22 +430,21 @@ def test_o_limite_de_propostas_do_freelancer_nasce_em_30_e_zero_desliga(tmp_path
         ler("max_propostas_freelancer = -1\n")
 
 
-def test_a_vigia_passa_o_limite_do_config_e_manda_o_lembrete_das_agencias(
+def test_a_vigia_passa_o_limite_do_config_e_roda_a_sequencia_fria(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ):
-    from whis import lembrete_das_agencias, vigia_de_freelas
-    from whis.lembrete_das_agencias import Enviado
+    from whis import sequencia_fria, vigia_de_freelas
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     lotado = _freela("Shopify theme fix", "https://www.freelancer.com/projects/shopify/fix-9", detalhes="Propostas: 12")
     monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (lotado,))
     chamadas: list[dict] = []
 
-    def lembrar(vault, **opcoes):
+    def rodada(vault, **opcoes):
         chamadas.append(opcoes)
-        return [Enviado("Aloft", "contato@aloftagencia.com", "Dev Shopify", datetime(2026, 10, 19).date())]
+        return sequencia_fria.Rodada(respostas=["contato@aloftagencia.com"], preparados=["contato@econverse.com.br"])
 
-    monkeypatch.setattr(lembrete_das_agencias, "lembrar", lembrar)
+    monkeypatch.setattr(sequencia_fria, "rodada", rodada)
     estado = tmp_path / "local" / "whis" / "cacada" / "vigia-de-freelas.json"
     estado.parent.mkdir(parents=True)
     estado.write_text("{}", encoding="utf-8")
@@ -455,13 +454,14 @@ def test_a_vigia_passa_o_limite_do_config_e_manda_o_lembrete_das_agencias(
     saida = capsys.readouterr().out
     assert "Nada novo de shopify" in saida
     [opcoes] = chamadas
-    assert opcoes["estado"] == lembrete_das_agencias.caminho_do_estado()
-    assert "Lembrete de follow-up da Aloft (contato@aloftagencia.com) no celular." in saida
+    assert opcoes["estado"] == sequencia_fria.caminho_do_estado() and opcoes["por_dia"] == 10
+    assert "E-mail frio: contato@aloftagencia.com respondeu; a sequência parou." in saida
+    assert "E-mail frio: o próximo de contato@econverse.com.br está no celular, esperando o toque." in saida
 
     def quebrar(vault, **opcoes):
         raise RuntimeError("quebrou")
 
-    monkeypatch.setattr(lembrete_das_agencias, "lembrar", quebrar)
+    monkeypatch.setattr(sequencia_fria, "rodada", quebrar)
     assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, "agencias_por_dia = 0\n"))]) == 3
 
 

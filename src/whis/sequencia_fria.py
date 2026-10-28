@@ -98,7 +98,7 @@ _CARA_DE_MODELO = re.compile(
 )
 #: As frases que ele recusou no `cacada/voz.md` ("Nunca usar").
 _RECUSADAS = re.compile(
-    r"\bapert(?:a|am|ar|ou)\b|pico de demanda|mais projeto do que d|faz sentido|tarefa pequena|escopo fechado|"
+    r"\bapert(?:a|am|ar|ou|ando)\b|pico de demanda|mais projeto do que d|faz sentido|tarefa pequena|escopo fechado|"
     r"\bbora\b|\bshow\b",
     re.I,
 )
@@ -640,7 +640,7 @@ def _preparar_os_proximos(
     agora: datetime,
     feito: Rodada,
 ) -> None:
-    voz = _ler_a_voz(vault)
+    voz = ler_a_voz(vault)
     for email, alvo in _vencidos(memoria, agora)[:ESCRITOS_POR_RODADA]:
         passo = int(alvo["enviados"][-1]["passo"]) + 1
         pedido = PedidoDeReenvio(
@@ -773,7 +773,7 @@ def _escrever_nota(
     _vault.escrever(vault, relativo, "\n".join(linhas), zonas=(PASTA_CACADA,))
 
 
-def _ler_a_voz(vault: Path) -> str:
+def ler_a_voz(vault: Path) -> str:
     arquivo = Path(vault) / CAMINHO_DA_VOZ
     return arquivo.read_text(encoding="utf-8", errors="replace") if arquivo.is_file() else ""
 

@@ -506,3 +506,46 @@ def test_os_message_ids_que_faltam_vem_dos_enviados_e_o_terceiro_responde_aos_do
     assert nypets["enviados"][0]["quando"].startswith("2026-10-20") and nypets["assunto"] == "Loja da NY Pets"
     assert conta.qual == ANTIGA and mensagem["Subject"] == "Re: Loja da NY Pets"
     assert mensagem["References"] == "<1@gmail> <2@gmail>" and mensagem["In-Reply-To"] == "<2@gmail>"
+
+
+# -- a ligação no Whis -----------------------------------------------------------------------------
+
+
+def _config(tmp_path: Path) -> Path:
+    arquivo = tmp_path / "config.toml"
+    arquivo.write_text(f'vault = "{(tmp_path / "vault").as_posix()}"\n[cacada]\nnicho_freela = "shopify"\n', encoding="utf-8")
+    return arquivo
+
+
+def test_o_toque_de_reenvio_vai_para_a_sequencia(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from whis.__main__ import _tocou_no_celular
+    from whis.celular import Resposta
+    from whis.configuracao import carregar
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    tocados = []
+    monkeypatch.setattr(sequencia_fria, "tocou_enviar_reenvio", lambda dados, **opcoes: tocados.append((dados, opcoes)) or Resposta("ok"))
+
+    resposta = _tocou_no_celular(carregar(_config(tmp_path)), sequencia_fria.chave_do_toque("a@b.com.br", 2))
+
+    [(dados, opcoes)] = tocados
+    assert resposta.texto == "ok" and dados.startswith("frio:")
+    assert opcoes["estado"] == tmp_path / "local" / "whis" / "cacada" / "sequencia-fria.json" and opcoes["por_dia"] == 10
+
+
+def test_o_comando_importa_com_o_nome_que_o_whis_ja_sabe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]):
+    from whis.__main__ import main
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    (tmp_path / "vault" / "cacada").mkdir(parents=True)
+    (tmp_path / "vault" / "cacada" / "envios.md").write_text(TABELA, encoding="utf-8")
+    pasta = tmp_path / "local" / "whis" / "cacada"
+    pasta.mkdir(parents=True)
+    (pasta / "lojas-emails.json").write_text(json.dumps({"emails": {"hello@kindbeauty.com.br": {"nome": "KIND"}}}), encoding="utf-8")
+
+    assert main(["sequencia-fria", "--config", str(_config(tmp_path)), "--importar", "cacada/envios.md"]) == 0
+
+    alvos = sequencia_fria.ler(pasta / "sequencia-fria.json")["alvos"]
+    assert (alvos["hello@kindbeauty.com.br"]["nome"], alvos["hello@kindbeauty.com.br"]["segmento"]) == ("KIND", "loja")
+    saida = capsys.readouterr().out
+    assert "2 envio(s) entraram na sequência fria" in saida and "Sem nome no Whis" in saida and "atendimento@nypets.com.br" in saida

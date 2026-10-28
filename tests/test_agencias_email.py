@@ -1,4 +1,4 @@
-"""O e-mail para as agências: um por dia no celular, com o botão, e o toque manda pelo Gmail dele."""
+"""O e-mail para as agências: um por dia no celular, com o botão, e o toque passa à sequência fria."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ import pytest
 
 from whis import agencias_email, funil
 from whis.agencias_email import EmailEscrito, ErroDoEmail
+from whis.sequencia_fria import Reserva
 from whis.criterios_da_cacada import PecaDoPortfolio
 
 AGORA = datetime(2026, 10, 18, 13, 0, tzinfo=timezone(timedelta(hours=-3)))
@@ -62,7 +63,19 @@ github.com/bielvelozo
 """
 
 PORTFOLIO = "https://github.com/bielvelozo/inkly-shopify-theme"
+LINK = (
+    "https://velozo.dev/br/?r=check-commerce-checkstore&utm_source=email&utm_medium=frio&utm_campaign=2026-10"
+    "&utm_content=conversa"
+)
 CORPO = (
+    "Oi, pessoal da Check Commerce, tudo certo?\n\n"
+    "Aqui é o Gabriel, faço lojas Shopify. Vi no site de vocês que cuidam de lojas Shopify Plus do começo ao fim.\n\n"
+    "Trabalho com e-commerce há mais de 3 anos, com otimização e redesign, e agora tô me especializando em Shopify. "
+    f"Dá uma olhada no meu portfólio: {LINK}\n\n"
+    "Hoje vocês fazem o código das lojas com o time de vocês ou chamam algum dev de fora?\n\n"
+    "Abraço,\nGabriel"
+)
+CORPO_DO_HTML = (
     "Oi, pessoal da Check Commerce,\n\n"
     "Vi que vocês fazem o diagnóstico da loja antes de começar e cuidam de lojas Shopify Plus do começo ao fim.\n\n"
     "Eu sou o Gabriel, desenvolvedor Shopify. Desde março cuido do tema de uma loja Shopify Plus, em "
@@ -86,11 +99,13 @@ def _vault(tmp_path: Path) -> Path:
 class EscritorFake:
     respostas: list[EmailEscrito] = field(default_factory=lambda: [EmailEscrito(assunto="Dev Shopify para a Check Commerce", corpo=CORPO)])
     pedidos: list[tuple[str, str]] = field(default_factory=list)
-    exemplos: tuple[str, ...] = ()
+    vozes: list[str] = field(default_factory=list)
+    reservas: list[Reserva] = field(default_factory=list)
 
-    def escrever(self, alvo, exemplos, portfolio, *, corrigir=""):
+    def escrever(self, alvo, voz, reserva, *, corrigir=""):
         self.pedidos.append((alvo.email, corrigir))
-        self.exemplos = tuple(exemplos)
+        self.vozes.append(voz)
+        self.reservas.append(reserva)
         return self.respostas[min(len(self.pedidos), len(self.respostas)) - 1]
 
 
@@ -105,7 +120,9 @@ class CelularFake(list):
         return True
 
 
-def _preparar(tmp_path: Path, *, escritor: EscritorFake | None = None, por_dia: int = 1, agora: datetime = AGORA):
+def _preparar(
+    tmp_path: Path, *, escritor: EscritorFake | None = None, por_dia: int = 1, agora: datetime = AGORA, sequencia: Path | None = None
+):
     celular = CelularFake()
     escritor = escritor or EscritorFake()
     feitos = agencias_email.preparar(
@@ -114,6 +131,7 @@ def _preparar(tmp_path: Path, *, escritor: EscritorFake | None = None, por_dia: 
         estado=tmp_path / "agencias-emails.json",
         celular=celular,
         por_dia=por_dia,
+        sequencia=sequencia,
         agora=agora,
     )
     return feitos, celular, escritor
@@ -128,11 +146,12 @@ def _nota(tmp_path: Path) -> str:
     return (tmp_path / "vault" / "cacada" / "agencias-emails" / "check-commerce-checkstore.md").read_text(encoding="utf-8")
 
 
-def _tocar(tmp_path: Path, enviados: list, *, dados: str | None = None, falha: Exception | None = None):
-    def enviar(para: str, assunto: str, corpo: str, imagem=None) -> None:
+def _tocar(tmp_path: Path, enviados: list, *, dados: str | None = None, falha: Exception | None = None, fila: str = ""):
+    def enviar(para: str, assunto: str, corpo: str, imagem=None) -> str:
         if falha is not None:
             raise falha
         enviados.append((para, assunto, corpo))
+        return fila
 
     return agencias_email.tocou_enviar_email(
         dados or agencias_email.chave_do_toque("comercial@checkcommerce.com.br"),
@@ -161,6 +180,7 @@ def test_um_email_por_dia_chega_no_celular_com_o_botao(tmp_path: Path):
     assert [f.email for f in feitos] == ["comercial@checkcommerce.com.br"]
     assert celular[0].startswith("E-mail para a agência Check Commerce (CheckStore) (Florianópolis/SC), para você aprovar")
     assert "Para: comercial@checkcommerce.com.br" in celular[0] and "Assunto: Dev Shopify para a Check Commerce" in celular[0]
+    assert "Variante: conversa" in celular[0]
     assert CORPO in celular[0]
     assert celular.botoes == [((agencias_email.ROTULO_DO_BOTAO, agencias_email.chave_do_toque("comercial@checkcommerce.com.br")),)]
     nota = _nota(tmp_path)
@@ -171,20 +191,20 @@ def test_um_email_por_dia_chega_no_celular_com_o_botao(tmp_path: Path):
 
 
 def test_texto_com_preco_colchete_ou_sem_portfolio_volta_ao_claude(tmp_path: Path):
-    ruim = EmailEscrito(assunto="Oi", corpo=CORPO.replace(PORTFOLIO, "[link do portfólio]") + "\nCobro R$ 80 a hora.")
+    ruim = EmailEscrito(assunto="Oi", corpo=CORPO.replace(LINK, "[link do portfólio]").replace("Hoje", "Cobro R$ 80 a hora. Hoje"))
     escritor = EscritorFake(respostas=[ruim, EmailEscrito(assunto="Dev Shopify para a Check Commerce", corpo=CORPO)])
 
     feitos, _, _ = _preparar(tmp_path, escritor=escritor)
 
     motivo = escritor.pedidos[1][1]
-    assert "colchete" in motivo and "preço" in motivo and "portfólio" in motivo
+    assert "colchete" in motivo and "preço" in motivo and "falta o link do velozo.dev" in motivo
     assert len(feitos) == 1
 
 
 def test_texto_que_fala_do_horario_dele_volta_ao_claude(tmp_path: Path):
     ruim = EmailEscrito(
         assunto="Dev Shopify para a Check Commerce",
-        corpo=CORPO.replace("Pego tarefa de tema e de checkout.", "Trabalho à noite e nos fins de semana."),
+        corpo=CORPO.replace("Vi no site de vocês", "Trabalho à noite e nos fins de semana. Vi no site de vocês"),
     )
     escritor = EscritorFake(respostas=[ruim, EmailEscrito(assunto="Dev Shopify para a Check Commerce", corpo=CORPO)])
 
@@ -207,10 +227,12 @@ def test_o_que_continua_ruim_fica_de_fora_e_nao_volta(tmp_path: Path):
     assert [p[0] for p in escritor.pedidos][-1] == "contato@econverse.com.br"
 
 
-def test_o_toque_manda_pelo_gmail_o_texto_da_nota_e_marca_enviado(tmp_path: Path):
+def test_o_toque_passa_o_texto_da_nota_a_sequencia_e_marca_enviado(tmp_path: Path):
     _preparar(tmp_path)
     arquivo = tmp_path / "vault" / "cacada" / "agencias-emails" / "check-commerce-checkstore.md"
-    arquivo.write_text(arquivo.read_text(encoding="utf-8").replace("Oi, pessoal da Check Commerce,", "Oi, pessoal,"), encoding="utf-8")
+    arquivo.write_text(
+        arquivo.read_text(encoding="utf-8").replace("Oi, pessoal da Check Commerce,", "Oi, pessoal da Check,"), encoding="utf-8"
+    )
     enviados: list = []
 
     resposta = _tocar(tmp_path, enviados)
@@ -218,10 +240,19 @@ def test_o_toque_manda_pelo_gmail_o_texto_da_nota_e_marca_enviado(tmp_path: Path
 
     [(para, assunto, corpo)] = enviados
     assert para == "comercial@checkcommerce.com.br" and assunto == "Dev Shopify para a Check Commerce"
-    assert corpo.startswith("Oi, pessoal,\n") and corpo.endswith("github.com/bielvelozo")
+    assert corpo.startswith("Oi, pessoal da Check, tudo certo?\n") and corpo.endswith("Abraço,\nGabriel")
     assert resposta.tirar_botao is True and "E-mail enviado para Check Commerce (CheckStore)" in resposta.texto
     assert "status: enviado em 2026-10-18" in _nota(tmp_path)
     assert segunda.tirar_botao is True and "já foi enviado" in segunda.texto
+
+
+def test_fora_da_janela_o_toque_diz_quando_sai(tmp_path: Path):
+    _preparar(tmp_path)
+
+    resposta = _tocar(tmp_path, [], fila="Ficou na fila e sai terça, 20/10, a partir das 08:00.")
+
+    assert resposta.tirar_botao is True and "Ficou na fila e sai terça" in resposta.texto
+    assert "status: na fila desde 2026-10-18" in _nota(tmp_path)
 
 
 def test_gmail_que_recusa_mantem_o_botao(tmp_path: Path):
@@ -265,8 +296,14 @@ def test_a_fila_conta_as_agencias_que_ainda_nao_ganharam_email(tmp_path: Path):
     assert antes == 2 and agencias_email.na_fila(tmp_path / "vault", estado) == 1
 
 
-def test_o_pedido_do_email_lembra_do_site_do_portfolio():
-    assert "Site do portfólio" in agencias_email.SISTEMA_DO_EMAIL
+def test_o_pedido_leva_a_voz_a_variante_e_o_link():
+    alvo = agencias_email.Alvo("Akag", "SP", "https://akag.digital", "comercial@akag.digital", "Contato: comercial@akag.digital")
+
+    pedido = agencias_email.pedido(alvo, "Oi, Marina, tudo certo?", Reserva("akag", "direto", "https://velozo.dev/br/?r=akag"))
+
+    assert "VOZ (cacada/voz.md):\nOi, Marina, tudo certo?" in pedido
+    assert "VARIANTE: direto" in pedido and "LINK (copie exatamente, é o único link do e-mail): https://velozo.dev/br/?r=akag" in pedido
+    assert "Hoje vocês fazem o código das lojas" in agencias_email.SISTEMA_DO_EMAIL
 
 
 def test_a_agencia_de_marketing_ou_de_design_ganha_outro_pedido():
@@ -275,14 +312,14 @@ def test_a_agencia_de_marketing_ou_de_design_ganha_outro_pedido():
         "Contato: contato@trafegobom.com.br\nTipo: marketing e tráfego (sem desenvolvimento de loja à mostra)",
     )
 
-    assert "Tipo: marketing e tráfego" in agencias_email.pedido(alvo, (), ())
+    assert "Tipo: marketing e tráfego" in agencias_email.pedido(alvo, "", Reserva("t", "conversa", ""))
     assert "Tipo: marketing" in agencias_email.SISTEMA_DO_EMAIL and "Tipo: design" in agencias_email.SISTEMA_DO_EMAIL
 
 
 @pytest.mark.parametrize(
     "trecho",
     [
-        "desenvolvedor Shopify em Matão (SP).",
+        "em Matão (SP).",
         "parceiros da Shopify desde 2022.",
         "o que mais se parece com isso",
         "com o escopo combinado antes.",
@@ -293,21 +330,31 @@ def test_a_agencia_de_marketing_ou_de_design_ganha_outro_pedido():
         "pego uma tarefa pequena, com escopo fechado.",
     ],
 )
-def test_o_que_soa_como_modelo_volta_ao_claude(trecho: str):
-    escrito = EmailEscrito(assunto="Dev Shopify", corpo=CORPO.replace("desenvolvedor Shopify.", f"desenvolvedor Shopify, {trecho}"))
+def test_o_que_soa_como_modelo_ou_ele_recusou_volta_ao_claude(trecho: str):
+    escrito = EmailEscrito(assunto="Dev Shopify", corpo=CORPO.replace("faço lojas Shopify.", f"faço lojas Shopify, {trecho}"))
 
-    assert any("soa como modelo" in problema for problema in agencias_email.problemas_do_email(escrito, ()))
+    problemas = agencias_email.problemas_da_agencia(escrito)
+
+    assert any("soa como modelo" in p or "ele recusou" in p for p in problemas), problemas
 
 
-def test_os_exemplos_vem_do_modelo_que_ele_aprovou(tmp_path: Path):
+def test_o_primeiro_no_jeito_do_voz_passa():
+    assert agencias_email.problemas_da_agencia(EmailEscrito("Dev Shopify para a Check Commerce", CORPO)) == []
+
+
+def test_a_voz_vai_ao_claude_e_a_variante_alterna_entre_as_agencias(tmp_path: Path):
     vault = _vault(tmp_path)
-    (vault / agencias_email.CAMINHO_DO_MODELO).write_text(
-        "# Modelo\n\n## 1. Akag\n\nOi, pessoal da Akag,\n\nVi as lojas.\n\nAbraço,\nGabriel Velozo\n", encoding="utf-8"
-    )
+    (vault / "cacada" / "voz.md").write_text("# Como o Gabriel escreve\n\nOi, Marina, tudo certo?\n", encoding="utf-8")
+    sequencia = tmp_path / "sequencia-fria.json"
+    direto = EmailEscrito("Dev Shopify para a Econverse", CORPO.replace("conversa", "direto").replace("check-commerce-checkstore", "econverse"))
 
-    _, _, escritor = _preparar(tmp_path)
+    _, _, escritor = _preparar(tmp_path, sequencia=sequencia)
+    _, _, outro = _preparar(tmp_path, sequencia=sequencia, agora=AGORA + timedelta(days=1), escritor=EscritorFake(respostas=[direto]))
 
-    assert escritor.exemplos == ("Oi, pessoal da Akag,\n\nVi as lojas.\n\nAbraço,\nGabriel Velozo",)
+    assert "Oi, Marina, tudo certo?" in escritor.vozes[0]
+    assert [r.variante for r in escritor.reservas + outro.reservas] == ["conversa", "direto"]
+    assert escritor.reservas[0].link == LINK
+    assert "codigo: check-commerce-checkstore" in _nota(tmp_path) and "variante: conversa" in _nota(tmp_path)
 
 
 def _imagem_do_tema(tmp_path: Path) -> agencias_email.ImagemDoEmail | None:
@@ -319,17 +366,17 @@ def _imagem_do_tema(tmp_path: Path) -> agencias_email.ImagemDoEmail | None:
         PecaDoPortfolio("Site do portfólio", "https://velozo.dev", "tudo"),
         PecaDoPortfolio("Tema Shopify Inkly", PORTFOLIO, "tema", "https://youtu.be/NEYUIo16DfA"),
     )
-    return agencias_email.imagem_do_email(vault, CORPO, portfolio)
+    return agencias_email.imagem_do_email(vault, CORPO_DO_HTML, portfolio)
 
 
 def test_o_email_sai_em_html_com_a_imagem_da_peca_abrindo_o_video(tmp_path: Path):
     imagem = _imagem_do_tema(tmp_path)
 
-    mensagem = agencias_email.montar_email("eu@gmail.com", "comercial@checkcommerce.com.br", "Oi", CORPO, imagem)
+    mensagem = agencias_email.montar_email("eu@gmail.com", "comercial@checkcommerce.com.br", "Oi", CORPO_DO_HTML, imagem)
 
     html = mensagem.get_body(("html",)).get_content()
     (anexo,) = [parte for parte in mensagem.walk() if parte.get_content_type() == "image/jpeg"]
-    assert mensagem.get_body(("plain",)).get_content().strip() == CORPO
+    assert mensagem.get_body(("plain",)).get_content().strip() == CORPO_DO_HTML
     assert 'href="https://youtu.be/NEYUIo16DfA"' in html and f'src="cid:{anexo["Content-ID"].strip("<>")}"' in html
     assert html.index(">github.com/bielvelozo/inkly-shopify-theme</a>") < html.index("<img") < html.rindex("Pego tarefa")
     assert "Ver o vídeo" in html[html.index("<img"):html.rindex("Pego tarefa")]
@@ -338,7 +385,7 @@ def test_o_email_sai_em_html_com_a_imagem_da_peca_abrindo_o_video(tmp_path: Path
 
 
 def test_o_html_tem_a_marca_em_cima_a_assinatura_e_o_site_embaixo():
-    html = agencias_email.html_do_email(CORPO)
+    html = agencias_email.html_do_email(CORPO_DO_HTML)
 
     corpo_visivel = html[html.index('class="cartao"'):]
     assert html.startswith("<!doctype html>")
@@ -349,35 +396,13 @@ def test_o_html_tem_a_marca_em_cima_a_assinatura_e_o_site_embaixo():
 
 
 def test_sem_a_imagem_da_peca_o_html_sai_so_com_o_texto(tmp_path: Path):
-    imagem = agencias_email.imagem_do_email(_vault(tmp_path), CORPO, (PecaDoPortfolio("Tema Shopify Inkly", PORTFOLIO, "tema"),))
+    imagem = agencias_email.imagem_do_email(_vault(tmp_path), CORPO_DO_HTML, (PecaDoPortfolio("Tema Shopify Inkly", PORTFOLIO, "tema"),))
 
-    mensagem = agencias_email.montar_email("eu@gmail.com", "comercial@checkcommerce.com.br", "Oi", CORPO, imagem)
+    mensagem = agencias_email.montar_email("eu@gmail.com", "comercial@checkcommerce.com.br", "Oi", CORPO_DO_HTML, imagem)
 
     assert imagem is None
     assert "<img" not in mensagem.get_body(("html",)).get_content()
     assert not [parte for parte in mensagem.walk() if parte.get_content_maintype() == "image"]
-
-
-def test_o_toque_manda_a_imagem_da_peca_ligada_na_nota(tmp_path: Path):
-    _preparar(tmp_path)
-    vault = tmp_path / "vault"
-    (vault / "cacada" / "criterios.md").write_text(
-        f"## Portfólio\n\n- Tema Shopify Inkly: {PORTFOLIO} — tema · vídeo: https://youtu.be/NEYUIo16DfA\n", encoding="utf-8"
-    )
-    (vault / agencias_email.PASTA_DAS_IMAGENS).mkdir(parents=True)
-    (vault / agencias_email.PASTA_DAS_IMAGENS / "tema-shopify-inkly.jpg").write_bytes(b"\xff\xd8imagem")
-    imagens = []
-
-    resposta = agencias_email.tocou_enviar_email(
-        agencias_email.chave_do_toque("comercial@checkcommerce.com.br"),
-        vault=vault,
-        estado=tmp_path / "agencias-emails.json",
-        enviar=lambda para, assunto, corpo, imagem=None: imagens.append(imagem),
-        agora=AGORA + timedelta(minutes=30),
-    )
-
-    assert resposta.tirar_botao is True
-    assert [(i.nome, i.abre) for i in imagens] == [("Tema Shopify Inkly", "https://youtu.be/NEYUIo16DfA")]
 
 
 class SmtpFake:
@@ -475,10 +500,10 @@ def test_o_jpg_parado_ganha_do_gif_e_o_gif_so_vai_sem_ele(tmp_path: Path):
     gif.write_bytes(b"GIF89a")
     peca = (PecaDoPortfolio("Tema Shopify Inkly", PORTFOLIO, "tema", "https://youtu.be/NEYUIo16DfA"),)
 
-    com_os_dois = agencias_email.imagem_do_email(tmp_path / "vault", CORPO, peca)
+    com_os_dois = agencias_email.imagem_do_email(tmp_path / "vault", CORPO_DO_HTML, peca)
     imagem.arquivo.unlink()
-    so_o_gif = agencias_email.imagem_do_email(tmp_path / "vault", CORPO, peca)
-    mensagem = agencias_email.montar_email("eu@gmail.com", "contato@example.com", "Oi", CORPO, so_o_gif)
+    so_o_gif = agencias_email.imagem_do_email(tmp_path / "vault", CORPO_DO_HTML, peca)
+    mensagem = agencias_email.montar_email("eu@gmail.com", "contato@example.com", "Oi", CORPO_DO_HTML, so_o_gif)
 
     assert com_os_dois.arquivo == imagem.arquivo and so_o_gif.arquivo == gif
     assert [p.get_content_type() for p in mensagem.walk() if p.get_content_maintype() == "image"] == ["image/gif"]

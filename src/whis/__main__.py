@@ -1023,10 +1023,10 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
             print(f"O e-mail das lojas falhou nesta rodada: {erro}")
             saida = SAIDA_PARCIAL
         try:
-            _lembrete_das_agencias(configuracao)
-        except Exception as erro:  # noqa: BLE001 — o lembrete tenta de novo na próxima hora
-            _log.exception("O lembrete às agências falhou nesta rodada.")
-            print(f"O lembrete às agências falhou nesta rodada: {erro}")
+            _sequencia_fria(configuracao)
+        except Exception as erro:  # noqa: BLE001 — a sequência fria tenta de novo na próxima hora
+            _log.exception("A sequência do e-mail frio falhou nesta rodada.")
+            print(f"A sequência do e-mail frio falhou nesta rodada: {erro}")
             saida = SAIDA_PARCIAL
         try:
             _lances_do_freelancer(configuracao, lidas)
@@ -1037,18 +1037,42 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
     return saida
 
 
-def _lembrete_das_agencias(configuracao: Configuracao) -> None:
-    """Sete dias depois do e-mail a uma agência, o lembrete curto chega no celular, uma vez por agência."""
-    from . import agencias_email, celular, lembrete_das_agencias
+def _sequencia_fria(configuracao: Configuracao) -> None:
+    """A rodada da sequência do e-mail frio: respostas e devoluções, a fila na janela e o 2º e o 3º e-mail que venceram."""
+    from . import celular, sequencia_fria
 
-    lembradas = lembrete_das_agencias.lembrar(
+    feito = sequencia_fria.rodada(
         _vault.preparar(configuracao.vault),
-        estado=lembrete_das_agencias.caminho_do_estado(),
-        estado_dos_emails=agencias_email.caminho_do_estado(),
-        celular=lambda texto: celular.avisar(configuracao, texto),
+        estado=sequencia_fria.caminho_do_estado(),
+        contas=sequencia_fria.Contas.da_configuracao(configuracao),
+        carteiro=sequencia_fria.smtp_do_gmail,
+        leitor=sequencia_fria.imap_do_gmail,
+        leitor_dos_enviados=sequencia_fria.enviados_do_gmail,
+        eventos=sequencia_fria.posthog(configuracao.cacada_posthog_chave),
+        celular=lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes),
+        escritor=sequencia_fria.ReenvioClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None),
+        por_dia=configuracao.cacada_envios_frios_por_dia,
     )
-    for enviado in lembradas:
-        print(f"Lembrete de follow-up da {enviado.nome} ({enviado.email}) no celular.")
+    for email in feito.respostas:
+        print(f"E-mail frio: {email} respondeu; a sequência parou.")
+    for email in feito.voltaram:
+        print(f"E-mail frio: o de {email} voltou; a sequência parou.")
+    for email in feito.enviados:
+        print(f"E-mail frio: saiu da fila o de {email}.")
+    for email in feito.preparados:
+        print(f"E-mail frio: o próximo de {email} está no celular, esperando o toque.")
+
+
+def _envio_frio(configuracao: Configuracao):
+    from . import sequencia_fria
+
+    return sequencia_fria.Envio(
+        sequencia_fria.caminho_do_estado(),
+        sequencia_fria.Contas.da_configuracao(configuracao),
+        sequencia_fria.smtp_do_gmail,
+        sequencia_fria.posthog(configuracao.cacada_posthog_chave),
+        configuracao.cacada_envios_frios_por_dia,
+    )
 
 
 def _lances_do_freelancer(configuracao: Configuracao, lidas) -> None:
@@ -1084,7 +1108,7 @@ def _lances_do_freelancer(configuracao: Configuracao, lidas) -> None:
 
 def _emails_das_agencias(configuracao: Configuracao) -> None:
     """O e-mail do dia para uma agência Shopify da lista, escrito e mandado ao celular com o botão."""
-    from . import agencias_email, celular
+    from . import agencias_email, celular, sequencia_fria
 
     if configuracao.cacada_agencias_por_dia <= 0:
         return
@@ -1094,6 +1118,7 @@ def _emails_das_agencias(configuracao: Configuracao) -> None:
         estado=agencias_email.caminho_do_estado(),
         celular=lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes),
         por_dia=configuracao.cacada_agencias_por_dia,
+        sequencia=sequencia_fria.caminho_do_estado(),
     )
     for preparado in preparados:
         print(f"E-mail para a agência {preparado.nome} ({preparado.email}) no celular, esperando o toque: {preparado.nota}")
@@ -1101,7 +1126,7 @@ def _emails_das_agencias(configuracao: Configuracao) -> None:
 
 def _emails_das_lojas(configuracao: Configuracao) -> None:
     """Os e-mails do dia para as lojas Shopify da procura (lenta, ou com o tema de fábrica): medida ou comparada de novo, escrita e mandada ao celular com o botão."""
-    from . import celular, lojas_email, lojas_shopify, tema_de_fabrica
+    from . import celular, lojas_email, lojas_shopify, sequencia_fria, tema_de_fabrica
     from .medida_no_celular import medir
 
     if configuracao.cacada_lojas_por_dia <= 0 and configuracao.cacada_lojas_redesenho_por_dia <= 0:
@@ -1115,9 +1140,29 @@ def _emails_das_lojas(configuracao: Configuracao) -> None:
         medir_no_celular=medir,
         por_dia_redesenho=configuracao.cacada_lojas_redesenho_por_dia,
         conferir_tema=lambda site: lojas_shopify.conferir_tema_do_site(site, tema_de_fabrica.caminho_do_estado()),
+        sequencia=sequencia_fria.caminho_do_estado(),
     )
     for preparado in preparados:
         print(f"E-mail para a loja {preparado.nome} ({preparado.email}) no celular, esperando o toque: {preparado.nota}")
+
+
+def _comando_sequencia_fria(args: argparse.Namespace) -> int:
+    """Os envios feitos à mão entram na sequência fria, cada um no passo dele, com o nome e o segmento que o Whis já sabe."""
+    from . import agencias_email, lojas_email, sequencia_fria
+
+    configuracao = _configuracao(args)
+    nomes: dict[str, tuple[str, str]] = {}
+    for modulo, segmento in ((agencias_email, sequencia_fria.AGENCIA), (lojas_email, sequencia_fria.LOJA)):
+        for email, registro in agencias_email._ler(modulo.caminho_do_estado())["emails"].items():
+            nomes.setdefault(email.casefold(), (str(registro.get("nome") or email), segmento))
+    importados = sequencia_fria.importar_envios(
+        _vault.preparar(configuracao.vault), args.importar, estado=sequencia_fria.caminho_do_estado(), nomes=nomes
+    )
+    sem_nome = [email for email in importados if email not in nomes]
+    print(f"{len(importados)} envio(s) entraram na sequência fria: {', '.join(importados) or 'nenhum novo'}.")
+    if sem_nome:
+        print(f"Sem nome no Whis (fica o código e o segmento agência): {', '.join(sem_nome)}.")
+    return SAIDA_COMPLETA
 
 
 def _propostas_automaticas(configuracao: Configuracao, lidas, nicho: str, *, fakes: bool = False) -> None:
@@ -1293,8 +1338,8 @@ def _tocar_num_processo_novo(configuracao: Configuracao, dados: str, *, rodar=No
 
 
 def _tocou_no_celular(configuracao: Configuracao, dados: str):
-    """O toque num botão do Telegram, que a bandeja ouve: "Enviar esta proposta" e "Enviar e-mail"."""
-    from . import agencias_email, lojas_email, propostas_auto
+    """O toque num botão do Telegram, que a bandeja ouve: "Enviar esta proposta", "Enviar e-mail" e "Enviar reenvio"."""
+    from . import agencias_email, lojas_email, propostas_auto, sequencia_fria
     from .celular import Resposta
     from .corrida import cacada_correndo, pasta_da_cacada
     from .navegador_logado import NavegadorLogado
@@ -1304,18 +1349,25 @@ def _tocou_no_celular(configuracao: Configuracao, dados: str):
             dados,
             vault=_vault.preparar(configuracao.vault),
             estado=lojas_email.caminho_do_estado(),
-            enviar=agencias_email.gmail(
-                configuracao.cacada_email, configuracao.cacada_senha_de_app, configuracao.cacada_remetente, configuracao.cacada_resend_chave
-            ),
+            enviar=_envio_frio(configuracao),
         )
     if dados.startswith(agencias_email.PREFIXO_DO_TOQUE):
         return agencias_email.tocou_enviar_email(
             dados,
             vault=_vault.preparar(configuracao.vault),
             estado=agencias_email.caminho_do_estado(),
-            enviar=agencias_email.gmail(
-                configuracao.cacada_email, configuracao.cacada_senha_de_app, configuracao.cacada_remetente, configuracao.cacada_resend_chave
-            ),
+            enviar=_envio_frio(configuracao),
+        )
+    if dados.startswith(sequencia_fria.PREFIXO_DO_TOQUE):
+        envio = _envio_frio(configuracao)
+        return sequencia_fria.tocou_enviar_reenvio(
+            dados,
+            vault=_vault.preparar(configuracao.vault),
+            estado=envio.estado,
+            contas=envio.contas,
+            carteiro=envio.carteiro,
+            eventos=envio.eventos,
+            por_dia=envio.por_dia,
         )
     if not dados.startswith(propostas_auto.PREFIXO_DO_TOQUE):
         return Resposta("Esse botão não faz mais nada no Whis.", tirar_botao=True)
@@ -2317,6 +2369,14 @@ def construir_parser() -> argparse.ArgumentParser:
         help="um projeto falso e um estado temporário: o toast e um ensaio da proposta automática, sem Claude nem Chrome"
     )
     vigia_freelas_cmd.set_defaults(funcao=_comando_vigia_freelas)
+
+    frio_cmd = subcomandos.add_parser(
+        "sequencia-fria",
+        help="importa para a sequência do e-mail frio os envios feitos à mão (a tabela de uma nota como cacada/envios-2026-10-28.md)",
+    )
+    _acrescentar_config(frio_cmd)
+    frio_cmd.add_argument("--importar", metavar="NOTA", required=True, help="a nota do vault com a tabela, ex.: cacada/envios-2026-10-28.md")
+    frio_cmd.set_defaults(funcao=_comando_sequencia_fria)
 
     celular_cmd = subcomandos.add_parser(
         "celular", help="liga o bot do Telegram que te avisa no celular: pede o token, descobre o chat e grava [celular]"
