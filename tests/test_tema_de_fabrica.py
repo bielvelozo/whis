@@ -234,11 +234,26 @@ CRITERIOS = f"""\
 FABRICA = TemaDeFabrica("Horizon", "3.2.0", DEMONSTRACAO, (LAYOUT, FONTES, CORES), ("Inter",), False)
 
 
+LINK_DA_MODA_BOA = "https://velozo.dev/br/?r=moda-boa&utm_source=email&utm_medium=frio&utm_campaign=2026-10&utm_content=conversa"
+
+
 def _corpo_do_redesenho(extra: str = "") -> str:
+    return (
+        "Oi, pessoal da Moda Boa, tudo certo?\n\n"
+        "Aqui é o Gabriel, faço lojas Shopify. Dei uma olhada na loja de vocês e reparei que ela usa o tema Horizon "
+        f"com o mesmo layout da demonstração oficial dele, então quem já viu o tema reconhece a loja.{extra}\n\n"
+        "Trabalho com e-commerce há mais de 3 anos, com otimização e redesign, e agora tô me especializando em Shopify. "
+        f"Dá uma olhada no meu portfólio: {LINK_DA_MODA_BOA}\n\n"
+        "Posso te mandar uma ideia de como eu redesenharia a página inicial com a cara da marca de vocês?\n\n"
+        "Abraço,\nGabriel"
+    )
+
+
+def _corpo_antigo() -> str:
     return (
         "Oi, pessoal da Moda Boa,\n\n"
         "Reparei que a loja de vocês usa o tema Horizon com as mesmas fontes e cores da demonstração oficial dele. "
-        f"Quem conhece o tema reconhece a loja, e a marca aparece pouco além do logo.{extra}\n\n"
+        "Quem conhece o tema reconhece a loja, e a marca aparece pouco além do logo.\n\n"
         "Sou o Gabriel, desenvolvedor Shopify em Matão (SP), e desde março cuido do tema de uma loja Shopify Plus. "
         f"Fiz este tema do zero: {INKLY}\n\n"
         "Redesenho a página inicial com a tipografia, as cores e as seções da marca, mantendo produtos, apps e checkout, "
@@ -344,13 +359,28 @@ def test_o_tema_que_mudou_sai_da_fila_e_a_proxima_de_fabrica_e_comparada(tmp_pat
 def test_o_redesenho_que_julga_o_visual_ou_esquece_o_tema_volta_ao_claude():
     from whis.criterios_da_cacada import PecaDoPortfolio
 
-    pecas = (PecaDoPortfolio("Tema Shopify Inkly", INKLY, "tema feito do zero"),)
+    pecas = (PecaDoPortfolio("Tema Shopify Inkly", INKLY, "tema feito do zero"), PecaDoPortfolio("Site do portfólio", "https://velozo.dev", "o todo"))
 
-    assert lojas_email.problemas_do_redesenho(EmailEscrito("A Moda Boa", _corpo_do_redesenho()), pecas, "Horizon") == []
-    julga = lojas_email.problemas_do_redesenho(EmailEscrito("A Moda Boa", _corpo_do_redesenho(" O visual está genérico.")), pecas, "Horizon")
+    assert lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_do_redesenho()), pecas, "Horizon") == []
+    julga = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_do_redesenho(" O visual está genérico.")), pecas, "Horizon")
     assert julga == ['julga o visual da loja ("genérico"); diga só o que bateu com a demonstração']
-    sem_tema = lojas_email.problemas_do_redesenho(EmailEscrito("A Moda Boa", _corpo_do_redesenho()), pecas, "Prestige")
+    sem_tema = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_do_redesenho()), pecas, "Prestige")
     assert sem_tema == ['falta o nome do tema, "Prestige"']
+
+
+def test_o_redesenho_no_jeito_antigo_volta_ao_claude():
+    from whis.criterios_da_cacada import PecaDoPortfolio
+
+    pecas = (PecaDoPortfolio("Tema Shopify Inkly", INKLY, "tema feito do zero"), PecaDoPortfolio("Site do portfólio", "https://velozo.dev", "o todo"))
+
+    problemas = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_antigo()), pecas, "Horizon")
+
+    assert problemas == [
+        "tem de 50 a 100 palavras (este tem 120)",
+        f'falta o link do velozo.dev com o código, copiado da linha LINK ("{lojas_email.LINK_RASTREADO.split("?")[0]}?r=")',
+        'tem o GitHub ou a linha de "não escrevo de novo", que não vão no primeiro e-mail',
+        'falta o fim "Abraço,\\nGabriel"',
+    ]
 
 
 def test_o_julgamento_vai_de_volta_ao_claude_e_o_corrigido_sai(tmp_path: Path):
@@ -381,12 +411,16 @@ def test_o_toque_no_redesenho_confere_o_tema_e_manda_pelo_gmail(tmp_path: Path):
 
 def test_o_pedido_do_redesenho_leva_a_comparacao_e_nao_a_medida():
     alvo = lojas_email.AlvoLoja("Moda Boa", "Recife/PE", "https://modaboa.com.br", "contato@modaboa.com.br", "Tema de fábrica: Horizon")
-    from whis.criterios_da_cacada import PecaDoPortfolio
 
-    texto = lojas_email.pedido_do_redesenho(alvo, FABRICA, (PecaDoPortfolio("Tema Shopify Inkly", INKLY, "do zero"),))
+    texto = lojas_email.pedido_do_redesenho(alvo, FABRICA, agora=AGORA)
 
     assert "COMPARAÇÃO (feita agora pelo Whis" in texto and "MEDIDA" not in texto
-    assert f"comparada com a demonstração oficial do tema ({DEMONSTRACAO}): as mesmas fontes da demonstração do Horizon (Inter)" in texto
+    assert f"comparada com a demonstração oficial do tema ({DEMONSTRACAO}): o mesmo layout da demonstração do Horizon" in texto
     assert "o tema publicado ainda tem o nome de fábrica" in texto
+    assert f"LINK (copie exatamente, é o único link do e-mail): {LINK_DA_MODA_BOA}" in texto
+    assert "PORTFÓLIO" not in texto
+    for regra in ("Oi, pessoal da <loja>, tudo certo?", "Aqui é o Gabriel, faço lojas Shopify.", "50 a 100 palavras", "Abraço,"):
+        assert regra in lojas_email.SISTEMA_DO_REDESENHO
+    assert "github.com/bielvelozo" not in lojas_email.SISTEMA_DO_REDESENHO and "Matão" not in lojas_email.SISTEMA_DO_REDESENHO
     assert alvo.oferta == lojas_email.REDESENHO
     assert Impressao.de_json(Impressao(frozenset({"inter"}), frozenset({"a=1"}), ("hero",)).para_json()).secoes == ("hero",)
