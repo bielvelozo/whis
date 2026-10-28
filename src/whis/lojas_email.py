@@ -530,8 +530,9 @@ o jeito, nunca as frases.
 - Abertura, sozinha na primeira linha: "Oi, pessoal da <loja>, tudo certo?"
 - Depois, no mesmo parágrafo: "Aqui é o Gabriel, faço lojas Shopify." e como ele chegou na observação: deu uma \
 olhada na loja e reparou que ela usa o tema da COMPARAÇÃO (escreva o nome do tema) com o que a COMPARAÇÃO diz \
-que bateu com a demonstração oficial do tema. Numa frase, por que isso importa: quem já viu o tema reconhece a \
-loja. Só o que a COMPARAÇÃO traz: nunca chame o visual de feio, genérico, amador, datado, ruim ou "sem \
+que bateu com a demonstração oficial do tema, dito como gente fala ("o mesmo layout da demonstração", sem \
+listar o que está entre parênteses na COMPARAÇÃO). Numa frase, por que isso importa: quem já viu o tema \
+reconhece a loja. Só o que a COMPARAÇÃO traz: nunca chame o visual de feio, genérico, amador, datado, ruim ou "sem \
 personalidade", nunca elogie antes ("A loja tá bonita, só que..."), nunca anuncie ("Uma coisa me chamou \
 atenção:"), nunca cite estatística de venda, conversão ou confiança.
 - A prova, num parágrafo: trabalha com e-commerce há mais de 3 anos, com otimização e redesign, e agora tá se \
