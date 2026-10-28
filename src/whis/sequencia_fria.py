@@ -1006,9 +1006,9 @@ def _buscar(imap: imaplib.IMAP4_SSL, criterio: str, parte: str) -> Iterable[byte
     _, dados = imap.search(None, criterio)
     for numero in (dados[0] or b"").split():
         _, partes = imap.fetch(numero, f"({parte})")
-        for parte in partes or []:
-            if isinstance(parte, tuple):
-                yield parte[1]
+        for pedaco in partes or []:
+            if isinstance(pedaco, tuple):
+                yield pedaco[1]
 
 
 def _sair(imap: imaplib.IMAP4_SSL) -> None:

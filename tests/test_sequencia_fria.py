@@ -638,3 +638,41 @@ def test_os_enviados_sao_lidos_uma_vez_por_dia(tmp_path: Path):
         )
 
     assert [d for _, d in leituras if _ == ANTIGA] == [date(2026, 10, 1), date(2026, 10, 2)]
+
+
+class ImapDosEnviados:
+    def __init__(self, mensagens: list[bytes]):
+        self.mensagens = mensagens
+        self.pedidos: list[str] = []
+
+    def login(self, usuario, senha):
+        pass
+
+    def list(self):
+        return "OK", [b'(\HasNoChildren \Sent) "/" "[Gmail]/Sent Mail"']
+
+    def select(self, pasta, readonly=False):
+        return "OK", [b"2"]
+
+    def search(self, charset, criterio):
+        return "OK", [" ".join(str(n) for n in range(1, len(self.mensagens) + 1)).encode()]
+
+    def fetch(self, numero, parte):
+        self.pedidos.append(parte)
+        return "OK", [(b"x", self.mensagens[int(numero) - 1]), b")"]
+
+    def logout(self):
+        pass
+
+
+def test_os_enviados_leem_o_cabecalho_de_todos(monkeypatch: pytest.MonkeyPatch):
+    imap = ImapDosEnviados([
+        _bruto({"To": "a@um.com.br", "Message-ID": "<1@g>", "Subject": "Um", "Date": "Mon, 19 Oct 2026 09:00:00 -0300"}),
+        _bruto({"To": "b@dois.com.br", "Message-ID": "<2@g>", "Subject": "Dois", "Date": "Tue, 20 Oct 2026 09:00:00 -0300"}),
+    ])
+    monkeypatch.setattr(sequencia_fria.imaplib, "IMAP4_SSL", lambda servidor: imap)
+
+    enviadas = sequencia_fria.enviados_do_gmail(CONTAS.antiga, date(2026, 10, 15))
+
+    assert [(e.message_id, e.para) for e in enviadas] == [("<1@g>", ("a@um.com.br",)), ("<2@g>", ("b@dois.com.br",))]
+    assert imap.pedidos == ["(BODY.PEEK[HEADER])", "(BODY.PEEK[HEADER])"]
