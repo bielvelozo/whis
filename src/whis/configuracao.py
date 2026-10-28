@@ -36,7 +36,7 @@ VARIAVEL_DE_AMBIENTE = "WHIS_CONFIG"
 NOME_DO_ARQUIVO = "config.toml"
 
 PLATAFORMAS_SEM_CONTA = ("peopleperhour", "workana")
-PLATAFORMAS_PAGAS = ("freelancer.com.br",)
+PLATAFORMAS_PAGAS = ("freelancer.com.br", "freelancer.com")
 HORARIOS_DA_VIGIA_DE_FREELAS = tuple(f"{hora:02d}:00" for hora in range(7, 24))
 MODOS_DAS_PROPOSTAS_AUTO = ("desligado", "ensaio", "ligado")
 POSTHOG_CHAVE = "phc_o3G5x8Q7jfzSe6G3fscQ5HQjKJDrH3X9fGg6EUFtZsxT"
@@ -129,7 +129,7 @@ limite_minutos = 90          # fora da véspera (a semana do plano vira em mais 
 limite_plano = 15            # fora da véspera, a caçada para depois de gastar tantos pontos do plano semanal; 0 = sem limite de plano
 encaixe_minimo_tentar = 40   # tentar a sorte com encaixe abaixo disto (0 a 100) sai do relatório e das mensagens prontas
 plataformas_sem_conta = ["peopleperhour", "workana"]  # sites em que sua conta não está ativa (em análise ou reprovada): a caçada não lê a fonte, não procura lá e tira o que vier deles; quando a conta valer, apague o nome daqui (ex.: [])
-plataformas_pagas = ["freelancer.com.br"]  # sites em que responder a um projeto pede plano pago que você não assinou: a caçada tira o que vier deles e não procura lá; quando assinar, apague o nome daqui
+plataformas_pagas = ["freelancer.com.br", "freelancer.com"]  # sites em que responder a um projeto pede plano pago que você não assinou: a caçada, a vigia e o modo freelas tiram o que vier deles e não procuram lá; quando assinar, apague o nome daqui
 nicho_freela = ""            # o nicho do freela (ex.: shopify): no hunt --freelas, chance boa só do nicho ou de e-commerce muito perto, o resto no máximo tentar a sorte, e as buscas do Freelancer.com fora dele saem; a proposta automática da 99Freelas só sai no projeto que cita o nicho ou na loja virtual sem outra plataforma; vazio = qualquer freela
 piso_freela = 0              # o menor preço de freela que você aceita, em R$: a caçada nunca sugere abaixo disso (o resumo avisa quando o Claude sugeriu menos); 0 = sem piso
 horarios_da_vigia_de_freelas = ["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00", "22:00", "23:00"]  # quando a tarefa Whis-Vigia-Freelas (whis windows --vigia-freelas) olha a 99Freelas e o Freelancer.com, avisa por toast e no celular o projeto novo do nicho e faz as propostas automáticas

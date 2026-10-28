@@ -42,6 +42,10 @@ NOME_DA_ULTIMA_RODADA = "vigia-de-freelas-rodada.json"
 #: páginas cobriram umas 50 h de projetos num domingo (18/10), menos num dia útil movimentado.
 PARADA_HA = timedelta(hours=6)
 PAGINAS_NA_VOLTA = 6
+#: Sem assinatura, a proposta automática só pega o projeto entre 24 h e 24 h + `propostas_auto_horas` de
+#: publicado; num dia útil de 28/10 isso caiu nas páginas 3 a 5 (10 projetos por página), que as 2 da
+#: rodada de hora em hora nunca alcançavam. Com ela ligada, a leitura vai até passar dessa idade.
+PAGINAS_DA_PROPOSTA = 8
 RECENTE = timedelta(hours=24)
 TOASTS_POR_RODADA = 3
 GUARDA_POR = timedelta(days=30)
@@ -96,19 +100,31 @@ def marcar_rodada(arquivo: Path, agora: datetime) -> None:
 
 
 def ler_do_nicho(
-    nicho: str, *, rede=None, agora: datetime | None = None, paginas_da_99freelas: int | None = None
+    nicho: str,
+    *,
+    rede=None,
+    agora: datetime | None = None,
+    paginas_da_99freelas: int | None = None,
+    ate_idade_da_99freelas: timedelta | None = None,
+    plataformas_pagas: Sequence[str] = (),
 ) -> tuple[Oportunidade, ...]:
-    """A listagem da 99Freelas (web, mobile e software), a busca do nicho na API do Freelancer.com e, no
-    nicho Shopify, o Job Listings do fórum da Shopify."""
+    """A listagem da 99Freelas (web, mobile e software), a busca do nicho na API do Freelancer.com (fora
+    quando ele está em `plataformas_pagas`) e, no nicho Shopify, o Job Listings do fórum da Shopify."""
     from . import fontes_da_cacada
 
-    fontes = (
-        FonteDaCacada("99Freelas", "99freelas", "web-mobile-e-software"),
-        FonteDaCacada(FREELANCER, "freelancer", nicho),
+    fontes = tuple(
+        fonte
+        for fonte in (
+            FonteDaCacada("99Freelas", "99freelas", "web-mobile-e-software"),
+            FonteDaCacada(FREELANCER, "freelancer", nicho),
+        )
+        if not fontes_da_cacada.fonte_paga(fonte, plataformas_pagas)
     )
     if nicho.strip().casefold() == "shopify":
         fontes += (FonteDaCacada(FORUM, "shopify_community", JOB_LISTINGS),)
     paginas = {"paginas_da_99freelas": paginas_da_99freelas} if paginas_da_99freelas else {}
+    if ate_idade_da_99freelas is not None:
+        paginas["ate_idade_da_99freelas"] = ate_idade_da_99freelas
     coleta = fontes_da_cacada.coletar(fontes, agora or datetime.now().astimezone(), rede=rede, **paginas)
     for nome, motivo in coleta.falhas.items():
         _log.warning("Vigia de freelas: %s não respondeu: %s", nome, motivo)

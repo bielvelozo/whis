@@ -37,6 +37,7 @@ from email.utils import make_msgid
 from html import escape
 from pathlib import Path
 from typing import Any, Protocol
+from urllib.parse import urlsplit
 
 from . import vault as _vault
 from .agencias import CAMINHO_DA_LISTA, CAMINHO_DAS_NOVAS, DA_EMPRESA
@@ -63,6 +64,11 @@ ENVIADO = "enviado"
 PULADO = "pulado"
 ASSINATURA = "Gabriel Velozo"
 NAO_ACHEI = "Não achei esse e-mail no Whis; não mandei nada."
+#: Domínio de e-mail que muitas agências dividem: com ele, só o endereço inteiro diz que é a mesma.
+DOMINIOS_DE_TODOS = frozenset({
+    "gmail.com", "googlemail.com", "hotmail.com", "outlook.com", "live.com", "yahoo.com", "yahoo.com.br",
+    "icloud.com", "uol.com.br", "bol.com.br", "terra.com.br", "proton.me", "protonmail.com",
+})
 
 _ENTRADA = re.compile(r"^\*\*\d+\.\s*(?P<nome>[^*]+?)\*\*(?P<resto>.*)$")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
@@ -193,6 +199,75 @@ def _ja_escritos(vault: Path) -> set[str]:
     return {e.casefold() for e in _EMAIL.findall(arquivo.read_text(encoding="utf-8", errors="replace"))}
 
 
+@dataclass(frozen=True)
+class Contatadas:
+    """As agências que já receberam (ou esperam o toque de) um e-mail, pelo domínio do e-mail ou do site e pelo nome."""
+
+    dominios: frozenset[str] = frozenset()
+    nomes: frozenset[str] = frozenset()
+
+    def com(self, alvo: Alvo) -> Contatadas:
+        dominios = {d for d in (_dominio_do_email(alvo.email), _dominio_do_site(alvo.site)) if d}
+        return Contatadas(self.dominios | dominios, self.nomes | {_nome_normalizado(alvo.nome)})
+
+
+def ja_contatadas(vault: Path, memoria: dict, sequencia: Path | None = None) -> Contatadas:
+    """Tudo o que já foi escrito à mão (`emails-agencias.md`), pelo Whis (menos o que ficou de fora) e na sequência fria."""
+    dominios: set[str] = set()
+    nomes: set[str] = set()
+
+    def anotar(email: str, nome: str = "", site: str = "") -> None:
+        dominios.update(d for d in (_dominio_do_email(email), _dominio_do_site(site)) if d)
+        if nome.strip():
+            nomes.add(_nome_normalizado(nome))
+
+    for email, nome in ja_escritas(vault).items():
+        anotar(email, nome)
+    for email in _ja_escritos(vault):
+        anotar(email)
+    for email, dados in memoria["emails"].items():
+        if dados.get("situacao") != PULADO:
+            anotar(email, str(dados.get("nome", "")), str(dados.get("site", "")))
+    if sequencia is not None:
+        try:
+            alvos = json.loads(sequencia.read_text(encoding="utf-8")).get("alvos") or {}
+        except (OSError, ValueError, AttributeError):
+            alvos = {}
+        for email, dados in alvos.items():
+            if isinstance(dados, dict) and dados.get("segmento") == AGENCIA:
+                anotar(email, str(dados.get("nome", "")))
+    return Contatadas(frozenset(dominios), frozenset(nomes))
+
+
+def ja_recebeu(alvo: Alvo, contatadas: Contatadas) -> str:
+    """Por que a agência de outro endereço é a mesma de um e-mail já mandado; vazio quando não é."""
+    if (dominio := _dominio_do_email(alvo.email)) in contatadas.dominios:
+        return f"a agência já recebeu e-mail em outro endereço de {dominio}"
+    if (site := _dominio_do_site(alvo.site)) in contatadas.dominios:
+        return f"a agência do site {site} já recebeu e-mail"
+    if _nome_normalizado(alvo.nome) in contatadas.nomes:
+        return f"a agência {alvo.nome} já recebeu e-mail"
+    return ""
+
+
+def _dominio_do_email(email: str) -> str:
+    dominio = email.rpartition("@")[2].strip().casefold()
+    return "" if dominio in DOMINIOS_DE_TODOS else dominio.removeprefix("www.")
+
+
+def _dominio_do_site(site: str) -> str:
+    site = site.strip()
+    if not site:
+        return ""
+    host = (urlsplit(site if "//" in site else f"//{site}").hostname or "").casefold().removeprefix("www.")
+    return "" if host in DOMINIOS_DE_TODOS else host
+
+
+def _nome_normalizado(nome: str) -> str:
+    sem_acento = "".join(c for c in unicodedata.normalize("NFKD", nome) if not unicodedata.combining(c))
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", sem_acento.casefold()).split())
+
+
 # -- a conferência ---------------------------------------------------------------------------------
 
 
@@ -230,11 +305,18 @@ def preparar(
     if feitos_hoje >= por_dia:
         return []
     voz = ler_a_voz(vault)
+    contatadas = ja_contatadas(vault, memoria, sequencia)
     preparados: list[Preparado] = []
     for alvo in ler_alvos(vault):
         if feitos_hoje >= por_dia:
             break
         if alvo.email in memoria["emails"]:
+            continue
+        if motivo := ja_recebeu(alvo, contatadas):
+            quando = agora.isoformat(timespec="minutes")
+            memoria["emails"][alvo.email] = {"nome": alvo.nome, "situacao": PULADO, "motivo": motivo, "quando": quando}
+            _guardar(estado, memoria)
+            _log.info("E-mail das agências: %s ficou de fora (%s).", alvo.nome, motivo)
             continue
         reserva = reservar(sequencia, alvo.email, alvo.nome, AGENCIA, agora)
         escrito, problemas = _escrever(escritor, alvo, voz, reserva)
@@ -260,6 +342,7 @@ def preparar(
             "quando": quando,
         }
         _guardar(estado, memoria)
+        contatadas = contatadas.com(alvo)
         celular(_mensagem(alvo, escrito, reserva), botoes=((ROTULO_DO_BOTAO, chave_do_toque(alvo.email)),))
         preparados.append(Preparado(alvo.email, alvo.nome, nota))
     return preparados

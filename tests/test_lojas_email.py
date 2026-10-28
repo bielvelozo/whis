@@ -260,7 +260,7 @@ def test_a_vigia_prepara_o_email_do_dia_das_lojas_e_a_falha_nao_derruba(tmp_path
     from whis.__main__ import main
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: ())
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: ())
     chamadas: list[dict] = []
 
     def preparar(vault, **opcoes):

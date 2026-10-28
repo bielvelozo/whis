@@ -64,7 +64,7 @@ import argparse
 import logging
 import os
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 from . import palheta as _palheta
@@ -854,7 +854,7 @@ def _comando_hunt(args: argparse.Namespace) -> int:
 def _simular_coleta(configuracao: Configuracao, *, freelas: bool = False) -> int:
     """Só a coleta em Python, sem Claude e sem escrever nada além dos critérios: que fonte responde?"""
     from .criterios_da_cacada import ler_criterios
-    from .fontes_da_cacada import coletar, fonte_sem_conta
+    from .fontes_da_cacada import coletar, fonte_paga, fonte_sem_conta
 
     from .freelas_rapidos import criterios_de_freelas, do_nicho
 
@@ -864,8 +864,8 @@ def _simular_coleta(configuracao: Configuracao, *, freelas: bool = False) -> int
     if freelas:
         opcoes = {"plataformas_pagas": configuracao.cacada_plataformas_pagas}
         criterios = criterios_de_freelas(dele, configuracao.cacada_plataformas_sem_conta, nicho=nicho, **opcoes)
-    sem_conta = configuracao.cacada_plataformas_sem_conta
-    lidas_aqui = [f for f in criterios.fontes if not fonte_sem_conta(f, sem_conta)]
+    sem_conta, pagas = configuracao.cacada_plataformas_sem_conta, configuracao.cacada_plataformas_pagas
+    lidas_aqui = [f for f in criterios.fontes if not fonte_sem_conta(f, sem_conta) and not fonte_paga(f, pagas)]
     coleta = coletar(lidas_aqui, datetime.now().astimezone(), ao_ler=lambda nome: print(f"lendo {nome}...", flush=True))
     print()
     if nicho:
@@ -881,6 +881,8 @@ def _simular_coleta(configuracao: Configuracao, *, freelas: bool = False) -> int
     for fonte in criterios.fontes:
         if fonte_sem_conta(fonte, sem_conta):
             print(f"{fonte.nome}: pulada, sua conta nesse site não está ativa ([cacada].plataformas_sem_conta)")
+        elif fonte_paga(fonte, pagas):
+            print(f"{fonte.nome}: pulada, responder lá pede plano pago ([cacada].plataformas_pagas)")
     for nome, lista in coleta.por_fonte.items():
         no_nicho = f" ({sum(do_nicho(o, nicho) for o in lista)} do nicho)" if nicho else ""
         print(f"{nome}: {len(lista)}{no_nicho}")
@@ -981,11 +983,17 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
     else:
         agora = datetime.now().astimezone()
         ultima_rodada = vigia_de_freelas.caminho_da_ultima_rodada()
+        pagas = configuracao.cacada_plataformas_pagas
+        janela = _janela_da_proposta(configuracao)
         if vigia_de_freelas.voltou_de_parada(ultima_rodada, agora):
-            lidas = vigia_de_freelas.ler_do_nicho(nicho, paginas_da_99freelas=vigia_de_freelas.PAGINAS_NA_VOLTA)
+            lidas = vigia_de_freelas.ler_do_nicho(nicho, paginas_da_99freelas=vigia_de_freelas.PAGINAS_NA_VOLTA, plataformas_pagas=pagas)
             print(f"A vigia ficou mais de 6 h parada: li {vigia_de_freelas.PAGINAS_NA_VOLTA} páginas da 99Freelas para ver o que saiu nesse tempo.")
+        elif janela is not None:
+            lidas = vigia_de_freelas.ler_do_nicho(
+                nicho, paginas_da_99freelas=vigia_de_freelas.PAGINAS_DA_PROPOSTA, ate_idade_da_99freelas=janela, plataformas_pagas=pagas
+            )
         else:
-            lidas = vigia_de_freelas.ler_do_nicho(nicho)
+            lidas = vigia_de_freelas.ler_do_nicho(nicho, plataformas_pagas=pagas)
         vigia_de_freelas.marcar_rodada(ultima_rodada, agora)
     rodada = vigiar(
         nicho,
@@ -1037,6 +1045,16 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
     return saida
 
 
+def _janela_da_proposta(configuracao: Configuracao) -> timedelta | None:
+    """Até que idade de publicado o projeto da 99Freelas ainda serve à proposta automática; sem ela, None."""
+    from .propostas_auto import ENSAIO, JANELA_DO_EXCLUSIVO, LIGADO
+
+    if configuracao.cacada_propostas_auto not in (ENSAIO, LIGADO):
+        return None
+    horas = timedelta(hours=configuracao.cacada_propostas_auto_horas)
+    return horas if configuracao.cacada_propostas_auto_exclusivos else JANELA_DO_EXCLUSIVO + horas
+
+
 def _sequencia_fria(configuracao: Configuracao) -> None:
     """A rodada da sequência do e-mail frio: respostas e devoluções, a fila na janela e o 2º e o 3º e-mail que venceram."""
     from . import celular, sequencia_fria
@@ -1080,13 +1098,13 @@ def _lances_do_freelancer(configuracao: Configuracao, lidas) -> None:
     """Uma vez por dia, os lances que sobram no Freelancer.com, num projeto que a vigia acabou de ler; quando voltam, o celular avisa."""
     from . import celular, lances_do_freelancer
     from .corrida import cacada_correndo, pasta_da_cacada
-    from .fontes_da_cacada import e_do_freelancer
+    from .fontes_da_cacada import e_do_freelancer, tipos_pagos
     from .instancia import OutraInstancia, Trava
-    from .navegador_logado import NavegadorLogado
+    from .navegador_logado import FREELANCER, NavegadorLogado
     from .propostas_auto import NOME_DA_TRAVA
 
     projeto = next((oportunidade.link for oportunidade in lidas if e_do_freelancer(oportunidade.link)), "")
-    if not projeto or cacada_correndo(pasta_da_cacada()):
+    if not projeto or FREELANCER in tipos_pagos(configuracao.cacada_plataformas_pagas) or cacada_correndo(pasta_da_cacada()):
         return
     trava = Trava(pasta_da_cacada() / NOME_DA_TRAVA)
     try:
@@ -1449,7 +1467,7 @@ def _agencias_do_mes(configuracao: Configuracao, *, fakes: bool = False, forcar:
 
 def _comando_procurar(args: argparse.Namespace) -> int:
     """A procura do dia (tarefa Whis-Procura): agências e lojas Shopify lentas novas quando a fila de e-mails ficou curta."""
-    from . import agencias, agencias_email, lojas_email, lojas_shopify
+    from . import agencias, lojas_email, lojas_shopify
     from .medida_no_celular import MedidaNoCelular
 
     configuracao = _configuracao(args)
@@ -1462,7 +1480,7 @@ def _comando_procurar(args: argparse.Namespace) -> int:
         (vault / "cacada").mkdir(parents=True)
         porta_das_agencias, porta_das_lojas = agencias.AgenciasFake(), lojas_shopify.LojasFake()
         estado_das_agencias, estado_das_lojas = raiz / "agencias.json", raiz / "lojas.json"
-        fila_das_agencias, fila_das_lojas = 0, 0
+        fila_das_lojas = 0
         tema = '<script>Shopify.theme = {"name":"Dawn","schema_name":"Dawn","schema_version":"15.0.0"};</script>'
         abrir = lambda url: lojas_shopify.PaginaInicial(tema, url)  # noqa: E731
         medir = lambda url: MedidaNoCelular(9.4, 3.2, 140)  # noqa: E731
@@ -1473,16 +1491,12 @@ def _comando_procurar(args: argparse.Namespace) -> int:
         porta_das_agencias = agencias.AgenciasClaude(**opcoes_do_claude)
         porta_das_lojas = lojas_shopify.LojasClaude(**opcoes_do_claude)
         estado_das_agencias, estado_das_lojas = agencias.caminho_do_estado(), lojas_shopify.caminho_do_estado()
-        fila_das_agencias = agencias_email.na_fila(vault, agencias_email.caminho_do_estado())
         fila_das_lojas = lojas_email.na_fila(vault, lojas_email.caminho_do_estado())
         abrir, medir = None, None
     saida = SAIDA_COMPLETA
     if configuracao.cacada_agencias_por_dia > 0:
         try:
-            resultado = agencias.buscar_se_faltar(
-                vault, porta_das_agencias, estado=estado_das_agencias, na_fila=fila_das_agencias,
-                minimo=agencias.MINIMO_NA_FILA * configuracao.cacada_agencias_por_dia, forcar=args.forcar,
-            )
+            resultado = agencias.buscar_na_procura(vault, porta_das_agencias, estado=estado_das_agencias, forcar=args.forcar)
         except Exception as erro:  # noqa: BLE001 — a busca de lojas roda mesmo assim, e a de agências tenta amanhã
             _log.exception("A busca de agências da procura falhou.")
             print(f"A busca de agências não saiu ({erro}); tenta de novo amanhã.")
@@ -2016,14 +2030,14 @@ def _comando_windows(args: argparse.Namespace) -> int:
                     f"proposta automática na 99Freelas: {configuracao.cacada_propostas_auto}."
                 )
             if args.procura:
-                from .agencias import MINIMO_NA_FILA
+                from .lojas_shopify import MINIMO_NA_FILA
 
                 automacao.agendar_procura(configuracao)
                 feitos.append(
                     f"Procura agendada como '{automacao.NOME_DA_TAREFA_DA_PROCURA}': todo dia às "
-                    f"{configuracao.cacada_horario_da_procura} ela busca na web agências e lojas Shopify lentas "
-                    f"novas quando a fila de e-mails ficou com menos de {MINIMO_NA_FILA}; os e-mails "
-                    f"chegam pela vigia de freelas, um por dia de cada."
+                    f"{configuracao.cacada_horario_da_procura} ela busca na web agências novas a cada 2 dias e "
+                    f"lojas Shopify lentas novas quando a fila de e-mails ficou com menos de {MINIMO_NA_FILA}; os "
+                    f"e-mails chegam pela vigia de freelas, um por dia de cada."
                 )
             if args.meetings:
                 automacao.agendar_reunioes(configuracao)

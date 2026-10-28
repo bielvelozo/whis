@@ -10,10 +10,9 @@ nome de pessoa vira aviso. A seção do mês vai no fim de `agencias-shopify-nov
 
 Roda uma vez por mês (o mês fica em `%LOCALAPPDATA%\whis\cacada\agencias.json`),
 pelo comando ou no fim de uma caçada de freelas inteira. Na procura diária
-(`whis procurar`) ela roda também quando a fila do e-mail das agências fica
-com menos de 5 por escrever, no máximo uma vez por dia; a busca que não acha
-nenhuma nova faz a próxima esperar 7 dias. Pedido dele em 18/10: com um e-mail
-por dia, as 11 que sobravam acabariam em 11 dias.
+(`whis procurar`) ela roda a cada 2 dias, ache nova ou não (pedido dele em
+28/10; até ali ela só rodava com a fila do e-mail curta, e 7 dias depois de
+uma busca vazia).
 """
 
 from __future__ import annotations
@@ -40,8 +39,7 @@ CAMINHO_DAS_NOVAS = f"{PASTA_CACADA}/agencias-shopify-novas.md"
 NOME_DO_ESTADO = "agencias.json"
 TIMEOUT_DA_BUSCA_S = 2400.0
 TURNOS_DA_BUSCA = 60
-MINIMO_NA_FILA = 5
-ESPERA_DEPOIS_DE_VAZIA = timedelta(days=7)
+INTERVALO_NA_PROCURA = timedelta(days=2)
 
 MESES = ("janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro")
 
@@ -142,36 +140,25 @@ def buscar_agencias(
     return ResultadoDasAgencias(tuple(novas), False, CAMINHO_DAS_NOVAS, len(nomes), len(devolvidas), tuple(repetidas))
 
 
-def buscar_se_faltar(
+def buscar_na_procura(
     vault: Path,
     porta: PortaDasAgencias,
     *,
     estado: Path,
-    na_fila: int,
-    minimo: int = MINIMO_NA_FILA,
     agora: datetime | None = None,
     forcar: bool = False,
 ) -> ResultadoDasAgencias:
-    """A busca da procura: só com a fila curta, uma vez por dia, e 7 dias depois de uma que voltou vazia."""
+    """A busca da procura: a cada `INTERVALO_NA_PROCURA`, contado da última, tenha ela achado nova ou não."""
     agora = agora or datetime.now().astimezone()
-    hoje = agora.date().isoformat()
-    memoria = {} if forcar else _ler_estado(estado)
-    motivo = ""
-    if not forcar and na_fila >= minimo:
-        motivo = f"a fila ainda tem {na_fila} agência(s) para escrever"
-    elif memoria.get("dia") == hoje:
-        motivo = "a busca de hoje já foi feita"
-    elif memoria.get("vazia_em"):
-        try:
-            vazia = date.fromisoformat(str(memoria["vazia_em"]))
-        except ValueError:
-            vazia = None
-        if vazia is not None and agora.date() - vazia < ESPERA_DEPOIS_DE_VAZIA:
-            motivo = f"a busca de {vazia:%d/%m} não achou nenhuma nova"
-    if motivo:
-        return ResultadoDasAgencias(ja_feita=True, caminho=CAMINHO_DAS_NOVAS, motivo=motivo)
+    try:
+        ultima = date.fromisoformat(str(_ler_estado(estado).get("dia", "")))
+    except ValueError:
+        ultima = None
+    if not forcar and ultima is not None and agora.date() - ultima < INTERVALO_NA_PROCURA:
+        proxima = ultima + INTERVALO_NA_PROCURA
+        return ResultadoDasAgencias(ja_feita=True, caminho=CAMINHO_DAS_NOVAS, motivo=f"a última foi em {ultima:%d/%m}, a próxima em {proxima:%d/%m}")
     resultado = buscar_agencias(vault, porta, estado=estado, agora=agora, forcar=True)
-    _gravar_estado(estado, dia=hoje, vazia_em=None if resultado.novas else hoje)
+    _gravar_estado(estado, dia=agora.date().isoformat(), vazia_em=None)
     return resultado
 
 

@@ -1,5 +1,6 @@
-Status: needs-info
-Blocked by: lances do Freelancer.com (0/6 no plano grátis em 18/10)
+Status: wontfix
+
+Em 28/10 ele pediu para ignorar o Freelancer.com em todas as estratégias ("lá só tem coisa que eu tenho que pagar para aplicar e é mt concorrido"): o site entrou em `[cacada].plataformas_pagas`, e a vigia, a caçada e o modo freelas não leem mais nada de lá.
 
 # Envio da proposta no Freelancer.com
 

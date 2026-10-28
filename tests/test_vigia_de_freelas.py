@@ -11,7 +11,7 @@ import pytest
 
 from whis import automacao
 from whis.__main__ import main
-from whis.configuracao import Configuracao
+from whis.configuracao import PLATAFORMAS_PAGAS, Configuracao
 from whis.oportunidades import FREELA, Oportunidade
 from whis.vigia_de_freelas import vigiar
 
@@ -191,7 +191,7 @@ def test_com_o_envio_desligado_a_vigia_nao_chama_a_proposta_automatica(tmp_path:
     from whis import propostas_auto, vigia_de_freelas
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: (TEMA,))
     monkeypatch.setattr(propostas_auto, "rodar", lambda *_a, **_k: pytest.fail("a proposta automática rodou desligada"))
 
     assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path))]) == 0
@@ -204,7 +204,7 @@ def test_no_ensaio_a_vigia_passa_a_mesma_leitura_para_a_proposta_automatica(
 
     chamadas: list[dict] = []
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA, REACT))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: (TEMA, REACT))
     monkeypatch.setattr(propostas_auto, "rodar", lambda lidas, **opcoes: chamadas.append({"lidas": lidas, **opcoes}) or propostas_auto.Rodada())
 
     assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, 'propostas_auto = "ensaio"\n'))]) == 0
@@ -218,7 +218,7 @@ def test_falha_da_proposta_automatica_nao_derruba_a_vigia(tmp_path: Path, monkey
     from whis import propostas_auto, vigia_de_freelas
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: (TEMA,))
 
     def quebrar(*_a, **_k):
         raise RuntimeError("quebrou")
@@ -236,7 +236,7 @@ def test_com_o_toque_do_celular_no_chrome_a_proposta_fica_para_a_proxima_hora(
     from whis.instancia import Trava
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: (TEMA,))
     monkeypatch.setattr(propostas_auto, "rodar", lambda *_a, **_k: pytest.fail("a proposta automática rodou com o Chrome ocupado"))
     toque = Trava(pasta_da_cacada() / propostas_auto.NOME_DA_TRAVA).adquirir()
     try:
@@ -253,7 +253,7 @@ def test_a_vigia_prepara_o_email_do_dia_das_agencias_e_a_falha_nao_derruba(
     from whis import agencias_email, vigia_de_freelas
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: (TEMA,))
     chamadas: list[dict] = []
 
     def preparar(vault, **opcoes):
@@ -279,7 +279,7 @@ def test_sem_agencias_por_dia_a_vigia_nem_chama_o_email(tmp_path: Path, monkeypa
     from whis import agencias_email, vigia_de_freelas
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (TEMA,))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: (TEMA,))
     monkeypatch.setattr(agencias_email, "preparar", lambda *_a, **_k: pytest.fail("o e-mail das agências rodou desligado"))
 
     assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, "agencias_por_dia = 0\n"))]) == 0
@@ -437,7 +437,7 @@ def test_a_vigia_passa_o_limite_do_config_e_roda_a_sequencia_fria(
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     lotado = _freela("Shopify theme fix", "https://www.freelancer.com/projects/shopify/fix-9", detalhes="Propostas: 12")
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (lotado,))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: (lotado,))
     chamadas: list[dict] = []
 
     def rodada(vault, **opcoes):
@@ -481,7 +481,25 @@ def test_depois_de_6_h_parada_a_vigia_le_mais_paginas_da_99freelas(tmp_path: Pat
     assert main(["vigia-freelas", "--config", config]) == 0
     assert main(["vigia-freelas", "--config", config]) == 0
 
-    assert chamadas == [{}, {"paginas_da_99freelas": vigia_de_freelas.PAGINAS_NA_VOLTA}, {}]
+    pagas = {"plataformas_pagas": PLATAFORMAS_PAGAS}
+    assert chamadas == [pagas, {"paginas_da_99freelas": vigia_de_freelas.PAGINAS_NA_VOLTA, **pagas}, pagas]
+
+
+def test_com_a_proposta_ligada_a_vigia_le_a_99freelas_ate_a_janela_dela(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from whis import vigia_de_freelas
+    from whis.__main__ import main
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    chamadas: list[dict] = []
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **opcoes: chamadas.append(opcoes) or ())
+    rodada = vigia_de_freelas.caminho_da_ultima_rodada()
+    rodada.parent.mkdir(parents=True)
+    (rodada.parent / "vigia-de-freelas.json").write_text("{}", encoding="utf-8")
+
+    assert main(["vigia-freelas", "--config", str(_config_da_vigia(tmp_path, 'agencias_por_dia = 0\npropostas_auto = "ensaio"\n'))]) == 0
+
+    assert chamadas[0]["paginas_da_99freelas"] == vigia_de_freelas.PAGINAS_DA_PROPOSTA
+    assert chamadas[0]["ate_idade_da_99freelas"] == timedelta(hours=48)
 
 
 def test_a_coleta_le_as_paginas_da_99freelas_que_pedirem():

@@ -14,6 +14,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 
 from .criterios_da_cacada import Criterios, FonteDaCacada
+from .fontes_da_cacada import fonte_paga
 from .navegador_logado import casa_com_palavras
 from .oportunidades import CHANCE_BOA, TENTAR_A_SORTE, Oportunidade, Veredito
 
@@ -309,7 +310,8 @@ def criterios_de_freelas(
     só o PeoplePerHour e a Workana são citados nelas. `cobertos` são os sites
     que o Chrome da caçada leu logado nesta corrida (99Freelas, VintePila): o
     explorador deixa de procurar neles, e volta quando o login cai. Site em
-    `plataformas_pagas` (freelancer.com.br) também sai das buscas. Com `nicho`,
+    `plataformas_pagas` (freelancer.com.br) também sai das buscas, e a fonte de
+    uma plataforma paga com leitor próprio (o Freelancer.com) sai inteira. Com `nicho`,
     das buscas do modo no Freelancer.com só fica a do nicho; as dele em
     `criterios.md` ficam todas.
     """
@@ -336,6 +338,10 @@ def criterios_de_freelas(
     do_modo = [trocas.get(i, fonte) for i, fonte in enumerate(FONTES_DE_FREELA_RAPIDO)]
     if nicho.strip():
         do_modo = [f for f in _buscas_do_freelancer_no_nicho(do_modo, nicho) if f is None or f.nome != NOME_DOS_BOUNTIES]
-    fontes = dele + [fonte for fonte in do_modo if fonte is not None and fonte.nome.casefold() not in nomes]
+    fontes = [
+        fonte
+        for fonte in dele + [fonte for fonte in do_modo if fonte is not None and fonte.nome.casefold() not in nomes]
+        if not fonte_paga(fonte, plataformas_pagas)
+    ]
     procuro = f"{pedido_de_freelas(nicho)}\n\n{criterios.procuro}".rstrip()
     return replace(criterios, fontes=tuple(fontes), procuro=procuro)

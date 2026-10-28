@@ -213,14 +213,18 @@ def test_o_comando_de_teste_da_procura_nao_usa_claude_nem_o_vault(arquivo_de_con
     assert not (caminho_do_vault.parent / "local" / "whis" / "cacada" / "lojas.json").exists()
 
 
-def test_a_procura_de_verdade_conta_a_fila_e_nao_busca_com_ela_cheia(tmp_path: Path, monkeypatch, capsys):
-    from whis import agencias, agencias_email, lojas_email
+def test_a_procura_de_verdade_conta_a_fila_das_lojas_e_as_agencias_a_cada_dois_dias(tmp_path: Path, monkeypatch, capsys):
+    from datetime import date
+
+    from whis import agencias, lojas_email
     from whis.__main__ import main
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    monkeypatch.setattr(agencias_email, "na_fila", lambda vault, estado: 9)
+    estado = agencias.caminho_do_estado()
+    estado.parent.mkdir(parents=True)
+    estado.write_text(f'{{"dia": "{date.today().isoformat()}"}}', encoding="utf-8")
     monkeypatch.setattr(lojas_email, "na_fila", lambda vault, estado: 12)
-    monkeypatch.setattr(agencias.AgenciasClaude, "buscar", lambda self, conhecidas: pytest.fail("buscou agência com a fila cheia"))
+    monkeypatch.setattr(agencias.AgenciasClaude, "buscar", lambda self, conhecidas: pytest.fail("buscou agência antes de 2 dias"))
     monkeypatch.setattr(lojas_shopify.LojasClaude, "buscar", lambda self, conhecidas: pytest.fail("buscou loja com a fila cheia"))
     arquivo = tmp_path / "config.toml"
     arquivo.write_text(f'vault = "{(tmp_path / "vault").as_posix()}"\n', encoding="utf-8")
@@ -228,7 +232,7 @@ def test_a_procura_de_verdade_conta_a_fila_e_nao_busca_com_ela_cheia(tmp_path: P
     assert main(["procurar", "--config", str(arquivo)]) == 0
 
     saida = capsys.readouterr().out
-    assert "Agências: sem busca hoje, a fila ainda tem 9 agência(s) para escrever." in saida
+    assert "Agências: sem busca hoje, a última foi em " in saida
     assert "Lojas: sem busca hoje, a fila ainda tem 12 loja(s) para escrever." in saida
 
 

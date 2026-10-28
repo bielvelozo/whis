@@ -605,14 +605,15 @@ def _etapa_do_perfil(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPl
 def _etapa_da_coleta(estado: _Estado, portas: PortasDaCacada, guarda: GuardaDoPlano, agora: datetime) -> None:
     if estado.checkpoint.get("coletada"):
         return
-    from .fontes_da_cacada import coletar, fonte_sem_conta
+    from .fontes_da_cacada import coletar, fonte_paga, fonte_sem_conta
 
     criterios = estado.criterios
     ja_vistas = links_ja_vistos(estado.raiz, excluir=estado.corrida)
     estado.andamento("coleta", "lendo as fontes")
     sem_conta = estado.configuracao.cacada_plataformas_sem_conta
+    pagas = estado.configuracao.cacada_plataformas_pagas
     coleta = (portas.coletar or coletar)(
-        [f for f in criterios.fontes if not fonte_sem_conta(f, sem_conta)], agora, rede=portas.rede, ao_ler=lambda nome: escrever_andamento(estado.pasta, "coleta", nome)
+        [f for f in criterios.fontes if not fonte_sem_conta(f, sem_conta) and not fonte_paga(f, pagas)], agora, rede=portas.rede, ao_ler=lambda nome: escrever_andamento(estado.pasta, "coleta", nome)
     )
     lidas: dict[str, int] = {nome: len(lista) for nome, lista in coleta.por_fonte.items()}
     falhas: dict[str, str] = dict(coleta.falhas)
@@ -661,11 +662,11 @@ def _coleta_logada(estado: _Estado, portas: PortasDaCacada, perfil: Perfil, lida
     O Chrome fecha antes do explorador: o Claude não roda com ele aberto.
     """
     from . import navegador_logado as _logado
-    from .fontes_da_cacada import coletar_vintepila
+    from .fontes_da_cacada import coletar_vintepila, tipos_pagos
 
     achadas: list[Oportunidade] = []
     with portas.navegador_logado.abrir() as sessao:
-        pagas = set(estado.configuracao.cacada_plataformas_pagas)
+        pagas = set(estado.configuracao.cacada_plataformas_pagas) | tipos_pagos(estado.configuracao.cacada_plataformas_pagas)
         logins = {site: _logado.estado_do_site(sessao, site) for site in _logado.NOMES if site not in pagas}
         estado.checkpoint.guardar(logins=logins)
         if logins.get(_logado.VINTEPILA) == _logado.LOGADO:
@@ -1292,7 +1293,7 @@ def _escrever_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, 
 
 
 def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_andamento: str = "") -> str:
-    from .fontes_da_cacada import ORGANIZACOES_BLOQUEADAS, fonte_sem_conta
+    from .fontes_da_cacada import ORGANIZACOES_BLOQUEADAS, fonte_paga, fonte_sem_conta, tipos_pagos
     from .navegador_logado import NOMES, frase_do_estado
 
     oportunidades = estado.oportunidades()
@@ -1474,6 +1475,8 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
     for fonte in estado.criterios.fontes:
         if fonte_sem_conta(fonte, plataformas_sem_conta):
             linhas.append(f"- {fonte.nome}: pulada, sua conta nesse site não está ativa ([cacada].plataformas_sem_conta)")
+        elif fonte_paga(fonte, estado.configuracao.cacada_plataformas_pagas):
+            linhas.append(f"- {fonte.nome}: pulada, responder lá pede plano pago ([cacada].plataformas_pagas)")
         elif fonte.nome in falhas:
             linhas.append(f"- {fonte.nome}: **não respondeu** — {falhas[fonte.nome]}")
         elif fonte.nome in lidas:
@@ -1484,7 +1487,8 @@ def montar_relatorio(estado: _Estado, guarda: GuardaDoPlano, *, parada: str, em_
     for site, situacao in (logins or {}).items():
         linhas.append(f"- {frase_do_estado(site, situacao)}")
     if logins is not None:
-        for site in (s for s in NOMES if s in estado.configuracao.cacada_plataformas_pagas):
+        pagas = set(estado.configuracao.cacada_plataformas_pagas) | tipos_pagos(estado.configuracao.cacada_plataformas_pagas)
+        for site in (s for s in NOMES if s in pagas):
             linhas.append(f"- {NOMES[site]}: responder lá pede plano pago ([cacada].plataformas_pagas); nada de lá")
     for nome, quantas in lidas.items():
         if nome not in {fonte.nome for fonte in estado.criterios.fontes}:

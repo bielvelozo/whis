@@ -172,6 +172,41 @@ def test_le_as_agencias_com_email_da_empresa_e_pula_as_ja_programadas(tmp_path: 
     assert "sem página de carreiras" in alvos[0].detalhes
 
 
+def test_a_agencia_ja_mapeada_por_outro_endereco_nao_ganha_outro_email(tmp_path: Path):
+    vault = _vault(tmp_path)
+    lista = vault / "cacada" / "agencias-shopify.md"
+    lista.write_text(
+        lista.read_text(encoding="utf-8")
+        + "\n**20. Aloft Agência** · Criciúma/SC · https://aloft.com.br\n- Contato: oi@aloftagencia.com (site).\n"
+        + "\n**21. Econverse** · São Paulo/SP · https://econverse.digital\n- Contato: contato@econverse.digital (site).\n"
+        + "\n**22. Check Commerce** · Florianópolis/SC · https://checkcommerce.com.br/loja\n- Contato: oi@checkstore.com.br (site).\n",
+        encoding="utf-8",
+    )
+    sequencia = tmp_path / "sequencia-fria.json"
+    sequencia.write_text(
+        '{"alvos": {"contato@econverse.com.br": {"nome": "Econverse", "segmento": "agencia"}}}', encoding="utf-8"
+    )
+
+    _preparar(tmp_path, por_dia=5, sequencia=sequencia)
+
+    memoria = json.loads((tmp_path / "agencias-emails.json").read_text(encoding="utf-8"))["emails"]
+    assert memoria["comercial@checkcommerce.com.br"]["situacao"] == "para_aprovar"
+    assert "aloftagencia.com" in memoria["oi@aloftagencia.com"]["motivo"], "o domínio do e-mail já escrito à mão"
+    assert "econverse.com.br" in memoria["contato@econverse.com.br"]["motivo"], "o endereço já na sequência fria"
+    assert "Econverse" in memoria["contato@econverse.digital"]["motivo"], "o nome de quem já recebeu"
+    assert "checkcommerce.com.br" in memoria["oi@checkstore.com.br"]["motivo"], "o site de quem acabou de ser escrita nesta rodada"
+    assert all(dados["situacao"] == "pulado" for email, dados in memoria.items() if email != "comercial@checkcommerce.com.br")
+
+
+def test_o_dominio_de_e_mail_de_todo_mundo_nao_junta_agencias():
+    contatadas = agencias_email.Contatadas(frozenset({"budadigital.com.br"}), frozenset({"aloft"}))
+    alvo = agencias_email.Alvo("Outra", "", "", "contato@gmail.com")
+
+    assert agencias_email._dominio_do_email("contato@gmail.com") == ""
+    assert agencias_email.ja_recebeu(alvo, contatadas) == ""
+    assert agencias_email.ja_recebeu(agencias_email.Alvo("Aloft", "", "", "x@gmail.com"), contatadas)
+
+
 def test_um_email_por_dia_chega_no_celular_com_o_botao(tmp_path: Path):
     feitos, celular, escritor = _preparar(tmp_path)
     de_novo, mesmo_dia, _ = _preparar(tmp_path, agora=AGORA + timedelta(hours=1))

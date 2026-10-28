@@ -61,6 +61,13 @@ from whis.navegador_logado import (
 from whis.freelas_rapidos import criterios_de_freelas
 from whis.oportunidades import FREELA, TENTAR_A_SORTE, Oportunidade, Veredito
 
+
+@pytest.fixture
+def configuracao(configuracao: Configuracao) -> Configuracao:
+    """Estes são do Freelancer.com ativo: desde 28/10 o padrão de [cacada].plataformas_pagas o deixa de fora."""
+    return replace(configuracao, cacada_plataformas_pagas=("freelancer.com.br",))
+
+
 FIXTURES = Path(__file__).parent / "fixtures" / "cacada_logada"
 
 

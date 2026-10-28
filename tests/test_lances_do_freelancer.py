@@ -137,10 +137,28 @@ def test_chrome_fechado_porque_o_perfil_estava_aberto_a_mao_e_perfil_em_uso():
 
 
 
-def _config(tmp_path: Path) -> Path:
+def _config(tmp_path: Path, pagas: str = '["freelancer.com.br"]') -> Path:
     arquivo = tmp_path / "config.toml"
-    arquivo.write_text(f'vault = "{(tmp_path / "vault").as_posix()}"\n[cacada]\nnicho_freela = "shopify"\n', encoding="utf-8")
+    arquivo.write_text(
+        f'vault = "{(tmp_path / "vault").as_posix()}"\n[cacada]\nnicho_freela = "shopify"\nplataformas_pagas = {pagas}\n', encoding="utf-8"
+    )
     return arquivo
+
+
+def test_com_o_freelancer_nas_pagas_a_vigia_nem_le_nem_olha_os_lances(tmp_path: Path, monkeypatch):
+    from whis import vigia_de_freelas
+    from whis.__main__ import main
+    from whis.oportunidades import FREELA, Oportunidade
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
+    do_freelancer = Oportunidade.nova(tipo=FREELA, fonte="Freelancer.com", titulo="Shopify", link=PROJETO)
+    pedidas: list[dict] = []
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **opcoes: pedidas.append(opcoes) or (do_freelancer,))
+    monkeypatch.setattr(lances_do_freelancer, "conferir", lambda **_opcoes: (_ for _ in ()).throw(AssertionError("olhou os lances")))
+
+    assert main(["vigia-freelas", "--config", str(_config(tmp_path, pagas='["freelancer.com.br", "freelancer.com"]'))]) == 0
+
+    assert "freelancer.com" in pedidas[0]["plataformas_pagas"]
 
 
 def test_a_vigia_olha_os_lances_num_projeto_do_freelancer_que_ela_leu(tmp_path: Path, monkeypatch):
@@ -151,7 +169,7 @@ def test_a_vigia_olha_os_lances_num_projeto_do_freelancer_que_ela_leu(tmp_path: 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     da_99 = Oportunidade.nova(tipo=FREELA, fonte="99Freelas", titulo="Loja", link="https://www.99freelas.com.br/project/loja-1")
     do_freelancer = Oportunidade.nova(tipo=FREELA, fonte="Freelancer.com", titulo="Shopify", link=PROJETO)
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (da_99, do_freelancer))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: (da_99, do_freelancer))
     chamadas: list[dict] = []
     monkeypatch.setattr(lances_do_freelancer, "conferir", lambda **opcoes: chamadas.append(opcoes) or (1, 6))
 
@@ -171,7 +189,7 @@ def test_com_zero_lances_a_vigia_nao_manda_o_projeto_do_freelancer_ao_celular(tm
     agora = datetime.now().astimezone()
     da_99 = Oportunidade.nova(tipo=FREELA, fonte="99Freelas", titulo="Tema Shopify", link="https://www.99freelas.com.br/project/tema-1", publicada=agora)
     do_freelancer = Oportunidade.nova(tipo=FREELA, fonte="Freelancer.com", titulo="Shopify theme", link=PROJETO, publicada=agora)
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: (da_99, do_freelancer))
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: (da_99, do_freelancer))
     monkeypatch.setattr(lances_do_freelancer, "conferir", lambda **_opcoes: None)
     mensagens: list[str] = []
     monkeypatch.setattr(celular, "avisar", lambda _configuracao, texto, **_opcoes: mensagens.append(texto) or True)
@@ -195,7 +213,7 @@ def test_sem_projeto_do_freelancer_a_vigia_nem_olha_os_lances(tmp_path: Path, mo
     from whis.__main__ import main
 
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
-    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho: ())
+    monkeypatch.setattr(vigia_de_freelas, "ler_do_nicho", lambda _nicho, **_opcoes: ())
     monkeypatch.setattr(lances_do_freelancer, "conferir", lambda **_opcoes: (_ for _ in ()).throw(AssertionError("olhou os lances")))
 
     assert main(["vigia-freelas", "--config", str(_config(tmp_path))]) == 0

@@ -119,7 +119,12 @@ def test_a_caçada_com_nicho_le_so_a_busca_do_nicho_no_freelancer(configuracao: 
 
     portas = portas_fake()
     portas.coletar = coletar
-    cacar(replace(configuracao, cacada_nicho_freela="shopify"), portas, pasta_do_estado=tmp_path / "estado", modo="freelas")
+    cacar(
+        replace(configuracao, cacada_nicho_freela="shopify", cacada_plataformas_pagas=("freelancer.com.br",)),
+        portas,
+        pasta_do_estado=tmp_path / "estado",
+        modo="freelas",
+    )
 
     buscas = {f.argumento for f in lidas if f.tipo == "freelancer"}
     assert "shopify" in buscas
@@ -133,7 +138,7 @@ def test_a_simulacao_com_nicho_diz_o_que_pode_ser_chance_boa(
     from whis.__main__ import main
 
     arquivo_de_configuracao.write_text(
-        arquivo_de_configuracao.read_text(encoding="utf-8") + '\n[cacada]\nnicho_freela = "Shopify"\n', encoding="utf-8"
+        arquivo_de_configuracao.read_text(encoding="utf-8") + '\n[cacada]\nnicho_freela = "Shopify"\nplataformas_pagas = ["freelancer.com.br"]\n', encoding="utf-8"
     )
     lidas: list[str] = []
 

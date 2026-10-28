@@ -95,6 +95,7 @@ def coletar(
     dormir: Callable[[float], None] = time.sleep,
     ao_ler: Callable[[str], None] | None = None,
     paginas_da_99freelas: int = PAGINAS_DA_99FREELAS,
+    ate_idade_da_99freelas: timedelta | None = None,
 ) -> ColetaDaCacada:
     """Lê cada fonte que é desta coleta, uma de cada vez, e corta o que é velho demais."""
     coleta = ColetaDaCacada()
@@ -109,8 +110,8 @@ def coletar(
                 ao_ler(fonte.nome)
             leitor = _LEITORES[fonte.tipo]
             try:
-                if fonte.tipo == "99freelas" and paginas_da_99freelas != PAGINAS_DA_99FREELAS:
-                    lidas = leitor(cliente, fonte, dormir, paginas=paginas_da_99freelas)
+                if fonte.tipo == "99freelas" and (paginas_da_99freelas != PAGINAS_DA_99FREELAS or ate_idade_da_99freelas):
+                    lidas = leitor(cliente, fonte, dormir, paginas=paginas_da_99freelas, ate_idade=ate_idade_da_99freelas)
                 elif fonte.tipo in _PAGINADOS:
                     lidas = leitor(cliente, fonte, dormir)
                 else:
@@ -547,18 +548,36 @@ def ler_99freelas(
     dormir: Callable[[float], None] = time.sleep,
     *,
     paginas: int = PAGINAS_DA_99FREELAS,
+    ate_idade: timedelta | None = None,
 ) -> tuple[Oportunidade, ...]:
+    """As `paginas` primeiras da listagem; com `ate_idade`, para antes na página em que o projeto mais novo já passou dessa idade."""
     categoria = fonte.argumento or "web-mobile-e-software"
     saida: list[Oportunidade] = []
     for pagina in range(1, paginas + 1):
         if pagina > 1:
             dormir(random.uniform(*PAUSA_ENTRE_PAGINAS_S))
         url = "https://www.99freelas.com.br/projects?" + urlencode({"categoria": categoria, "page": pagina})
-        lidas = interpretar_99freelas(_texto(cliente, url), fonte.nome)
+        agora = datetime.now().astimezone()
+        lidas = interpretar_99freelas(_texto(cliente, url), fonte.nome, agora)
         if not lidas and pagina == 1:
             raise FonteSemResposta("a página da 99Freelas não trouxe projetos (a estrutura mudou?)")
         saida += lidas
+        if ate_idade is not None and _todas_mais_velhas(lidas, agora - ate_idade):
+            break
     return tuple(saida)
+
+
+def _todas_mais_velhas(oportunidades: Sequence[Oportunidade], limite: datetime) -> bool:
+    datas = [_publicada_em(o.publicada) for o in oportunidades]
+    return bool(datas) and all(data is not None and data < limite for data in datas)
+
+
+def _publicada_em(texto: str) -> datetime | None:
+    try:
+        data = datetime.fromisoformat(texto)
+    except ValueError:
+        return None
+    return data if data.tzinfo else data.astimezone()
 
 
 _ITEM_DA_99FREELAS = re.compile(r'<li\b[^>]*class="[^"]*\bresult-item\b[^"]*"[^>]*>', re.I)
@@ -777,6 +796,19 @@ def _organizacao_no_github(link: str) -> str:
     if (partes.hostname or "").casefold() not in {"github.com", "www.github.com"}:
         return ""
     return partes.path.strip("/").split("/", 1)[0].casefold()
+
+
+#: A plataforma paga que tem leitor próprio, pelo tipo da fonte: com o domínio em `[cacada].plataformas_pagas`, a fonte nem é lida.
+TIPO_DA_PLATAFORMA_PAGA = {"freelancer.com": "freelancer"}
+
+
+def tipos_pagos(plataformas: Sequence[str]) -> set[str]:
+    """Os tipos de fonte (e os sites do Chrome da caçada) das plataformas de `[cacada].plataformas_pagas`."""
+    return {TIPO_DA_PLATAFORMA_PAGA[p] for p in (p.strip().casefold() for p in plataformas) if p in TIPO_DA_PLATAFORMA_PAGA}
+
+
+def fonte_paga(fonte: FonteDaCacada, plataformas: Sequence[str]) -> bool:
+    return fonte.tipo.casefold() in tipos_pagos(plataformas)
 
 
 def fonte_sem_conta(fonte: FonteDaCacada, plataformas: Sequence[str]) -> bool:
