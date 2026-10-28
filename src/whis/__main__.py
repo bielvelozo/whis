@@ -1155,9 +1155,10 @@ def _comando_sequencia_fria(args: argparse.Namespace) -> int:
     for modulo, segmento in ((agencias_email, sequencia_fria.AGENCIA), (lojas_email, sequencia_fria.LOJA)):
         for email, registro in agencias_email._ler(modulo.caminho_do_estado())["emails"].items():
             nomes.setdefault(email.casefold(), (str(registro.get("nome") or email), segmento))
-    importados = sequencia_fria.importar_envios(
-        _vault.preparar(configuracao.vault), args.importar, estado=sequencia_fria.caminho_do_estado(), nomes=nomes
-    )
+    vault = _vault.preparar(configuracao.vault)
+    for email, nome in agencias_email.ja_escritas(vault).items():
+        nomes.setdefault(email, (nome, sequencia_fria.AGENCIA))
+    importados = sequencia_fria.importar_envios(vault, args.importar, estado=sequencia_fria.caminho_do_estado(), nomes=nomes)
     sem_nome = [email for email in importados if email not in nomes]
     print(f"{len(importados)} envio(s) entraram na sequência fria: {', '.join(importados) or 'nenhum novo'}.")
     if sem_nome:

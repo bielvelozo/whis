@@ -66,6 +66,8 @@ NAO_ACHEI = "Não achei esse e-mail no Whis; não mandei nada."
 
 _ENTRADA = re.compile(r"^\*\*\d+\.\s*(?P<nome>[^*]+?)\*\*(?P<resto>.*)$")
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_SECAO = re.compile(r"^##\s*\d+\.\s*(?P<nome>[^(·\n]+?)\s*(?:\(|·|$)")
+_PARA = re.compile(r"^\*\*Para:\*\*\s*([\w.+-]+@[\w-]+(?:\.[\w-]+)+)")
 _LINK = re.compile(r"https?://[^\s)>\]]+|www\.[^\s)>\]]+", re.I)
 #: As cores e as fontes do velozo.dev ("Grafite e papel"); a fonte do site não carrega no e-mail, então vai a do sistema.
 _PAPEL, _TINTA, _LINHA, _SINAL, _CINZA, _COR_DO_LINK = "#F3F1EC", "#17181B", "#D3CEC4", "#FF5B2E", "#6B6862", "#C23B14"
@@ -168,6 +170,20 @@ def _alvo(casou: re.Match[str], detalhes: list[str]) -> Alvo | None:
     site = next((parte for parte in partes if parte.startswith("http")), "")
     cidade = next((parte for parte in partes if not parte.startswith("http")), "")
     return Alvo(casou["nome"].strip(), cidade, site, emails[0], "\n".join(detalhes))
+
+
+def ja_escritas(vault: Path) -> dict[str, str]:
+    """O nome de cada agência de `emails-agencias.md` (a seção "## N. Nome (cidade)"), pelo e-mail da linha **Para:**."""
+    arquivo = Path(vault) / CAMINHO_DOS_JA_ESCRITOS
+    if not arquivo.is_file():
+        return {}
+    nomes, nome = {}, ""
+    for linha in arquivo.read_text(encoding="utf-8", errors="replace").splitlines():
+        if (secao := _SECAO.match(linha)) is not None:
+            nome = secao["nome"].strip()
+        elif nome and (para := _PARA.match(linha)) is not None:
+            nomes.setdefault(para[1].casefold(), nome)
+    return nomes
 
 
 def _ja_escritos(vault: Path) -> set[str]:

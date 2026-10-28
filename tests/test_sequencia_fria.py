@@ -549,3 +549,16 @@ def test_o_comando_importa_com_o_nome_que_o_whis_ja_sabe(tmp_path: Path, monkeyp
     assert (alvos["hello@kindbeauty.com.br"]["nome"], alvos["hello@kindbeauty.com.br"]["segmento"]) == ("KIND", "loja")
     saida = capsys.readouterr().out
     assert "2 envio(s) entraram na sequência fria" in saida and "Sem nome no Whis" in saida and "atendimento@nypets.com.br" in saida
+
+
+def test_importar_de_novo_completa_o_nome_de_quem_ficou_so_com_o_codigo(tmp_path: Path):
+    vault = tmp_path / "vault"
+    (vault / "cacada").mkdir(parents=True)
+    (vault / "cacada" / "envios.md").write_text(TABELA, encoding="utf-8")
+    estado = tmp_path / "s.json"
+    sequencia_fria.importar_envios(vault, "cacada/envios.md", estado=estado, nomes={})
+
+    sequencia_fria.importar_envios(vault, "cacada/envios.md", estado=estado, nomes={"atendimento@nypets.com.br": ("New York Pets", "loja")})
+
+    nypets = sequencia_fria.ler(estado)["alvos"]["atendimento@nypets.com.br"]
+    assert (nypets["nome"], nypets["segmento"], [e["passo"] for e in nypets["enviados"]]) == ("New York Pets", "loja", [1, 2])

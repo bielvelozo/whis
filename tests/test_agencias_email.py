@@ -513,3 +513,7 @@ def test_o_html_nao_tem_hover_nem_animacao():
     html = agencias_email.html_do_email(CORPO)
 
     assert ":hover" not in html and "animation" not in html and ";transform:" not in html
+
+
+def test_o_nome_das_ja_programadas_sai_da_secao_delas(tmp_path: Path):
+    assert agencias_email.ja_escritas(_vault(tmp_path)) == {"contato@aloftagencia.com": "Aloft"}

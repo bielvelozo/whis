@@ -1038,6 +1038,9 @@ def importar_envios(
             continue
         email = casou["para"].casefold()
         if email in memoria["alvos"]:
+            alvo = memoria["alvos"][email]
+            if alvo.get("nome") == alvo.get("codigo") and email in nomes:
+                alvo["nome"], alvo["segmento"] = nomes[email]
             continue
         hora = time.fromisoformat(casou["hora"].zfill(5))
         quando = datetime.combine(dia, hora).astimezone().isoformat(timespec="minutes")
