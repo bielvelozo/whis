@@ -39,6 +39,7 @@ PLATAFORMAS_SEM_CONTA = ("peopleperhour", "workana")
 PLATAFORMAS_PAGAS = ("freelancer.com.br",)
 HORARIOS_DA_VIGIA_DE_FREELAS = tuple(f"{hora:02d}:00" for hora in range(7, 24))
 MODOS_DAS_PROPOSTAS_AUTO = ("desligado", "ensaio", "ligado")
+POSTHOG_CHAVE = "phc_o3G5x8Q7jfzSe6G3fscQ5HQjKJDrH3X9fGg6EUFtZsxT"
 
 #: As chaves aceitas em `[daily].horarios`, na ordem em que a semana anda.
 #: Sem acento de propósito: é o que se digita num TOML sem pensar em escape.
@@ -112,6 +113,10 @@ enviar_sozinho = false       # true = na caçada, o Whis se candidata sozinho à
 maximo_de_envios = 10        # quantas candidaturas sozinho por caçada, no máximo
 senha_de_app = ""            # senha de app do Google do Gmail dedicado: o Whis lê a caixa (só leitura) para confirmar contas e listar respostas
 remetente = ""               # quem assina os e-mails às agências e lojas (ex.: voce@seudominio.dev); vazio = o próprio Gmail
+email_antigo = ""            # o Gmail de onde saíram os primeiros e-mails frios antes da caixa nova (ex.: voce@gmail.com): o 2º e o 3º e-mail dessas conversas saem dele, na mesma conversa, e a caixa dele é lida atrás das respostas
+senha_de_app_antiga = ""     # senha de app do Google desse Gmail antigo (myaccount.google.com/apppasswords)
+envios_frios_por_dia = 10    # no máximo tantos e-mails frios por dia saem de [cacada].email (a caixa nova), contando os reenvios; suba devagar até 30 depois de umas semanas sem devolução
+posthog_chave = "phc_o3G5x8Q7jfzSe6G3fscQ5HQjKJDrH3X9fGg6EUFtZsxT"  # a chave pública do projeto velozo.dev no PostHog: o Whis registra lá email_enviado, email_respondido e email_voltou; vazio = não registra
 resend_chave = ""            # chave da Resend com acesso de envio (Resend > API Keys), do domínio do remetente: os e-mails às agências e lojas saem por ela, assinados pelo domínio, e a cópia vai para os Enviados do Gmail; vazio = saem pelo Gmail, que mostra "por gmail.com"
 nome = ""                    # seu nome completo, como vai nos cadastros e candidaturas
 telefone = ""                # telefone com DDD, para os formulários que exigem
@@ -227,6 +232,10 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "senha_de_app", "cacada_senha_de_app", Tipo.SEGREDO),
     Chave("cacada", "remetente", "cacada_remetente", Tipo.TEXTO),
     Chave("cacada", "resend_chave", "cacada_resend_chave", Tipo.SEGREDO),
+    Chave("cacada", "email_antigo", "cacada_email_antigo", Tipo.TEXTO),
+    Chave("cacada", "senha_de_app_antiga", "cacada_senha_de_app_antiga", Tipo.SEGREDO),
+    Chave("cacada", "envios_frios_por_dia", "cacada_envios_frios_por_dia", Tipo.INTEIRO),
+    Chave("cacada", "posthog_chave", "cacada_posthog_chave", Tipo.TEXTO),
     Chave("cacada", "nome", "cacada_nome", Tipo.TEXTO),
     Chave("cacada", "telefone", "cacada_telefone", Tipo.TEXTO),
     Chave("cacada", "cidade", "cacada_cidade", Tipo.TEXTO),
@@ -353,6 +362,10 @@ class Configuracao:
     cacada_senha_de_app: str = ""
     cacada_remetente: str = ""
     cacada_resend_chave: str = ""
+    cacada_email_antigo: str = ""
+    cacada_senha_de_app_antiga: str = ""
+    cacada_envios_frios_por_dia: int = 10
+    cacada_posthog_chave: str = POSTHOG_CHAVE
     cacada_nome: str = ""
     cacada_telefone: str = ""
     cacada_cidade: str = ""
@@ -509,6 +522,12 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         cacada_senha_de_app=str(cacada.get("senha_de_app", "")).replace(" ", "").strip(),
         cacada_remetente=str(cacada.get("remetente", "")).strip(),
         cacada_resend_chave=str(cacada.get("resend_chave", "")).strip(),
+        cacada_email_antigo=str(cacada.get("email_antigo", "")).strip(),
+        cacada_senha_de_app_antiga=str(cacada.get("senha_de_app_antiga", "")).replace(" ", "").strip(),
+        cacada_envios_frios_por_dia=_inteiro_entre(
+            cacada.get("envios_frios_por_dia", 10), "[cacada].envios_frios_por_dia", 0, 50, arquivo
+        ),
+        cacada_posthog_chave=str(cacada.get("posthog_chave", POSTHOG_CHAVE)).strip(),
         cacada_nome=str(cacada.get("nome", "")).strip(),
         cacada_telefone=str(cacada.get("telefone", "")).strip(),
         cacada_cidade=str(cacada.get("cidade", "")).strip(),
