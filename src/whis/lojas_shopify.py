@@ -11,9 +11,9 @@ e-mail da empresa. O Python confere cada uma antes de entrar na lista:
 - não está em "Nunca contatar" (os domínios e os ramos que ele escreveu lá, como a loja do
   emprego e as concorrentes dela, que ficam só no vault) nem já está na lista;
 - medida no celular emulado (`medida_no_celular`), a página é lenta (LCP acima de 4 s), ou o
-  tema é de fábrica (`tema_de_fabrica`: veio da loja de temas e a página inicial bate com a
-  demonstração oficial dele em fontes, cores ou seções). O tema de fábrica é pedido dele em
-  19/10, para oferecer um redesenho com a cara da marca.
+  tema é de fábrica (`tema_de_fabrica`: veio da loja de temas e a página inicial tem o layout
+  da demonstração oficial dele). O tema de fábrica é pedido dele em 19/10, para oferecer um
+  redesenho com a cara da marca.
 
 "Design ruim" não entra: não se mede, e o e-mail só diz o que foi medido ou comparado.
 
@@ -414,7 +414,9 @@ grande). Grandes varejistas, marketplaces e franquias ficam de fora.
 com o ramo (moda, cosméticos, pet, café, suplementos, decoração, presentes), site:myshopify.com com termos \
 como "frete grátis" ou "parcele", e listas de lojas brasileiras na Shopify. Valem mais as que parecem usar um \
 tema da loja de temas da Shopify (Dawn, Horizon, Sense, Refresh, Impulse, Prestige...) do jeito que ele vem, e as \
-lentas; não precisa conferir isso, o Whis compara e mede depois.
+lentas; não precisa conferir isso, o Whis compara e mede depois. Quem usa o tema assim costuma pedir ajuda no \
+fórum da Shopify com o endereço da loja: abra https://community.shopify.com/search.json?q=com.br%20dawn (troque \
+dawn por horizon, refresh, sense, tema, banner...) e leia os domínios .com.br dos posts.
 - Nunca: loja dos RAMOS FORA; loja que diz no rodapé que foi feita por uma agência; nenhuma das JÁ \
 CONHECIDAS, nem com outro domínio.
 - Contato: só o e-mail da empresa (contato@, sac@, atendimento@, comercial@...), copiado da página que você \

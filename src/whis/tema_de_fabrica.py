@@ -6,13 +6,18 @@ marca. "Sem a cara da marca" não se mede a olho, então o Whis compara a págin
 loja com a demonstração oficial do mesmo tema, que a loja de temas da Shopify mostra
 (`data-demo-store-iframe-url-value` em themes.shopify.com/themes/<tema>):
 
+- o layout (as variáveis CSS com número: larguras, espaçamentos, cantos, colunas);
 - as fontes (as variáveis `--font-…family` e os `@font-face`);
 - as cores (as variáveis `--color-…` de fundo, texto, botão e destaque, nome e valor);
 - os tipos de seção da página inicial, na ordem.
 
 É de fábrica o tema que veio da loja de temas (`theme_store_id`, ou um nome de tema público)
-e bate com a demonstração nas cores e em mais uma das três: as cores são a primeira coisa que
-uma marca troca, e o e-mail diz que a marca aparece pouco. O e-mail só cita o que bateu. A
+e tem o layout da demonstração. Cor e fonte não decidem: trocar as duas é o primeiro passo
+no editor de temas, e a loja que só fez isso continua com a cara do tema. Medido em 28/10
+em 30 lojas Shopify do Brasil (24 com tema da loja de temas): a regra das cores não achou
+nenhuma; a do layout achou as cinco que são de fábrica no olho (Dawn com outra cor e outra
+fonte, Horizon com o botão laranja) e deixou de fora todas as personalizadas. O e-mail só
+cita o que bateu. A
 demonstração muda pouco: a impressão dela fica guardada por 30 dias em
 `%LOCALAPPDATA%\whis\cacada\temas-de-fabrica.json`. Um tema com várias predefinições é
 comparado só com a demonstração principal; a loja que partiu de outra fica de fora (perde-se
@@ -37,8 +42,10 @@ _log = logging.getLogger("whis.tema_de_fabrica")
 NOME_DO_ESTADO = "temas-de-fabrica.json"
 VALIDADE_DA_DEMONSTRACAO = timedelta(days=30)
 LOJA_DE_TEMAS = "https://themes.shopify.com/themes/{slug}"
-IGUAIS_PARA_SER_DE_FABRICA = 2
 SEMELHANCA_MINIMA = 0.8
+SEMELHANCA_DO_LAYOUT = 0.75
+MINIMO_DE_MEDIDAS = 8
+LAYOUT = "layout"
 FONTES = "fontes"
 CORES = "cores"
 SECOES = "secoes"
@@ -50,6 +57,7 @@ TEMAS_DA_LOJA = frozenset({
     "impulse", "prestige", "impact", "turbo", "flow", "pipeline", "symmetry", "motion", "warehouse", "empire", "focal",
     "broadcast", "stiletto", "local", "expanse", "palo alto", "mojave", "be yours", "enterprise", "minimog", "kalles",
     "ella", "shrine", "wokiee", "debut", "brooklyn", "streamline", "release", "editions", "minimal", "supply",
+    "wonder", "concept",
 })
 
 _TEMA = re.compile(r"Shopify\.theme\s*=\s*(\{.*?\})\s*;", re.S)
@@ -60,12 +68,16 @@ _VAR_DE_COR = re.compile(r"(--[\w-]*?(?:background|foreground|button|accent|text
 _COR = re.compile(
     r"^(?:#[0-9a-f]{3,8}|(?:rgba?|hsla?)\([^)]*\)|\d{1,3}[ ,]+\d{1,3}[ ,]+\d{1,3}(?:\s*/\s*[\d.]+)?)$", re.I
 )
-_SECAO = re.compile(r'id="shopify-section-template--\d+__([\w-]+)"')
-_SUFIXO_DA_SECAO = re.compile(r"_[A-Za-z0-9]{6}$")
-_APP = re.compile(r"^(?:[0-9a-f]{8}-[0-9a-f]{4}-|\d{6,}|[0-9a-f]{16,})", re.I)
+_VAR = re.compile(r"(--[\w-]+)\s*:\s*([^;{}\"]+)")
+_MEDIDA = re.compile(r"^-?\d+(?:\.\d+)?(?:px|rem|em|%|s|ms)?$")
+_SECAO = re.compile(r'id="shopify-section-template--\d+__([\w-]+)"(?:\s+class="([^"]*)")?')
+_SUFIXO_DA_SECAO = re.compile(r"_(?=[a-z]*[A-Z0-9])[A-Za-z0-9]{6}$")
+_TIPO_NA_CLASSE = re.compile(r"\bshopify-section--([\w-]+)")
+_SEM_TIPO = re.compile(r"^(?:[0-9a-f]{8}-[0-9a-f]{4}-|\d{6,}|[0-9a-f]{16,})", re.I)
 _GENERICAS = frozenset({
     "sans-serif", "serif", "monospace", "cursive", "fantasy", "system-ui", "inherit", "initial", "unset", "-apple-system",
     "blinkmacsystemfont", "arial", "helvetica", "helvetica neue", "segoe ui", "roboto", "ui-sans-serif", "ui-serif",
+    "judgemestar",
 })
 
 
@@ -86,18 +98,22 @@ class DadosDoTema:
 
 @dataclass(frozen=True)
 class Impressao:
-    """As fontes, as cores e as seções de uma página inicial, para comparar com a demonstração."""
+    """As fontes, as cores, as seções e o layout de uma página inicial, para comparar com a demonstração."""
 
     fontes: frozenset[str] = frozenset()
     cores: frozenset[str] = frozenset()
     secoes: tuple[str, ...] = ()
+    medidas: frozenset[str] = frozenset()
 
     def para_json(self) -> dict:
-        return {"fontes": sorted(self.fontes), "cores": sorted(self.cores), "secoes": list(self.secoes)}
+        return {"fontes": sorted(self.fontes), "cores": sorted(self.cores), "secoes": list(self.secoes), "medidas": sorted(self.medidas)}
 
     @classmethod
     def de_json(cls, dados: dict) -> Impressao:
-        return cls(frozenset(dados.get("fontes") or ()), frozenset(dados.get("cores") or ()), tuple(dados.get("secoes") or ()))
+        return cls(
+            frozenset(dados.get("fontes") or ()), frozenset(dados.get("cores") or ()), tuple(dados.get("secoes") or ()),
+            frozenset(dados.get("medidas") or ()),
+        )
 
 
 @dataclass(frozen=True)
@@ -113,11 +129,13 @@ class TemaDeFabrica:
 
     @property
     def de_fabrica(self) -> bool:
-        return CORES in self.iguais and len(self.iguais) >= IGUAIS_PARA_SER_DE_FABRICA
+        return LAYOUT in self.iguais
 
     def frases(self) -> list[str]:
         """O que bateu, em português, do jeito que o e-mail pode dizer."""
         saida = []
+        if LAYOUT in self.iguais:
+            saida.append(f"o mesmo layout da demonstração do {self.tema} (larguras, espaçamentos, cantos e colunas)")
         if FONTES in self.iguais:
             fontes = f" ({', '.join(self.fontes)})" if self.fontes else ""
             saida.append(f"as mesmas fontes da demonstração do {self.tema}{fontes}")
@@ -174,15 +192,26 @@ def impressao(html: str) -> Impressao:
         if _COR.match(valor.strip())
     }
     secoes = []
-    for chave in _SECAO.findall(html):
+    for chave, classe in _SECAO.findall(html):
         tipo = _SUFIXO_DA_SECAO.sub("", chave)
-        if not _APP.match(tipo):
+        if _SEM_TIPO.match(tipo):
+            na_classe = _TIPO_NA_CLASSE.search(classe)
+            tipo = na_classe.group(1) if na_classe else ""
+        if tipo:
             secoes.append(tipo.replace("-", "_"))
-    return Impressao(frozenset(f for f in fontes if f and f not in _GENERICAS), frozenset(cores), tuple(secoes))
+    medidas = {
+        f"{nome.casefold()}={valor.strip()}"
+        for nome, valor in _VAR.findall(html)
+        if _MEDIDA.match(valor.strip()) and "color" not in nome.casefold() and "font" not in nome.casefold()
+    }
+    fontes = {f for f in fontes if f and f not in _GENERICAS and not f.endswith(" fallback")}
+    return Impressao(frozenset(fontes), frozenset(cores), tuple(secoes), frozenset(medidas))
 
 
 def comparar(loja: Impressao, demonstracao: Impressao) -> tuple[str, ...]:
     iguais = []
+    if len(loja.medidas) >= MINIMO_DE_MEDIDAS and _jaccard(Counter(loja.medidas), Counter(demonstracao.medidas)) >= SEMELHANCA_DO_LAYOUT:
+        iguais.append(LAYOUT)
     if loja.fontes and loja.fontes <= demonstracao.fontes:
         iguais.append(FONTES)
     if len(loja.cores) >= 3 and _jaccard(Counter(loja.cores), Counter(demonstracao.cores)) >= SEMELHANCA_MINIMA:
@@ -218,10 +247,12 @@ def _demonstracao(tema: str, *, abrir: AbrirHtml, estado: Path, agora: datetime)
             quando = datetime.fromisoformat(str(guardada.get("quando")))
         except ValueError:
             quando = None
+        impressao_guardada = guardada.get("impressao") or {}
         if quando is not None and agora - quando < VALIDADE_DA_DEMONSTRACAO:
             if not guardada.get("demonstracao"):
                 return None
-            return str(guardada["demonstracao"]), Impressao.de_json(guardada.get("impressao") or {})
+            if "medidas" in impressao_guardada:
+                return str(guardada["demonstracao"]), Impressao.de_json(impressao_guardada)
     pagina_do_tema = abrir(LOJA_DE_TEMAS.format(slug=_slug(tema)))
     casou = _DEMONSTRACAO.search(pagina_do_tema or "")
     html = abrir(casou.group(1)) if casou else None

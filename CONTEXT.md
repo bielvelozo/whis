@@ -76,7 +76,7 @@ O primeiro e-mail para uma loja Shopify lenta da **Procura do dia** (`lojas_emai
 _Avoid_: mala direta, disparo, cold mail
 
 **Tema de fábrica**:
-O tema da loja de temas da Shopify (`theme_store_id`, ou um nome de tema público) usado quase como ele vem (`tema_de_fabrica.py`): a página inicial da loja bate com a demonstração oficial do mesmo tema (o link sai de themes.shopify.com/themes/<tema>) nas cores (nome e valor das variáveis de fundo, texto, botão e destaque, a primeira coisa que uma marca troca) e em mais uma de duas coisas, as fontes e os tipos de seção na ordem. A impressão da demonstração fica 30 dias em `temas-de-fabrica.json`. Um tema com várias predefinições é comparado só com a principal. Pedido dele em 19/10 ("um tema padrão, um tema comprado sem personalização com a cara do site, por exemplo o tema Horizon").
+O tema da loja de temas da Shopify (`theme_store_id`, ou um nome de tema público) usado quase como ele vem (`tema_de_fabrica.py`): a página inicial da loja tem o layout da demonstração oficial do mesmo tema (o link sai de themes.shopify.com/themes/<tema>), medido nas variáveis CSS com número (larguras, espaçamentos, cantos, colunas). Cor e fonte não decidem, porque trocar as duas é o primeiro passo no editor de temas; quando também batem, o e-mail cita, como os tipos de seção na ordem. A impressão da demonstração fica 30 dias em `temas-de-fabrica.json`. Um tema com várias predefinições é comparado só com a principal. Pedido dele em 19/10 ("um tema padrão, um tema comprado sem personalização com a cara do site, por exemplo o tema Horizon").
 _Avoid_: tema feio, tema genérico, cara de template
 
 **Registro de ações**:
