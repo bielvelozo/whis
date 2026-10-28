@@ -143,3 +143,6 @@ ruim. Vamos ter que construir uma interface pra ele."*
 - Consertar os seis achados do DEFERRED um a um. Encurtar a resposta da DM é o único que dá para
   fazer antes, e mesmo esse é acabamento da entrega 3, não interface nova.
 - Interface web hospedada — cortada pelo ADR 0001.
+
+> 2026-09-24 — a névoa *"notícias de IA e tecnologia"* graduou para um mapa próprio:
+> [`.scratch/noticias/map.md`](../noticias/map.md) (o jornal do Whis).
