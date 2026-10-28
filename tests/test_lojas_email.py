@@ -60,8 +60,7 @@ def _corpo(segundos: str = "9 segundos") -> str:
         "e a página baixou 3,2 MB.\n\n"
         "Sou o Gabriel, desenvolvedor Shopify, e desde março cuido do tema de uma loja Shopify Plus. "
         f"Na minha loja de portfólio levei o mesmo tipo de página de 11,9 s para 3,5 s: {VELOCIDADE}\n\n"
-        "Faço o ajuste com escopo, prazo e preço combinados antes, sem mexer no visual. Faz sentido eu mandar o que "
-        "mudaria, com prazo e preço fechados?\n\n"
+        "O ajuste não mexe no visual da loja. Posso te mandar o que eu mudaria na página de vocês?\n\n"
         "Se não for prioridade agora, é só responder que eu não escrevo de novo.\n\n"
         "Abraço,\nGabriel Velozo\ngithub.com/bielvelozo"
     )

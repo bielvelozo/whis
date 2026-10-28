@@ -2,8 +2,7 @@ r"""O primeiro e-mail para as lojas Shopify da procura: um por dia no celular, e
 
 As lojas de `cacada/lojas-shopify.md` (a procura, `lojas_shopify`) recebem, uma de cada
 vez, um e-mail curto: o número medido na página inicial delas no celular, o caso de
-velocidade do portfólio dele e a pergunta se faz sentido ele mandar o que mudaria, com prazo
-e preço fechados. A página é medida de novo na hora de escrever (`medida_no_celular`), e a que
+velocidade do portfólio dele e a pergunta se ele pode mandar o que mudaria. A página é medida de novo na hora de escrever (`medida_no_celular`), e a que
 ficou rápida sai da fila. O Claude escreve, o Python confere (o número medido no texto, a
 linha de "não escrevo de novo", sem preço nem colchete, o link do portfólio e a assinatura), a
 nota nasce em `cacada/lojas-emails/` e a mensagem vai ao celular com o botão "Enviar e-mail". O
@@ -519,7 +518,8 @@ conversão ou abandono.
 - Liga a peça de velocidade do PORTFÓLIO (o caso medido antes e depois), com o link copiado exatamente. O \
 "Site do portfólio" pode ir junto quando fizer sentido mostrar o todo.
 - Diz que o ajuste não mexe no visual da loja.
-- Termina com UMA pergunta: se faz sentido ele mandar o que mudaria, com prazo e preço fechados. Na linha \
+- Termina com UMA pergunta: "Posso te mandar o que eu mudaria na página de vocês?" (cacada/voz.md); nunca \
+"faz sentido", nem prazo e preço antes da resposta. Na linha \
 seguinte: "Se não for prioridade agora, {FRASE_DE_SAIDA}." Assina, cada um numa linha: "Abraço,", \
 "Gabriel Velozo", "github.com/bielvelozo".
 - 110 a 180 palavras. "assunto": curto e específico, até 60 caracteres, sem ponto de exclamação.

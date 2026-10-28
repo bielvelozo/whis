@@ -68,8 +68,8 @@ CORPO = (
     "Eu sou o Gabriel, desenvolvedor Shopify. Desde março cuido do tema de uma loja Shopify Plus, em "
     "Liquid, JavaScript e SCSS, e também escrevo extensões de checkout. O tema que montei para portfólio está aqui: "
     f"{PORTFOLIO}\n\n"
-    "Pego tarefa de tema e de checkout. Vocês costumam chamar alguém de fora quando "
-    "uma seção ou um ajuste de checkout aperta o prazo?\n\n"
+    "Pego tarefa de tema e de checkout. Hoje vocês fazem o código das lojas com o time de vocês ou chamam "
+    "algum dev de fora?\n\n"
     "Abraço,\nGabriel Velozo\ngithub.com/bielvelozo"
 )
 
@@ -281,7 +281,17 @@ def test_a_agencia_de_marketing_ou_de_design_ganha_outro_pedido():
 
 @pytest.mark.parametrize(
     "trecho",
-    ["desenvolvedor Shopify em Matão (SP).", "parceiros da Shopify desde 2022.", "o que mais se parece com isso", "com o escopo combinado antes."],
+    [
+        "desenvolvedor Shopify em Matão (SP).",
+        "parceiros da Shopify desde 2022.",
+        "o que mais se parece com isso",
+        "com o escopo combinado antes.",
+        "Quando a fila aperta, vocês chamam alguém?",
+        "Se aparecer um pico de demanda, me chamem.",
+        "Quando entra mais projeto do que dá pra tocar, vocês chamam alguém?",
+        "Faz sentido para vocês?",
+        "pego uma tarefa pequena, com escopo fechado.",
+    ],
 )
 def test_o_que_soa_como_modelo_volta_ao_claude(trecho: str):
     escrito = EmailEscrito(assunto="Dev Shopify", corpo=CORPO.replace("desenvolvedor Shopify.", f"desenvolvedor Shopify, {trecho}"))

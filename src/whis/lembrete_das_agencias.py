@@ -79,9 +79,7 @@ def lembrar(
 
 def texto_do_lembrete(nome: str) -> str:
     return (
-        f"Oi, pessoal da {nome},\n\n"
-        "Escrevo de novo só para saber se o meu e-mail da semana passada chegou. Se aparecer um pico de demanda "
-        "em Shopify, posso pegar uma tarefa pequena, com escopo fechado. Faz sentido para vocês?\n\n"
+        f"Oi, pessoal da {nome}, tudo certo? Só pra saber se o meu e-mail chegou. Se não for o momento, tranquilo.\n\n"
         "Abraço,\nGabriel Velozo"
     )
 

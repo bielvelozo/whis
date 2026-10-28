@@ -78,9 +78,12 @@ _HORARIO_DELE = re.compile(
     r"\bà noite\b|\bfins? de semana\b|\bfora do (?:meu )?horário\b|\bhorário (?:do|de) (?:meu )?(?:emprego|trabalho)\b", re.I
 )
 #: O que ele apontou em 22/10 como cara de modelo: a cidade dele, o ano e o selo da agência repetidos do site,
-#: a ponte "como vocês X, o que mais se parece é Y" e o "escopo combinado antes".
+#: a ponte "como vocês X, o que mais se parece é Y" e o "escopo combinado antes". Em 28/10, a pergunta que só vale
+#: num aperto ("quando a fila aperta", "pico de demanda"), o "faz sentido", a "tarefa pequena" e o "escopo fechado" (voz.md).
 _CARA_DE_MODELO = re.compile(
-    r"\bMatão\b|\bdesde (?:19|20)\d\d\b|\bservice partner\b|\bfull commerce\b|o que mais se parece|escopo combinado", re.I
+    r"\bMatão\b|\bdesde (?:19|20)\d\d\b|\bservice partner\b|\bfull commerce\b|o que mais se parece|escopo combinado"
+    r"|\baperta(?:m|r|ndo)?\b|pico de demanda|mais projeto do que d[áa]|\bfaz sentido\b|tarefa pequena|escopo fechado",
+    re.I,
 )
 #: As cores e as fontes do velozo.dev ("Grafite e papel"); a fonte do site não carrega no e-mail, então vai a do sistema.
 _PAPEL, _TINTA, _LINHA, _SINAL, _CINZA, _COR_DO_LINK = "#F3F1EC", "#17181B", "#D3CEC4", "#FF5B2E", "#6B6862", "#C23B14"
@@ -674,7 +677,8 @@ oferecendo trabalho por baixo dela: seção de tema, checkout, app, velocidade. 
 depois de ler, então o texto sai pronto.
 {COMO_GENTE}
 Copie o jeito dos EXEMPLOS (o modelo que ele aprovou), nunca as frases:
-- Começa com "Oi, pessoal da <agência>,".
+- Começa com "Oi, pessoal da <agência>, tudo certo?" e se apresenta com "Aqui é o Gabriel, faço lojas Shopify." \
+(cacada/voz.md), nunca "Sou o Gabriel, desenvolvedor Shopify.".
 - Cita UMA coisa concreta que a agência mostra, tirada dos DADOS DA AGÊNCIA (uma loja que ela fez, um cliente), \
 numa frase curta. Nada inventado, nenhum elogio, e nada repetido do discurso do site: ano, selo ou nível de \
 parceiro da Shopify, "foco em", "full commerce", lista de serviços.
@@ -684,7 +688,9 @@ com isso é Y". O "Site do portfólio" da lista pode ir junto, para mostrar o re
 - Oferece o serviço sem condição: o que ele faz (seção de tema, checkout, app, velocidade). Nunca fale de \
 tamanho do trabalho (pequeno, pontual), de escopo, de prazo nem de quando ele trabalha (noite, fim de semana, \
 fora do emprego): a pedido dele, em 21 e 22/10, isso saiu.
-- Termina com UMA pergunta simples: se eles passam esse tipo de trabalho para alguém de fora. Assina, cada um \
+- Termina com UMA pergunta simples sobre como a agência trabalha hoje, no jeito de "Hoje vocês fazem o código \
+das lojas com o time de vocês ou chamam algum dev de fora?". Nunca uma pergunta que só vale num aperto \
+("quando a fila aperta", "pico de demanda", "quando entra mais projeto do que dá"). Assina, cada um \
 numa linha: "Abraço,", "Gabriel Velozo", "github.com/bielvelozo".
 - Quando os DADOS dizem "Tipo: marketing", a agência cuida do tráfego e do marketing de lojas Shopify e não \
 programa a loja: nunca diga que ela faz lojas. Cite um cliente ou serviço dela e ofereça ser o dev por trás dela \

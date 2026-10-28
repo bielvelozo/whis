@@ -376,6 +376,7 @@ def test_o_redesenho_no_jeito_antigo_volta_ao_claude():
     problemas = lojas_email.problemas_do_redesenho(EmailEscrito("Moda Boa", _corpo_antigo()), pecas, "Horizon")
 
     assert problemas == [
+        'soa como modelo ("Faz sentido"); escreva como uma pessoa escreveria',
         "tem de 50 a 100 palavras (este tem 117)",
         f'falta o link do velozo.dev com o código, copiado da linha LINK ("{lojas_email.LINK_RASTREADO.split("?")[0]}?r=")',
         'tem o GitHub ou a linha de "não escrevo de novo", que não vão no primeiro e-mail',
