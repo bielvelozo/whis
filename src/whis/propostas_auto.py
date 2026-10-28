@@ -3,7 +3,9 @@ r"""A proposta automática na 99Freelas: o projeto novo que ele entrega ganha pr
 Em 13/10, seis propostas baratas e específicas na 99Freelas trouxeram um cliente.
 A caçada chega tarde, então a proposta sai da vigia de freelas (`whis
 vigia-freelas`, de hora em hora): da listagem que ela já leu ficam os projetos
-que abriram há pouco para quem não assina (na 99Freelas todo projeto novo
+do `[cacada].nicho_freela` (o nicho citado, ou a loja virtual sem outra
+plataforma; até 20/10 saía proposta para Roblox e TOTVS) que abriram há pouco
+para quem não assina (na 99Freelas todo projeto novo
 fica 24 h só para assinante) e não muito disputados; a página e o
 formulário de proposta conferem de novo; o Claude decide se ele entrega e
 escreve a proposta daquele projeto; o Whis envia pelo Chrome da caçada e confere
@@ -54,7 +56,7 @@ from .cacada_claude import ErroDaCacada, LimiteDoPlano
 from .celular import Resposta
 from .criterios_da_cacada import PASTA_CACADA, PecaDoPortfolio, ler_criterios
 from .fontes_da_cacada import e_da_99freelas
-from .freelas_rapidos import do_nicho
+from .freelas_rapidos import pede_o_nicho
 from .instancia import OutraInstancia, Trava
 from .loja_do_cliente import Loja, medir_do_texto
 from .oportunidades import FREELA, Oportunidade, link_canonico
@@ -466,6 +468,8 @@ def _candidatos(
         if not e_da_99freelas(link) or link in vistos or link in memoria.projetos or link in mandadas:
             continue
         vistos.add(link)
+        if not pede_o_nicho(oportunidade, nicho):
+            continue
         if not travas.exclusivos and "exclusivo para assinantes" in oportunidade.detalhes.casefold():
             continue
         propostas = _propostas(oportunidade)
@@ -478,7 +482,6 @@ def _candidatos(
     return sorted(
         ficam,
         key=lambda o: (
-            not (nicho and do_nicho(o, nicho)),
             _propostas(o) if _propostas(o) is not None else 0,
             -(_publicada(o, agora) or agora).timestamp(),
         ),

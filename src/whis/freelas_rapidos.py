@@ -33,6 +33,14 @@ PERTO_DO_NICHO = {
 }
 
 
+#: A loja virtual que já escolheu outra plataforma não pede o nicho.
+OUTRAS_PLATAFORMAS = {
+    "shopify": (
+        "woocommerce", "wordpress", "nuvemshop", "vtex", "bigcommerce", "magento", "wix", "loja integrada", "tray",
+    ),
+}
+
+
 def palavras_do_nicho(nicho: str) -> tuple[str, ...]:
     nicho = nicho.strip().casefold()
     return PALAVRAS_DO_NICHO.get(nicho, (nicho,)) if nicho else ()
@@ -46,6 +54,14 @@ def do_nicho(oportunidade: Oportunidade, nicho: str) -> bool:
         return True
     so_o_titulo = replace(oportunidade, descricao="")
     return casa_com_palavras(so_o_titulo, PERTO_DO_NICHO.get(nicho.strip().casefold(), ()))
+
+
+def pede_o_nicho(oportunidade: Oportunidade, nicho: str) -> bool:
+    """Onde a proposta do nicho cabe: o nicho citado, ou a loja virtual do `do_nicho` sem outra plataforma escolhida."""
+    if casa_com_palavras(oportunidade, palavras_do_nicho(nicho)):
+        return True
+    outras = OUTRAS_PLATAFORMAS.get(nicho.strip().casefold(), ())
+    return do_nicho(oportunidade, nicho) and not casa_com_palavras(oportunidade, outras)
 
 
 def rebaixar_fora_do_nicho(

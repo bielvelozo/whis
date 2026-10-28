@@ -301,6 +301,26 @@ def test_as_horas_contam_de_quando_o_projeto_abre_para_quem_nao_assina(tmp_path:
     assert [o.link for o in candidatos] == [aberto_ha_pouco.link] and assinante == [] and sessao.visitadas == []
 
 
+def test_com_nicho_so_propoe_onde_o_nicho_cabe(tmp_path: Path):
+    roblox = _freela("https://www.99freelas.com.br/project/roblox-1", titulo="Finalizar jogo multiplayer no Roblox")
+    tema = _freela(
+        "https://www.99freelas.com.br/project/tema-2", titulo="Ajustar seção do tema", descricao="A loja é Shopify e a seção quebra no celular."
+    )
+    loja = _freela(
+        "https://www.99freelas.com.br/project/loja-3",
+        titulo="Criação de loja virtual para venda de camisas de futebol",
+        descricao="Carrinho, tamanhos, Mercado Pago e frete.",
+    )
+    woo = _freela("https://www.99freelas.com.br/project/woo-4", titulo="Loja virtual em WooCommerce", descricao="Tema e plugins.")
+
+    def candidatos(nicho: str) -> set[str]:
+        estado = propostas_auto._Estado(tmp_path / "e.json")
+        return {o.link for o in propostas_auto._candidatos([roblox, tema, loja, woo], Travas(), estado, tmp_path / "vault", AGORA, nicho)}
+
+    assert candidatos("shopify") == {tema.link, loja.link}
+    assert candidatos("") == {roblox.link, tema.link, loja.link, woo.link}
+
+
 def test_a_pagina_confere_de_novo_as_propostas(tmp_path: Path):
     sessao = _logada(projeto=_projeto(propostas=85))
 
