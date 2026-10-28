@@ -10,7 +10,7 @@ Leia primeiro `docs/agents/maquinas.md`, que diz o que roda em cada máquina. Es
 
 ## 1. O que você faz primeiro, no note-biel
 
-1. **Trazer o código.** Este pacote veio no `whis-handoff.bundle`, a partir de origin/master (25dbf4f). Ele traz a branch `handoff-servidor-note` com 5 commits: os 3 do tema de fábrica, a regra de máquinas e este handoff. No checkout do Whis do note-biel:
+1. **Trazer o código.** Este pacote veio no `whis-handoff.bundle`. O bundle precisa só do 5c4d551, de 20/10, que o note-biel já tem. Ele traz a branch `handoff-servidor-note` com 5 commits: os 3 do tema de fábrica, a regra de máquinas e este handoff. No checkout do Whis do note-biel:
    ```powershell
    git status
    git bundle verify $HOME\Downloads\whis-handoff.bundle
