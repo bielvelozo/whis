@@ -69,6 +69,12 @@ inteiro em React e Laravel por R$ 50 em 30 dias não faz sentido). Quando o clie
 dentro dela: a conta passou do teto, proponha o teto; ficou abaixo do começo, o começo. Nunca abaixo da "Oferta \
 mínima do projeto". Projeto grande demais para as horas dele: preço e prazo só da primeira etapa, e o texto diz \
 que a proposta é da primeira etapa. O preço combina com o prazo_dias.
+- Loja de entrada: se "Sobre mim" tem o item "Loja de entrada" e o projeto é montar do zero uma loja simples para \
+quem está começando (tema pronto configurado, poucos produtos, pagamento e frete; dropshipping também), o "preco" \
+é o desse item, no lugar da conta das horas, ainda dentro da faixa do cliente e nunca abaixo da oferta mínima. O \
+texto diz, numa frase e sem número, que esse valor é uma condição de início para as primeiras lojas do portfólio \
+dele, não o preço normal. Loja com integração, app, tema feito do zero ou muitos produtos não é loja de entrada: \
+vale a conta das horas.
 - "preco_motivo": a conta numa frase curta, para ele conferir no celular (ex.: "uns 20 h × R$ 40").
 Se entrega=false: "proposta" vazia, "prazo_dias" 0 e "preco" 0.
 {REGRAS_DE_DISCRICAO}
