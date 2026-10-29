@@ -123,6 +123,17 @@ def mensagens_no_celular(monkeypatch: pytest.MonkeyPatch) -> list[str]:
 
 
 @pytest.fixture(autouse=True)
+def appdata_de_mentira(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """Nenhum teste mexe na Inicialização nem no Menu Iniciar de quem roda a suíte.
+
+    O `whis windows --remover --procura` de um teste apagava o `Whis.lnk` de verdade, e a
+    bandeja não subia no logon seguinte (20/10 e 25/10): sem ela, os botões do Telegram
+    não fazem nada.
+    """
+    monkeypatch.setenv("APPDATA", str(tmp_path_factory.mktemp("appdata")))
+
+
+@pytest.fixture(autouse=True)
 def area_de_transferencia_trancada(monkeypatch: pytest.MonkeyPatch) -> None:
     """Nenhum teste lê, troca ou cola no clipboard de quem roda a suíte.
 

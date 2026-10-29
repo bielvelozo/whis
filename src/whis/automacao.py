@@ -593,12 +593,13 @@ def _depois(hora: str, atraso: timedelta) -> str:
 
 
 def gatilhos_do_vigia(configuracao: Configuracao) -> list[str]:
-    """Dez minutos depois de cada daily, e a ronda diária."""
+    """Dez minutos depois de cada daily, a ronda diária e o logon, que é quando a bandeja pode não ter subido."""
     gatilhos = [
         f"{_DIAS_EM_INGLES[dia]}={_depois(hora, ATRASO_DO_VIGIA)}"
         for dia, hora in configuracao.daily_horarios
     ]
     gatilhos.append(f"Daily={HORA_DA_RONDA_DO_VIGIA}")
+    gatilhos.append("Logon")
     return gatilhos
 
 

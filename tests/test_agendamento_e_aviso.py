@@ -205,7 +205,7 @@ def test_daily_agendada_consulta_o_modulo():
 # -- o vigia ----------------------------------------------------------------
 
 
-def test_o_vigia_roda_dez_minutos_depois_de_cada_daily_e_na_ronda_das_nove(tmp_path: Path):
+def test_o_vigia_roda_dez_minutos_depois_de_cada_daily_na_ronda_das_nove_e_no_logon(tmp_path: Path):
     configuracao = carregar(escrever(tmp_path, HORARIOS_DO_USUARIO))
     espiao = ExecutorEspiao(**{"Get-ScheduledTask": 1})
 
@@ -214,7 +214,7 @@ def test_o_vigia_roda_dez_minutos_depois_de_cada_daily_e_na_ronda_das_nove(tmp_p
     [comando] = espiao.registros()
     assert parametro(comando, "-Nome") == "Whis-Vigia"
     assert parametro(comando, "-Gatilhos") == (
-        "Monday=14:05,Tuesday=14:05,Wednesday=10:35,Thursday=14:05,Friday=10:35,Daily=09:00"
+        "Monday=14:05,Tuesday=14:05,Wednesday=10:35,Thursday=14:05,Friday=10:35,Daily=09:00,Logon"
     )
 
 
@@ -255,7 +255,7 @@ def test_perto_da_meia_noite_o_vigia_fica_no_mesmo_dia_da_semana():
 
     automacao.agendar_vigia(configuracao_com((("segunda", "23:55"),)), executar=espiao)
 
-    assert parametro(espiao.registros()[0], "-Gatilhos") == "Monday=00:05,Daily=09:00"
+    assert parametro(espiao.registros()[0], "-Gatilhos") == "Monday=00:05,Daily=09:00,Logon"
 
 
 def test_desagendar_o_vigia():
@@ -310,6 +310,21 @@ def test_o_vigia_nao_depende_de_nada_do_whis():
     assert "-m whis bandeja" in codigo and "Win32_Process" in codigo
     assert "O Whis precisa de você" in codigo
     assert "CreateToastNotifier($Aumid)" in codigo
+
+
+def test_o_vigia_recria_o_atalho_e_sobe_a_bandeja_caida():
+    texto = automacao.SCRIPT_DO_VIGIA.read_text(encoding="utf-8-sig")
+
+    assert "Startup\\Whis.lnk" in texto and "CreateShortcut" in texto
+    assert '.venv\\Scripts\\pythonw.exe' in texto
+    assert 'Start-Process -FilePath $pythonw -ArgumentList "-m", "whis", "bandeja"' in texto
+    assert "A bandeja não está no ar e não subiu." in texto
+
+
+def test_o_agendamento_entende_o_gatilho_do_logon():
+    texto = automacao.SCRIPT_DE_AGENDAMENTO.read_text(encoding="utf-8-sig")
+
+    assert '-eq "Logon"' in texto and "-AtLogOn" in texto
 
 
 def test_o_toast_faz_o_escape_no_proprio_script():

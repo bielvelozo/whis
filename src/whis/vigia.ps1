@@ -38,10 +38,37 @@ foreach ($nome in ($Tarefas -split ",")) {
     }
 }
 
-$bandeja = Get-CimInstance Win32_Process -Filter "Name = 'pythonw.exe' OR Name = 'python.exe'" |
-    Where-Object { $_.CommandLine -like "*-m whis bandeja*" }
-if (-not $bandeja) {
-    $problemas += "A bandeja não está no ar."
+function Bandeja-NoAr {
+    return [bool](Get-CimInstance Win32_Process -Filter "Name = 'pythonw.exe' OR Name = 'python.exe'" |
+        Where-Object { $_.CommandLine -like "*-m whis bandeja*" })
+}
+
+# O Whis.lnk já sumiu duas vezes da Inicialização sem ninguém saber quem apaga
+# (20/10 e 25/10), e sem a bandeja os botões do Telegram não fazem nada. Por
+# isso o vigia recria o atalho e sobe a bandeja ele mesmo, em vez de só avisar.
+$repo = (Resolve-Path (Join-Path $PSScriptRoot "..\..")).Path
+$pythonw = Join-Path $repo ".venv\Scripts\pythonw.exe"
+$inicializacao = Join-Path $env:APPDATA "Microsoft\Windows\Start Menu\Programs\Startup\Whis.lnk"
+if ((Test-Path $pythonw) -and -not (Test-Path $inicializacao)) {
+    $atalho = (New-Object -ComObject WScript.Shell).CreateShortcut($inicializacao)
+    $atalho.TargetPath = $pythonw
+    $atalho.Arguments = "-m whis bandeja"
+    $atalho.WorkingDirectory = $repo
+    $atalho.Description = "Whis — a palheta na bandeja"
+    $atalho.Save()
+    Write-Output "O atalho da bandeja tinha sumido da Inicialização; recriado."
+}
+
+if (-not (Bandeja-NoAr)) {
+    if (Test-Path $pythonw) {
+        Start-Process -FilePath $pythonw -ArgumentList "-m", "whis", "bandeja" -WorkingDirectory $repo
+        Start-Sleep -Seconds 20
+    }
+    if (Bandeja-NoAr) {
+        Write-Output "A bandeja tinha caído; o vigia subiu de novo."
+    } else {
+        $problemas += "A bandeja não está no ar e não subiu."
+    }
 }
 
 if ($problemas.Count -eq 0) {

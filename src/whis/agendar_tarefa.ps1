@@ -3,7 +3,8 @@
 # É este módulo, e não o schtasks, que liga -StartWhenAvailable: sem ele a
 # tarefa de um dia em que o PC estava desligado no horário não acontece nunca.
 # Os gatilhos vêm numa string só, "Dia=HH:MM" separados por vírgula, com o dia
-# em inglês (Monday..Sunday) ou "Daily" para todo dia. Chamado por whis.automacao.
+# em inglês (Monday..Sunday) ou "Daily" para todo dia, e "Logon" sozinho para
+# dois minutos depois de o usuário entrar. Chamado por whis.automacao.
 param(
     [Parameter(Mandatory = $true)][string]$Nome,
     [Parameter(Mandatory = $true)][string]$Executavel,
@@ -19,6 +20,12 @@ $acao = New-ScheduledTaskAction -Execute $Executavel -Argument $Argumentos -Work
 
 $triggers = @()
 foreach ($gatilho in ($Gatilhos -split ",")) {
+    if ($gatilho.Trim() -eq "Logon") {
+        $noLogon = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
+        $noLogon.Delay = "PT2M"
+        $triggers += $noLogon
+        continue
+    }
     $partes = $gatilho.Trim() -split "=", 2
     if ($partes.Count -ne 2 -or -not $partes[0] -or -not $partes[1]) {
         throw "Gatilho inválido: '$gatilho' (esperado Dia=HH:MM ou Daily=HH:MM)."
