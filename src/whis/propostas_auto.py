@@ -95,6 +95,8 @@ OFERTA_SEM_MINIMO = 50
 LOJA_BASICA = "loja_basica"
 LOJA_COMPLEXA = "loja_complexa"
 PRECO_DA_LOJA = {LOJA_BASICA: 400, LOJA_COMPLEXA: 800}
+#: O prazo de um projeto bem complexo; acima disso a proposta não compete na 99Freelas (pedido dele em 29/10).
+PRAZO_MAXIMO = 16
 LIMITE_DO_TEXTO = 3000
 CHAMADAS_ALEM_DA_COTA = 2
 GUARDA_POR = timedelta(days=30)
@@ -422,7 +424,8 @@ def rodar(
         if problemas:
             resultados.append(_registrar(memoria, oportunidade, PULADA, agora, motivo=f"texto reprovado: {'; '.join(problemas)}"))
             continue
-        prazo = max(1, min(60, escrita.prazo_dias or 7))
+        escrita = no_prazo_maximo(escrita)
+        prazo = max(1, escrita.prazo_dias or 7)
         if escrita.tipo in PRECO_DA_LOJA:
             oferta = max(PRECO_DA_LOJA[escrita.tipo], oferta)
         else:
@@ -533,6 +536,15 @@ def _problemas(escrita: Escrita, oportunidade: Oportunidade, pagina: str, contex
     if escrita.preco <= 0:
         problemas.append("faltou o preço (o campo preco, em reais)")
     return problemas + problemas_do_jeito(escrita.texto, contexto)
+
+
+
+def no_prazo_maximo(escrita: Escrita) -> Escrita:
+    """Corta o prazo em `PRAZO_MAXIMO` e troca no texto o "N dias" do prazo, para o texto e o campo dizerem o mesmo."""
+    if escrita.prazo_dias <= PRAZO_MAXIMO:
+        return escrita
+    texto = re.sub(rf"\b{escrita.prazo_dias}(\s+dias)\b", rf"{PRAZO_MAXIMO}\1", escrita.texto)
+    return replace(escrita, prazo_dias=PRAZO_MAXIMO, texto=texto)
 
 
 MAXIMO_DE_PALAVRAS = 250

@@ -905,6 +905,26 @@ def test_loja_sai_pelo_preco_fixo_da_99freelas_mesmo_com_piso(tmp_path: Path):
     assert basica.resultados[0].preco == 400 and complexa.resultados[0].preco == 800
 
 
+def test_o_prazo_passa_de_16_dias_nunca_e_o_texto_diz_o_mesmo(tmp_path: Path):
+    longo = TEXTO.replace(INICIO_E_REVISOES, " Começo no dia seguinte ao aceite, entrego em até 21 dias e são 2 rodadas de revisão incluídas.")
+    escritor = EscritorFake(respostas=[Escrita(entrega=True, motivo="dá", texto=longo, prazo_dias=21, preco=800, tipo=propostas_auto.LOJA_COMPLEXA)])
+    sessao = _logada()
+
+    rodada, _, _ = _rodar(tmp_path, [_freela()], sessao=sessao, escritor=escritor)
+
+    assert rodada.resultados[0].prazo_dias == 16 and sessao.preenchidos[0][2] == 16
+    assert "entrego em até 16 dias" in sessao.preenchidos[0][3] and "21" not in sessao.preenchidos[0][3]
+    from whis.propostas_auto_claude import SISTEMA_DA_PROPOSTA
+
+    assert "16 dias é o de um projeto bem complexo" in SISTEMA_DA_PROPOSTA
+
+
+def test_prazo_dentro_do_maximo_fica_como_o_claude_escreveu():
+    escrita = Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=10, preco=400)
+
+    assert propostas_auto.no_prazo_maximo(escrita) is escrita
+
+
 def test_frase_que_ele_recusou_na_voz_reprova_a_proposta():
     problemas = propostas_auto.problemas_do_jeito(f"{TEXTO}\nFaz sentido pra você?", CONTEXTO)
 

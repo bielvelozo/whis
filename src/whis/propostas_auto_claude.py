@@ -19,7 +19,7 @@ from typing import Any
 
 from .cacada_claude import ESTILO_DOS_TEXTOS, REGRAS_DE_DISCRICAO, _ChamadaDoClaude
 from .oportunidades import Oportunidade
-from .propostas_auto import LOJA_BASICA, LOJA_COMPLEXA, PRECO_DA_LOJA, Contexto, Escrita
+from .propostas_auto import LOJA_BASICA, LOJA_COMPLEXA, PRAZO_MAXIMO, PRECO_DA_LOJA, Contexto, Escrita
 
 TIMEOUT_DA_PROPOSTA_S = 240.0
 TURNOS_DA_PROPOSTA = 4
@@ -66,8 +66,8 @@ exatamente. Em projeto de loja ou de e-commerce, mostre o portfólio sempre: a "
 portfólio, escrito "velozo.dev" (sem https), e pode vir também UM link da peça que mais casa com o pedido (uma loja \
 inteira do portfólio quando o pedido é montar loja); o texto cita em prosa as outras lojas pelo nome. Fora de loja, \
 no máximo o velozo.dev e um link de peça, só quando casam com o pedido.
-- "prazo_dias": dias corridos realistas para quem trabalha de dia, faz faculdade à noite e faz freela no fim de \
-semana e umas 8 h no meio da semana; arredonde para cima.
+- "prazo_dias": dias corridos curtos o bastante para competir na 99Freelas: {PRAZO_MAXIMO} dias é o de um projeto \
+bem complexo e nunca mais que isso; trabalho menor, bem menos. O texto diz o mesmo número.
 - "preco": em reais, inteiro, o valor da oferta. Estime as horas que o trabalho pede de verdade e multiplique pelo \
 "VALOR DA HORA DELE" abaixo, arredondando para um número redondo. Esse valor já fica um pouco abaixo do que se \
 cobra na 99Freelas, porque ele ainda não tem avaliação lá: não desconte mais nada. O preço precisa mostrar que ele \
