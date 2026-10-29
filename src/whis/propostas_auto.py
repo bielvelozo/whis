@@ -807,7 +807,7 @@ def _enviar_do_celular(
     texto = _texto_guardado(vault, dados)
     campos = {
         "preco": _preco_guardado(vault, dados),
-        "prazo_dias": int(dados.get("prazo_dias") or 0),
+        "prazo_dias": _prazo_guardado(vault, dados),
         "propostas": pagina.propostas if pagina.propostas is not None else dados.get("propostas"),
         "orcamento": pagina.orcamento or str(dados.get("orcamento") or ""),
         "texto": texto,
@@ -869,6 +869,20 @@ def _preco_guardado(vault: Path, dados: dict) -> int:
         if casou and casou.group(1).replace(".", ""):
             return int(casou.group(1).replace(".", ""))
     return int(dados.get("preco") or 0)
+
+
+_PRAZO_DA_NOTA = re.compile(r'^prazo_dias:\s*"?\s*(\d+)', re.M)
+
+
+def _prazo_guardado(vault: Path, dados: dict) -> int:
+    """O `prazo_dias` da nota (ele pode ter editado no Obsidian); sem nota, o do estado."""
+    relativo = str(dados.get("nota") or "")
+    arquivo = Path(vault) / relativo
+    if relativo and arquivo.is_file():
+        casou = _PRAZO_DA_NOTA.search(arquivo.read_text(encoding="utf-8", errors="replace"))
+        if casou:
+            return int(casou.group(1))
+    return int(dados.get("prazo_dias") or 0)
 
 
 def _reais(valor: int) -> str:

@@ -927,12 +927,13 @@ def test_sem_preco_o_claude_escreve_de_novo(tmp_path: Path):
 def test_o_toque_usa_o_preco_da_nota_que_ele_pode_editar(tmp_path: Path):
     _rodar(tmp_path, [_freela()], sessao=_logada(), escritor=_com_preco(300))
     arquivo = tmp_path / "vault" / "cacada" / "propostas-auto" / "sistema-web-para-gerar-mapas-numerologicos-790517.md"
-    arquivo.write_text(arquivo.read_text(encoding="utf-8").replace('preco: "R$ 300"', 'preco: "R$ 450"'), encoding="utf-8")
+    nota = arquivo.read_text(encoding="utf-8").replace('preco: "R$ 300"', 'preco: "R$ 450"').replace("prazo_dias: 3", "prazo_dias: 10")
+    arquivo.write_text(nota, encoding="utf-8")
     sessao = _logada(depois_de_enviar={LINK: _ja_proposto()})
 
     resposta = _tocar(tmp_path, sessao)
 
-    assert sessao.preenchidos[0][1] == 450 and "R$ 450 em 3 dias" in resposta.texto
+    assert sessao.preenchidos[0][1] == 450 and "R$ 450 em 10 dias" in resposta.texto
 
 
 def test_erro_inesperado_do_claude_pula_o_projeto_e_o_estado_fica_gravado(tmp_path: Path):
