@@ -83,6 +83,23 @@ def test_a_busca_do_mes_acrescenta_so_as_novas_sem_e_mail_de_pessoa(tmp_path: Pa
     assert "Aloft Agência" not in nota
 
 
+def test_a_agencia_de_trafego_entra_marcada_e_vira_alvo_do_e_mail_de_marketing(tmp_path: Path):
+    from whis import agencias_email
+
+    vault = _vault(tmp_path)
+    trafego = Agencia(
+        nome="Tráfego Bom", cidade="Campinas/SP", site="https://trafegobom.com.br", contato="contato@trafegobom.com.br",
+        prova="Clientes: Loja Dois (lojadois.com.br)", nota="Performance para e-commerce.", tipo="marketing",
+    )
+
+    buscar_agencias(vault, _Busca([NOVA, trafego]), estado=tmp_path / "agencias.json", agora=AGORA)
+
+    nota = (vault / CAMINHO_DAS_NOVAS).read_text(encoding="utf-8")
+    assert "- Tipo: marketing e tráfego" in nota and nota.count("- Tipo:") == 1
+    alvo = next(alvo for alvo in agencias_email.ler_alvos(vault) if alvo.nome == "Tráfego Bom")
+    assert "Tipo: marketing" in alvo.detalhes
+
+
 def test_so_uma_vez_por_mes_a_nao_ser_forcando(tmp_path: Path):
     vault = _vault(tmp_path)
     estado = tmp_path / "agencias.json"
