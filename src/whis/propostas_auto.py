@@ -61,6 +61,7 @@ from .instancia import OutraInstancia, Trava
 from .loja_do_cliente import Loja, medir_do_texto
 from .oportunidades import FREELA, Oportunidade, link_canonico
 from .prova_do_portfolio import VITRINE, cita_a_vitrine, sem_a_vitrine
+from .sequencia_fria import RECUSADAS, ler_a_voz
 
 _log = logging.getLogger("whis.propostas_auto")
 
@@ -90,6 +91,10 @@ DIAS_DOS_PENDENTES = 2
 NAO_ACHEI = "Não achei essa proposta no Whis (ele guarda 30 dias); não mandei nada."
 FALHAS_DO_CHROME_ATE_AVISAR = 3
 OFERTA_SEM_MINIMO = 50
+#: O preço fixo das lojas na 99Freelas, onde a disputa é de preço (decidido por ele em 29/10).
+LOJA_BASICA = "loja_basica"
+LOJA_COMPLEXA = "loja_complexa"
+PRECO_DA_LOJA = {LOJA_BASICA: 400, LOJA_COMPLEXA: 800}
 LIMITE_DO_TEXTO = 3000
 CHAMADAS_ALEM_DA_COTA = 2
 GUARDA_POR = timedelta(days=30)
@@ -147,6 +152,7 @@ class Contexto:
     nicho: str = ""
     valor_hora: int = 0
     loja: Loja | None = None
+    voz: str = ""
 
 
 @dataclass(frozen=True)
@@ -159,6 +165,7 @@ class Escrita:
     prazo_dias: int = 0
     preco: int = 0
     motivo_do_preco: str = ""
+    tipo: str = ""
 
 
 class Escritor(Protocol):
@@ -416,7 +423,10 @@ def rodar(
             resultados.append(_registrar(memoria, oportunidade, PULADA, agora, motivo=f"texto reprovado: {'; '.join(problemas)}"))
             continue
         prazo = max(1, min(60, escrita.prazo_dias or 7))
-        oferta = max(escrita.preco, oferta, travas.piso)
+        if escrita.tipo in PRECO_DA_LOJA:
+            oferta = max(PRECO_DA_LOJA[escrita.tipo], oferta)
+        else:
+            oferta = max(escrita.preco, oferta, travas.piso)
         if porque:
             situacao, observacao = PARA_APROVAR, porque
         else:
@@ -546,12 +556,17 @@ def problemas_do_jeito(texto: str, contexto: Contexto) -> list[str]:
     linhas = [linha.strip() for linha in texto.strip().splitlines() if linha.strip()]
     if linhas and linhas[-1].casefold().startswith("gabriel"):
         linhas.pop()
+    if linhas and linhas[-1].casefold().startswith("abraço"):
+        linhas.pop()
     if not linhas or not linhas[-1].endswith("?"):
         problemas.append("não termina com uma pergunta que o cliente responde em 10 segundos (a última linha antes de Gabriel)")
     if not _REVISOES.search(texto):
         problemas.append("não diz quantas revisões estão incluídas")
     if not _INICIO.search(texto):
         problemas.append("não diz quando começa, contado do aceite (ex.: \"começo no dia seguinte ao aceite\")")
+    recusada = RECUSADAS.search(texto)
+    if recusada is not None:
+        problemas.append(f'usa "{recusada.group(0)}", que ele recusou (cacada/voz.md, "Nunca usar")')
     if contexto.loja is None and _VIU_NA_LOJA.search(texto):
         problemas.append("fala do que viu na loja do cliente, mas o Whis não mediu a loja")
     return problemas
@@ -1108,6 +1123,7 @@ def contexto_do_vault(vault: Path, nicho: str = "", valor_hora: int = 0) -> Cont
         exemplos=_exemplos(vault),
         nicho=nicho,
         valor_hora=valor_hora,
+        voz=ler_a_voz(vault),
     )
 
 

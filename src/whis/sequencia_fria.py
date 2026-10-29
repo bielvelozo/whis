@@ -97,7 +97,7 @@ _CARA_DE_MODELO = re.compile(
     r"\bMatão\b|\bdesde (?:19|20)\d\d\b|\bservice partner\b|\bfull commerce\b|o que mais se parece|escopo combinado", re.I
 )
 #: As frases que ele recusou no `cacada/voz.md` ("Nunca usar").
-_RECUSADAS = re.compile(
+RECUSADAS = re.compile(
     r"\bapert(?:a|am|ar|ou|ando)\b|pico de demanda|mais projeto do que d|faz sentido|tarefa pequena|escopo fechado|"
     r"\bbora\b|\bshow\b",
     re.I,
@@ -303,7 +303,7 @@ def problemas_do_texto(assunto: str, corpo: str) -> list[str]:
     modelo = _CARA_DE_MODELO.search(corpo)
     if modelo is not None:
         problemas.append(f'soa como modelo ("{modelo.group(0)}"); escreva como uma pessoa escreveria')
-    recusada = _RECUSADAS.search(f"{assunto}\n{corpo}")
+    recusada = RECUSADAS.search(f"{assunto}\n{corpo}")
     if recusada is not None:
         problemas.append(f'usa "{recusada.group(0)}", que ele recusou (cacada/voz.md, "Nunca usar")')
     return problemas

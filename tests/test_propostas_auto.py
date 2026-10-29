@@ -895,6 +895,22 @@ def test_o_preco_nunca_fica_abaixo_da_oferta_minima_nem_do_piso(tmp_path: Path):
     assert abaixo.resultados[0].preco == 50 and piso.resultados[0].preco == 200
 
 
+def test_loja_sai_pelo_preco_fixo_da_99freelas_mesmo_com_piso(tmp_path: Path):
+    def loja(tipo: str) -> EscritorFake:
+        return EscritorFake(respostas=[Escrita(entrega=True, motivo="dá", texto=TEXTO, prazo_dias=7, preco=1200, tipo=tipo)])
+
+    basica, _, _ = _rodar(tmp_path / "a", [_freela()], sessao=_logada(), escritor=loja(propostas_auto.LOJA_BASICA), travas=Travas(piso=900))
+    complexa, _, _ = _rodar(tmp_path / "b", [_freela()], sessao=_logada(), escritor=loja(propostas_auto.LOJA_COMPLEXA))
+
+    assert basica.resultados[0].preco == 400 and complexa.resultados[0].preco == 800
+
+
+def test_frase_que_ele_recusou_na_voz_reprova_a_proposta():
+    problemas = propostas_auto.problemas_do_jeito(f"{TEXTO}\nFaz sentido pra você?", CONTEXTO)
+
+    assert any("Nunca usar" in problema for problema in problemas)
+
+
 def test_sem_preco_o_claude_escreve_de_novo(tmp_path: Path):
     escritor = EscritorFake(
         respostas=[
