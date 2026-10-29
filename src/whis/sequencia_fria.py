@@ -73,6 +73,9 @@ LINK = (
     "https://velozo.dev/br/?r={codigo}&utm_source=email&utm_medium=frio&utm_campaign={campanha}&utm_content={variante}"
 )
 INICIO_DO_LINK = "https://velozo.dev/br/?r="
+#: O e-mail de velocidade leva, no lugar do portfólio, a medida da própria loja no teste do site (29/10).
+INICIO_DA_MEDIDA = "https://velozo.dev/br/velocidade/?loja="
+INICIOS_DO_LINK = (INICIO_DO_LINK, INICIO_DA_MEDIDA)
 TEXTO_DO_LINK = "velozo.dev"
 POSTHOG = "https://us.i.posthog.com/i/v0/e/"
 SMTP_DO_GMAIL = ("smtp.gmail.com", 465)
@@ -231,6 +234,12 @@ def link(codigo: str, variante: str, campanha: str) -> str:
     return LINK.format(codigo=codigo, campanha=campanha, variante=variante)
 
 
+def link_da_medida(link_rastreado: str, site: str) -> str:
+    """O mesmo rastreio levado ao teste de velocidade do site, já com a loja: quem clica vê a medida da própria página."""
+    loja = re.sub(r"^https?://", "", site.strip(), flags=re.I).split("/")[0].casefold()
+    return f"{INICIO_DA_MEDIDA}{loja}&{link_rastreado.split('?', 1)[1]}"
+
+
 def reservar(estado: Path | None, email: str, nome: str, segmento: str, agora: datetime | None = None) -> Reserva:
     """O código e a variante do alvo, escolhidos uma vez e guardados; sem `estado`, só a conta, sem guardar."""
     agora = (agora or datetime.now()).astimezone()
@@ -321,9 +330,9 @@ def problemas_do_primeiro(assunto: str, corpo: str) -> list[str]:
     if not PALAVRAS_DO_PRIMEIRO[0] <= palavras <= PALAVRAS_DO_PRIMEIRO[1]:
         problemas.append(f"tem de {PALAVRAS_DO_PRIMEIRO[0]} a {PALAVRAS_DO_PRIMEIRO[1]} palavras (este tem {palavras})")
     links = _links(corpo)
-    if not any(link.startswith(INICIO_DO_LINK) for link in links):
+    if not any(link.startswith(INICIOS_DO_LINK) for link in links):
         problemas.append(f'falta o link do velozo.dev com o código, copiado da linha LINK ("{INICIO_DO_LINK}")')
-    fora = [link for link in links if not link.startswith(INICIO_DO_LINK)]
+    fora = [link for link in links if not link.startswith(INICIOS_DO_LINK)]
     if fora or len(links) > 1:
         problemas.append(f"tem mais de um link ({(fora or links)[0]}); o único é o do velozo.dev")
     if "github" in corpo.casefold() or _SAIDA.search(corpo):
@@ -342,7 +351,7 @@ def problemas_do_reenvio(corpo: str, passo: int) -> list[str]:
     palavras = len(corpo.split())
     if not PALAVRAS_DO_REENVIO[0] <= palavras <= PALAVRAS_DO_REENVIO[1]:
         problemas.append(f"tem de {PALAVRAS_DO_REENVIO[0]} a {PALAVRAS_DO_REENVIO[1]} palavras (este tem {palavras})")
-    fora = [link for link in _links(corpo) if not link.startswith(INICIO_DO_LINK)]
+    fora = [link for link in _links(corpo) if not link.startswith(INICIOS_DO_LINK)]
     if fora:
         problemas.append(f"tem link de fora ({fora[0]}); o único que pode ir é o do velozo.dev")
     if "github" in corpo.casefold():
@@ -389,7 +398,12 @@ def _linha_em_html(texto: str) -> str:
     for casou in _LINK_NO_TEXTO.finditer(texto):
         endereco = casou.group(0).rstrip(_PONTUACAO_DO_FIM)
         href = endereco if endereco.casefold().startswith("http") else f"https://{endereco}"
-        visivel = TEXTO_DO_LINK if endereco.startswith(INICIO_DO_LINK) else re.sub(r"^https?://", "", endereco).rstrip("/")
+        if endereco.startswith(INICIO_DA_MEDIDA):
+            visivel = "velozo.dev/br/velocidade/?loja=" + endereco[len(INICIO_DA_MEDIDA):].split("&")[0]
+        elif endereco.startswith(INICIO_DO_LINK):
+            visivel = TEXTO_DO_LINK
+        else:
+            visivel = re.sub(r"^https?://", "", endereco).rstrip("/")
         saida.append(escape(texto[inicio:casou.start()]))
         saida.append(f'<a href="{escape(href)}">{escape(visivel)}</a>')
         inicio = casou.start() + len(endereco)
@@ -502,7 +516,7 @@ def _alvo_do_texto(memoria: dict, email: str, corpo: str, nome: str, segmento: s
     """O alvo que não foi reservado (o texto escrito antes da sequência): o código e a variante saem do link que já está no texto."""
     casou = _NOME_NA_ABERTURA.search(corpo)
     alvo = _novo_alvo(memoria, email, nome or (casou["nome"] if casou else email), segmento, agora)
-    link_do_texto = next((_DO_LINK.search(link) for link in _links(corpo) if link.startswith(INICIO_DO_LINK)), None)
+    link_do_texto = next((_DO_LINK.search(link) for link in _links(corpo) if link.startswith(INICIOS_DO_LINK)), None)
     if link_do_texto is not None and link_do_texto["variante"] in (CONVERSA, DIRETO):
         alvo.update(codigo=link_do_texto["codigo"], variante=link_do_texto["variante"], campanha=link_do_texto["campanha"])
     return alvo

@@ -2,9 +2,11 @@ r"""O primeiro e-mail para as lojas Shopify da procura: um por dia no celular, e
 
 As lojas de `cacada/lojas-shopify.md` (a procura, `lojas_shopify`) recebem, uma de cada
 vez, um e-mail curto no jeito dele de escrever (`cacada/voz.md`, desde 28/10): o número medido
-na página inicial delas no celular, a prova com o portfólio pelo link rastreado do velozo.dev e o
-pedido "Posso te mandar o que eu mudaria na página de vocês?". A página é medida de novo na hora
-de escrever (`medida_no_celular`), e a que ficou rápida sai da fila.
+na página inicial delas no celular, o link rastreado do velozo.dev, a prova e o pedido "Posso te
+mandar o que eu mudaria na página de vocês?". A página é medida de novo na hora de escrever
+(`medida_no_celular`), e a que ficou rápida sai da fila. Desde 29/10 a medida sai do teste do
+site, e o link abre a medida da própria loja lá; quando o site falha, a medida é a do Chrome e o
+link é o do portfólio.
 
 A loja com o tema de fábrica (a linha "Tema de fábrica:" da lista, pedido dele em 19/10)
 recebe outro e-mail: o tema que ela usa, o que bateu com a demonstração oficial dele, o
@@ -28,7 +30,7 @@ import json
 import logging
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -50,7 +52,7 @@ from .agencias_email import (
 from .cacada_claude import REGRAS_DE_DISCRICAO, _ChamadaDoClaude
 from .celular import Resposta
 from .criterios_da_cacada import PASTA_CACADA
-from .sequencia_fria import LOJA, Reserva, ler_a_voz, problemas_do_primeiro, reservar
+from .sequencia_fria import LOJA, Reserva, ler_a_voz, link_da_medida, problemas_do_primeiro, reservar
 from .lojas_shopify import CAMINHO_DA_LISTA_DE_LOJAS, dominio, nunca_contatar
 from .medida_no_celular import MedidaNoCelular
 from .tema_de_fabrica import TemaDeFabrica
@@ -271,6 +273,8 @@ def preparar(
             _log.info("E-mail das lojas: %s ficou de fora (%s).", alvo.nome, motivo)
             continue
         reserva = reservar(sequencia, alvo.email, alvo.nome, LOJA, agora)
+        if medida.do_site:
+            reserva = replace(reserva, link=link_da_medida(reserva.link, alvo.site))
         escrito, problemas = _escrever(escritor, alvo, medida, voz, reserva)
         feitos_hoje[VELOCIDADE] += 1
         if escrito is None or problemas:
@@ -521,8 +525,12 @@ número ("<tempo>: é o tempo que a página inicial de vocês leva para aparecer
 "Aqui é o Gabriel, faço lojas Shopify.", mais curto.
 - Só o que a MEDIDA traz: nunca invente a causa (imagem, app, script), nunca cite estatística de venda, \
 conversão ou abandono, nunca diga que viu a loja de outro jeito.
+- O LINK copiado exatamente, uma vez só (é o único link do e-mail). Quando ele é o da medida \
+(velozo.dev/br/velocidade/?loja=...), abre a medida completa da página deles: vai logo depois do número, numa \
+frase curta dizendo que a medida completa está ali, e a prova fica sem link. Quando é o do portfólio \
+(velozo.dev/br/?r=...), vai no fim da prova, como o portfólio.
 - A prova, num parágrafo: trabalha com e-commerce há mais de 3 anos, com otimização e redesign, e agora tá se \
-especializando em Shopify; e o portfólio, com o LINK copiado exatamente (é o único link do e-mail).
+especializando em Shopify.
 - O pedido no fim: "Posso te mandar o que eu mudaria na página de vocês?". Nunca prazo e preço, nunca pedido \
 de call, nunca "Faz sentido".
 - Despedida, cada um numa linha: "Abraço," e "Gabriel". Nada depois.

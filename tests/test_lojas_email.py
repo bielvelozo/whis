@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from whis import lojas_email
+from whis import lojas_email, sequencia_fria
 from whis.agencias_email import EmailEscrito, ErroDoEmail
 from whis.lojas_shopify import CAMINHO_DA_LISTA_DE_LOJAS
 from whis.medida_no_celular import MedidaNoCelular
@@ -245,6 +245,34 @@ def test_o_pedido_leva_a_medida_o_jeito_de_escrever_o_tempo_a_variante_e_o_link(
 
 def test_o_primeiro_da_loja_no_jeito_do_voz_passa():
     assert lojas_email.problemas_da_loja(EmailEscrito("Bela Pele", _corpo()), MedidaNoCelular(9.2, 3.2, 140)) == []
+
+
+DA_MEDIDA = (
+    "https://velozo.dev/br/velocidade/?loja=belapele.com.br&r=bela-pele&utm_source=email&utm_medium=frio"
+    "&utm_campaign=2026-10&utm_content=conversa"
+)
+
+
+def test_com_a_medida_do_site_o_link_abre_a_medida_da_propria_loja(tmp_path: Path):
+    _, celular, escritor, _ = _preparar(tmp_path, medidas=[MedidaNoCelular(9.2, 3.2, 140, do_site=True)])
+
+    assert escritor.reservas[0].link == DA_MEDIDA and len(celular) == 1
+
+
+def test_o_primeiro_com_o_link_da_medida_passa_e_o_html_mostra_a_loja():
+    corpo = (
+        "Oi, pessoal da Bela Pele, tudo certo?\n\n"
+        "Aqui é o Gabriel, faço lojas Shopify. Medi a página inicial de vocês num celular em 4G e a imagem principal "
+        f"levou 9 segundos para aparecer. Deixei a medida completa aqui: {DA_MEDIDA}\n\n"
+        "Trabalho com e-commerce há mais de 3 anos, com otimização e redesign, e agora tô me especializando em Shopify.\n\n"
+        "Posso te mandar o que eu mudaria na página de vocês?\n\n"
+        "Abraço,\nGabriel"
+    )
+
+    assert lojas_email.problemas_da_loja(EmailEscrito("Bela Pele", corpo), MedidaNoCelular(9.2, 3.2, 140, do_site=True)) == []
+    html = sequencia_fria.html_simples(corpo)
+    assert ">velozo.dev/br/velocidade/?loja=belapele.com.br</a>" in html and "utm_content=conversa" in html
+    assert "velocidade/?loja=" in lojas_email.SISTEMA_DO_EMAIL_DA_LOJA
 
 
 def _config(tmp_path: Path, extra: str = "") -> Path:

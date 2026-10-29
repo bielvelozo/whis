@@ -1200,7 +1200,7 @@ def _emails_das_agencias(configuracao: Configuracao) -> None:
 def _emails_das_lojas(configuracao: Configuracao) -> None:
     """Os e-mails do dia para as lojas Shopify da procura (lenta, ou com o tema de fábrica): medida ou comparada de novo, escrita e mandada ao celular com o botão."""
     from . import celular, lojas_email, lojas_shopify, sequencia_fria, tema_de_fabrica
-    from .medida_no_celular import medir
+    from .medida_no_celular import medir_para_o_email
 
     if configuracao.cacada_lojas_por_dia <= 0 and configuracao.cacada_lojas_redesenho_por_dia <= 0:
         return
@@ -1210,7 +1210,7 @@ def _emails_das_lojas(configuracao: Configuracao) -> None:
         estado=lojas_email.caminho_do_estado(),
         celular=lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes),
         por_dia=configuracao.cacada_lojas_por_dia,
-        medir_no_celular=medir,
+        medir_no_celular=medir_para_o_email,
         por_dia_redesenho=configuracao.cacada_lojas_redesenho_por_dia,
         conferir_tema=lambda site: lojas_shopify.conferir_tema_do_site(site, tema_de_fabrica.caminho_do_estado()),
         sequencia=sequencia_fria.caminho_do_estado(),
