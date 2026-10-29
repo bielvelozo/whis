@@ -7,7 +7,8 @@ agência mostra, a prova com o portfólio pelo link rastreado do velozo.dev e a 
 código com o time delas ou chamam um dev de fora. Cada agência ganha um código e uma variante de
 tom na sequência fria (`sequencia_fria`), que o link leva para o PostHog. A entrada com
 `- Tipo: marketing` ou `- Tipo: design` (desde 20/10: agência de tráfego e estúdio que atendem
-loja Shopify sem programar) ganha a oferta de ser o dev por trás. O Claude escreve, o Python
+loja Shopify sem programar) ganha a oferta de ser o dev por trás, e a com `- Tipo: curso` (desde
+29/10: curso ou mentoria de e-commerce) a de montar a loja dos alunos que estão começando. O Claude escreve, o Python
 confere (o jeito do voz.md, sem preço, sem o horário dele, sem colchete, com o link rastreado como
 único link), a nota nasce em `cacada/agencias-emails/` e a mensagem vai ao celular com o botão
 "Enviar e-mail". O toque passa o texto da nota (editável no Obsidian) à sequência fria, que manda
@@ -726,6 +727,10 @@ programa a loja: nunca diga que ela faz lojas. Cite um cliente ou serviço dela,
 quando um cliente pedir ajuste na loja, e pergunte quem faz isso hoje para os clientes dela.
 - Quando os DADOS dizem "Tipo: design", o estúdio desenha a loja e não programa: cite uma loja que ele desenhou \
 e pergunte quem faz o código dessas lojas hoje.
+- Quando os DADOS dizem "Tipo: curso", é um curso ou mentoria que ensina a abrir loja na Shopify e não monta \
+loja: nunca diga que eles fazem lojas. Cite o curso ou a turma, diga que ele monta a loja de quem está \
+começando, e pergunte o que os alunos fazem hoje quando precisam de alguém para montar a loja. Nunca fale de \
+comissão, indicação paga ou desconto para aluno.
 - VARIANTE "conversa": conta como chegou na agência ("Vi a loja da X no site de vocês"), em tom de conversa. \
 VARIANTE "direto": mais curto, sem contar como chegou: a apresentação, a prova e a pergunta.
 - Despedida, cada um numa linha: "Abraço," e "Gabriel". Nada depois.

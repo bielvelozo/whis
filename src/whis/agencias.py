@@ -17,6 +17,10 @@ uma busca vazia).
 Desde 28/10 a busca traz também agências de tráfego pago e performance que
 atendem lojas Shopify (`- Tipo: marketing`): elas não programam a loja, e o
 e-mail das agências oferece a elas ser o dev por trás dos clientes delas.
+
+Desde 29/10 traz também cursos e mentorias de e-commerce e dropshipping na Shopify
+(`- Tipo: curso`, o grupo de parceiros do roadmap de 28/10): os alunos estão começando e
+precisam de alguém para montar a loja, que é a loja de entrada dele.
 """
 
 from __future__ import annotations
@@ -87,6 +91,7 @@ class Agencia:
 LINHA_DO_TIPO = {
     "marketing": "marketing e tráfego (atende lojas Shopify, não programa a loja)",
     "design": "design (desenha a loja, não programa)",
+    "curso": "curso ou mentoria de e-commerce (os alunos abrem loja Shopify, não monta a loja)",
 }
 
 
@@ -201,15 +206,20 @@ mostra (no site, no portfólio ou no perfil do diretório de parceiros da Shopif
 tráfego pago, performance ou CRO que atende lojas Shopify ou de e-commerce e não programa a loja (cases, clientes \
 ou "Shopify" à mostra no site); os clientes dela precisam de alguém para a loja, e ele quer ser esse dev. Gestor \
 de tráfego sozinho só entra com site próprio e e-mail da empresa. "tipo" "design": estúdio que desenha a loja e \
-não programa.
+não programa. "tipo" "curso": curso, mentoria ou comunidade que ensina a abrir loja na Shopify ou dropshipping \
+na Shopify (turma, aulas ou alunos à mostra); quem está começando precisa de alguém para montar a loja, e ele \
+quer ser indicado aos alunos. Só com site próprio e e-mail da empresa; perfil de influenciador sem empresa não \
+entra.
 - Não traga nenhuma da lista JÁ CONHECIDAS, nem com outro nome ou outro domínio.
 - Contato: só o da empresa (contato@, comercial@, formulário, WhatsApp comercial), copiado da página que você \
 abriu. Nunca e-mail com nome de pessoa. Se não achar, diga onde fica o formulário.
-- Traga de 3 a 12, metade de cada grupo quando der: de "loja", as mais prováveis de terceirizar primeiro \
-(estúdio pequeno ou médio, só Shopify, vaga ou "banco de talentos", "parceria"); de "marketing", as pequenas e \
-médias com mais lojas de e-commerce entre os clientes. Pouco e certo vale mais que muito e duvidoso.
+- Traga de 3 a 12, dividindo entre "loja", "marketing" e "curso" quando der: de "loja", as mais prováveis de \
+terceirizar primeiro (estúdio pequeno ou médio, só Shopify, vaga ou "banco de talentos", "parceria"); de \
+"marketing", as pequenas e médias com mais lojas de e-commerce entre os clientes; de "curso", os que têm turma \
+ativa e falam de Shopify, não só de marketplace. Pouco e certo vale mais que muito e duvidoso.
 Para cada uma: nome, cidade (cidade/UF), site, contato, tipo, prova (até 3 lojas com domínio; em "marketing", \
-lojas ou clientes de e-commerce que ela atende) e nota (uma frase: tamanho, se é parceira da Shopify, sinal de \
+lojas ou clientes de e-commerce que ela atende; em "curso", o nome do curso ou da turma e lojas de alunos, se \
+houver) e nota (uma frase: tamanho, se é parceira da Shopify, sinal de \
 que terceiriza ou de que atende lojista)."""
 
 ESQUEMA_DAS_AGENCIAS = {
@@ -226,7 +236,7 @@ ESQUEMA_DAS_AGENCIAS = {
                     "contato": {"type": "string"},
                     "prova": {"type": "string"},
                     "nota": {"type": "string"},
-                    "tipo": {"type": "string", "enum": ["loja", "marketing", "design"]},
+                    "tipo": {"type": "string", "enum": ["loja", "marketing", "design", "curso"]},
                 },
                 "required": ["nome", "cidade", "site", "contato", "prova", "nota", "tipo"],
                 "additionalProperties": False,

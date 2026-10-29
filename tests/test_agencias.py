@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from whis.agencias import CAMINHO_DA_LISTA, CAMINHO_DAS_NOVAS, Agencia, buscar_agencias, ler_conhecidas
+from whis.agencias import CAMINHO_DA_LISTA, CAMINHO_DAS_NOVAS, SISTEMA_DAS_AGENCIAS, Agencia, buscar_agencias, ler_conhecidas
 
 AGORA = datetime(2026, 10, 17, 4, 0, tzinfo=timezone(timedelta(hours=-3)))
 
@@ -98,6 +98,24 @@ def test_a_agencia_de_trafego_entra_marcada_e_vira_alvo_do_e_mail_de_marketing(t
     assert "- Tipo: marketing e tráfego" in nota and nota.count("- Tipo:") == 1
     alvo = next(alvo for alvo in agencias_email.ler_alvos(vault) if alvo.nome == "Tráfego Bom")
     assert "Tipo: marketing" in alvo.detalhes
+
+
+def test_o_curso_de_e_commerce_entra_marcado_e_vira_alvo_do_e_mail_de_curso(tmp_path: Path):
+    from whis import agencias_email
+
+    vault = _vault(tmp_path)
+    curso = Agencia(
+        nome="Escola da Loja", cidade="São Paulo/SP", site="https://escoladaloja.com.br", contato="contato@escoladaloja.com.br",
+        prova="Turma Loja do Zero na Shopify", nota="Ensina dropshipping na Shopify.", tipo="curso",
+    )
+
+    buscar_agencias(vault, _Busca([curso]), estado=tmp_path / "agencias.json", agora=AGORA)
+
+    nota = (vault / CAMINHO_DAS_NOVAS).read_text(encoding="utf-8")
+    assert "- Tipo: curso ou mentoria de e-commerce" in nota
+    alvo = next(alvo for alvo in agencias_email.ler_alvos(vault) if alvo.nome == "Escola da Loja")
+    assert "Tipo: curso" in alvo.detalhes
+    assert '"curso"' in SISTEMA_DAS_AGENCIAS and "Tipo: curso" in agencias_email.SISTEMA_DO_EMAIL
 
 
 def test_so_uma_vez_por_mes_a_nao_ser_forcando(tmp_path: Path):
