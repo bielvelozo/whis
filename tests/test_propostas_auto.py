@@ -1021,22 +1021,22 @@ def test_o_chrome_que_abre_zera_a_contagem_de_falhas(tmp_path: Path):
 
 
 
-def test_a_vitrine_nunca_vai_na_proposta_nem_quando_esta_no_portfolio():
+def test_a_vitrine_vai_na_proposta_junto_de_uma_peca():
     from whis.criterios_da_cacada import PecaDoPortfolio
 
     portfolio = (*contexto_do_portfolio(), PecaDoPortfolio("Site do portfólio", "https://velozo.dev", "o portfólio inteiro"))
     peca = TEXTO.replace("todo dia", "todo dia (https://github.com/bielvelozo/inkly-shopify-theme)")
-    com_a_vitrine = TEXTO.replace("todo dia", "todo dia (https://velozo.dev)")
-    sem_esquema = TEXTO.replace("todo dia", "todo dia, veja em velozo.dev/br")
-    dois = peca.replace("Gabriel", "https://github.com/bielvelozo/inkly-shopify-theme#cart\n\nGabriel")
+    com_a_vitrine = peca.replace("Gabriel", "Dá uma olhada no meu portfólio: velozo.dev\n\nGabriel")
+    com_esquema = peca.replace("Gabriel", "https://velozo.dev\n\nGabriel")
+    dois = com_a_vitrine.replace("Gabriel", "https://github.com/bielvelozo/inkly-shopify-theme#cart\n\nGabriel")
 
     assert problemas_do_texto(peca, _freela(), "", portfolio) == []
-    assert any("vitrine" in problema and "contato fora da plataforma" in problema for problema in problemas_do_texto(com_a_vitrine, _freela(), "", portfolio))
-    assert any("vitrine" in problema for problema in problemas_do_texto(sem_esquema, _freela(), "", portfolio))
-    assert "mais de um link" in problemas_do_texto(dois, _freela(), "", portfolio)
+    assert problemas_do_texto(com_a_vitrine, _freela(), "", portfolio) == []
+    assert problemas_do_texto(com_esquema, _freela(), "", portfolio) == []
+    assert "mais de um link além do velozo.dev" in problemas_do_texto(dois, _freela(), "", portfolio)
 
 
-def test_o_claude_da_proposta_nao_recebe_a_vitrine(tmp_path: Path):
+def test_o_claude_da_proposta_recebe_a_vitrine(tmp_path: Path):
     vault = tmp_path / "vault"
     (vault / "cacada").mkdir(parents=True)
     (vault / "cacada" / "criterios.md").write_text(
@@ -1050,5 +1050,5 @@ def test_o_claude_da_proposta_nao_recebe_a_vitrine(tmp_path: Path):
 
     from whis.propostas_auto_claude import SISTEMA_DA_PROPOSTA
 
-    assert [peca.nome for peca in contexto.portfolio] == ["Tema Shopify Inkly"]
-    assert "Site do portfólio" not in SISTEMA_DA_PROPOSTA
+    assert [peca.nome for peca in contexto.portfolio] == ["Tema Shopify Inkly", "Site do portfólio"]
+    assert "velozo.dev" in SISTEMA_DA_PROPOSTA

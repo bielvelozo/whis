@@ -61,11 +61,11 @@ entre duas coisas (ex.: "O tema já está publicado ou ainda em construção?"),
 para ele explicar o projeto; depois, a despedida da VOZ em duas linhas: "Abraço," e "Gabriel".
 - Nunca: dizer que usa IA, ChatGPT, Claude ou "inteligência artificial" para trabalhar (só fale de IA quando o \
 próprio projeto pede IA); preço, valor ou "R$" no texto (o preço vai no campo do formulário); e-mail, telefone, \
-WhatsApp, redes ou convite para conversar fora da plataforma; link, a não ser UM link do "Portfólio" abaixo, \
-copiado exatamente. Em projeto de loja ou de e-commerce, mostre o portfólio sempre: o link é a peça que mais \
-casa com o pedido (uma loja inteira do portfólio quando o pedido é montar loja) e o texto cita em prosa as outras \
-lojas pelo nome. A "Prova" da VOZ termina no velozo.dev, mas aqui o link é a peça: o velozo.dev mostra e-mail e \
-Fiverr, e contato fora da plataforma é proibido na 99Freelas.
+WhatsApp, redes ou convite para conversar fora da plataforma; link que não esteja no "Portfólio" abaixo, copiado \
+exatamente. Em projeto de loja ou de e-commerce, mostre o portfólio sempre: a "Prova" da VOZ termina no site do \
+portfólio, escrito "velozo.dev" (sem https), e pode vir também UM link da peça que mais casa com o pedido (uma loja \
+inteira do portfólio quando o pedido é montar loja); o texto cita em prosa as outras lojas pelo nome. Fora de loja, \
+no máximo o velozo.dev e um link de peça, só quando casam com o pedido.
 - "prazo_dias": dias corridos realistas para quem trabalha de dia, faz faculdade à noite e faz freela no fim de \
 semana e umas 8 h no meio da semana; arredonde para cima.
 - "preco": em reais, inteiro, o valor da oferta. Estime as horas que o trabalho pede de verdade e multiplique pelo \
