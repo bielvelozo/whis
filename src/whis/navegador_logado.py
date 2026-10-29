@@ -32,6 +32,7 @@ FREELANCER = "freelancer"
 NOVENTA_E_NOVE = "99freelas"
 VINTEPILA = "vintepila"
 FREELANCER_BR = "freelancer.com.br"
+DISCORD = "discord"
 
 NOMES = {
     FREELANCER: "Freelancer.com",
@@ -46,6 +47,7 @@ PAGINAS_DE_CONFERENCIA = {
     NOVENTA_E_NOVE: "https://www.99freelas.com.br/projects?categoria=web-mobile-e-software",
     VINTEPILA: "https://www.vintepila.com.br/trabalhos-freelance/",
     FREELANCER_BR: "https://freelancer.com.br/projetos",
+    DISCORD: "https://discord.com/channels/@me",
 }
 
 #: As abas que `whis navegador` abre para ele entrar.
@@ -54,10 +56,12 @@ PAGINAS_DE_LOGIN = (
     "https://www.99freelas.com.br/login",
     "https://www.vintepila.com.br/trabalhos-freelance/",
     "https://freelancer.com.br/projetos",
+    "https://discord.com/login",
 )
 
 LISTAGEM_DA_VINTEPILA = "https://www.vintepila.com.br/trabalhos-freelance/?page={pagina}"
 ESPERA_DA_PAGINA_MS = 30_000
+ESPERA_DO_DISCORD_MS = 20_000
 JANELA_FORA_DA_TELA = ("--window-position=-32000,-32000", "--window-size=1280,900")
 
 SEM_CHROME = "o Chrome não foi encontrado"
@@ -84,7 +88,8 @@ def estado_do_site(sessao: SessaoLogada | None, site: str) -> str:
 
 
 def frase_do_estado(site: str, estado: str) -> str:
-    nome = NOMES.get(site, site)
+    # O Discord fica fora de NOMES: a caçada lista os logins de NOMES no relatório, e o Discord não é fonte dela.
+    nome = NOMES.get(site) or ("Discord" if site == DISCORD else site)
     if estado == LOGADO:
         return f"{nome}: logado no Chrome da caçada"
     if estado == DESLOGADO:
@@ -118,7 +123,8 @@ class SessaoLogada:
             return False
         if site not in self._logado:
             try:
-                self._logado[site] = logado_no_html(site, self.html(PAGINAS_DE_CONFERENCIA[site]))
+                ler = self.html_do_discord if site == DISCORD else self.html
+                self._logado[site] = logado_no_html(site, ler(PAGINAS_DE_CONFERENCIA[site]))
             except SemNavegador as erro:
                 _log.info("Caçada: não deu para conferir o login em %s: %s", NOMES.get(site, site), erro)
                 self._logado[site] = False
@@ -133,6 +139,17 @@ class SessaoLogada:
         enviado. Depois do clique nada levanta: quem chama confere na página do projeto.
         """
         raise SemNavegador("este navegador não preenche formulário")
+
+    def html_do_discord(self, url: str) -> str:
+        """Um canal do Discord depois que as mensagens aparecem (o Discord monta a página aos poucos)."""
+        return self.html(url)
+
+    def postar_no_discord(self, canal: str, mensagem: str, texto: str, *, privado: bool) -> bool:
+        """Responde à `mensagem` do canal, ou manda `texto` por mensagem privada ao autor dela; True se viu sair.
+
+        Antes do Enter, o que não deu certo levanta `SemNavegador` e nada sai.
+        """
+        raise SemNavegador("este navegador não posta no Discord")
 
     def fechar(self) -> None:
         return None
@@ -253,6 +270,48 @@ class _SessaoDoChrome(SessaoLogada):
             _log.warning("Depois de clicar em enviar na 99Freelas: %s", _motivo(erro))
         return Preenchimento(lidos.oferta, lidos.dias, lidos.caracteres, enviada=True, fotos=tuple(fotos))
 
+    def html_do_discord(self, url: str) -> str:
+        self.html(url)
+        try:
+            seletor = 'li[id^="chat-messages-"]' if "/channels/@me" not in url else '[data-list-item-id="guildsnav___home"]'
+            self._pagina.wait_for_selector(seletor, timeout=ESPERA_DO_DISCORD_MS)
+        except Exception:  # noqa: BLE001 — canal vazio ou sem acesso: quem lê acha zero mensagens
+            pass
+        return self._pagina.content()
+
+    def postar_no_discord(self, canal: str, mensagem: str, texto: str, *, privado: bool) -> bool:
+        self.html_do_discord(canal)
+        pagina = self._pagina
+        id_do_canal = canal.rstrip("/").rsplit("/", 1)[-1]
+        item = pagina.locator(f'li[id="chat-messages-{id_do_canal}-{mensagem}"]')
+        try:
+            item.scroll_into_view_if_needed(timeout=10_000)
+            if privado:
+                pagina.locator(f"#message-username-{mensagem} [data-text]").first.click(timeout=10_000)
+                caixa = pagina.get_by_role("textbox", name=re.compile(r"^Conversar com @"))
+            else:
+                item.hover()
+                item.get_by_role("button", name="Responder").first.click(timeout=10_000)
+                caixa = pagina.get_by_role("textbox", name=re.compile(r"^Conversar em "))
+            caixa.first.click(timeout=10_000)
+            for numero, linha in enumerate(texto.split("\n")):
+                if numero:
+                    pagina.keyboard.press("Shift+Enter")
+                if linha:
+                    pagina.keyboard.type(linha, delay=15)
+        except Exception as erro:  # noqa: BLE001 — sem a caixa certa, nada é enviado
+            raise SemNavegador(f"o Discord não abriu a caixa de mensagem: {_motivo(erro)}") from erro
+        pagina.keyboard.press("Enter")
+        pagina.wait_for_timeout(4_000)
+        if privado:
+            # A caixa do cartão do autor só esvazia quando o Discord aceitou a mensagem.
+            try:
+                return not caixa.first.inner_text(timeout=5_000).strip()
+            except Exception:  # noqa: BLE001 — o cartão fechou: sem prova de envio
+                return False
+        comeco = " ".join(re.sub(r"[*_`~>]", "", texto).split())[:40]
+        return comeco in texto_da_pagina(self.html_do_discord(canal))
+
     def fechar(self) -> None:
         if self._contexto is not None:
             try:
@@ -323,6 +382,8 @@ def logado_no_html(site: str, pagina: str) -> bool:
         return "vp-mc-g-nome" in pagina and 'id="__entrar"' not in pagina
     if site == FREELANCER_BR:
         return bool(pagina.strip()) and "header-login-btn" not in pagina
+    if site == DISCORD:
+        return "guildsnav___home" in pagina
     return False
 
 

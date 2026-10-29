@@ -1042,7 +1042,61 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
             _log.exception("A vigia dos lances do Freelancer.com falhou nesta rodada.")
             print(f"A vigia dos lances do Freelancer.com falhou nesta rodada: {erro}")
             saida = SAIDA_PARCIAL
+        try:
+            _vigia_do_discord(configuracao)
+        except Exception as erro:  # noqa: BLE001 — o Discord é lido de novo na próxima hora
+            _log.exception("A vigia do Discord falhou nesta rodada.")
+            print(f"A vigia do Discord falhou nesta rodada: {erro}")
+            saida = SAIDA_PARCIAL
     return saida
+
+
+def _vigia_do_discord(configuracao: Configuracao) -> None:
+    """Os canais de cacada/discord.md no Chrome da caçada: o que ele sabe fazer vira rascunho no celular."""
+    from . import celular, propostas_auto, vigia_do_discord
+    from .corrida import cacada_correndo, pasta_da_cacada
+    from .instancia import OutraInstancia, Trava
+    from .navegador_logado import NavegadorLogado
+    from .vigia_do_discord_claude import DiscordClaude
+
+    if not configuracao.cacada_discord:
+        return
+    vault = _vault.preparar(configuracao.vault)
+    canais = vigia_do_discord.ler_canais(vault)
+    if not canais:
+        print(f"Vigia do Discord: nenhum canal em {vigia_do_discord.CAMINHO_DOS_CANAIS}.")
+        return
+    if cacada_correndo(pasta_da_cacada()):
+        print("A caçada está com o Chrome da caçada: o Discord fica para a próxima hora.")
+        return
+    trava = Trava(pasta_da_cacada() / propostas_auto.NOME_DA_TRAVA)
+    try:
+        trava.adquirir()
+    except OutraInstancia:
+        print("O Chrome da caçada está ocupado com um envio pelo celular: o Discord fica para a próxima hora.")
+        return
+    try:
+        with NavegadorLogado().abrir() as sessao:
+            rodada = vigia_do_discord.rodar(
+                canais,
+                sessao=sessao,
+                escritor=DiscordClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None),
+                contexto=propostas_auto.contexto_do_vault(vault, configuracao.cacada_nicho_freela),
+                estado=vigia_do_discord.caminho_do_estado(),
+                celular=lambda texto, **opcoes: celular.avisar(configuracao, texto, **opcoes),
+                por_dia=configuracao.cacada_discord_por_dia,
+            )
+    finally:
+        trava.liberar()
+    if rodada.parou:
+        print(f"Vigia do Discord parou: {rodada.parou}.")
+        return
+    if rodada.novos_canais:
+        print(f"Vigia do Discord: primeira leitura de {', '.join(rodada.novos_canais)}; o que já estava lá ficou como visto.")
+    for dados in rodada.rascunhos:
+        print(f"Vigia do Discord: {dados['tipo']} para {dados['autor']} em {dados['nome_do_canal']} mandada ao celular.")
+    if not rodada.rascunhos and not rodada.novos_canais:
+        print("Vigia do Discord: nada novo que ele faça.")
 
 
 def _janela_da_proposta(configuracao: Configuracao) -> timedelta | None:
@@ -1359,7 +1413,7 @@ def _tocar_num_processo_novo(configuracao: Configuracao, dados: str, *, rodar=No
 
 def _tocou_no_celular(configuracao: Configuracao, dados: str):
     """O toque num botão do Telegram, que a bandeja ouve: "Enviar esta proposta", "Enviar e-mail" e "Enviar reenvio"."""
-    from . import agencias_email, lojas_email, propostas_auto, sequencia_fria
+    from . import agencias_email, lojas_email, propostas_auto, sequencia_fria, vigia_do_discord
     from .celular import Resposta
     from .corrida import cacada_correndo, pasta_da_cacada
     from .navegador_logado import NavegadorLogado
@@ -1389,6 +1443,8 @@ def _tocou_no_celular(configuracao: Configuracao, dados: str):
             eventos=envio.eventos,
             por_dia=envio.por_dia,
         )
+    if dados.startswith(vigia_do_discord.PREFIXO_DO_TOQUE):
+        return _tocou_no_discord(dados)
     if not dados.startswith(propostas_auto.PREFIXO_DO_TOQUE):
         return Resposta("Esse botão não faz mais nada no Whis.", tirar_botao=True)
     pasta = pasta_da_cacada()
@@ -1403,6 +1459,28 @@ def _tocou_no_celular(configuracao: Configuracao, dados: str):
         ocupada=lambda: cacada_correndo(pasta),
         fotos=propostas_auto.pasta_das_fotos(),
     )
+
+
+def _tocou_no_discord(dados: str):
+    """"Enviar no Discord": espera a vigia soltar o Chrome da caçada, como o toque da proposta da 99Freelas."""
+    import time
+
+    from . import propostas_auto, vigia_do_discord
+    from .celular import Resposta
+    from .corrida import cacada_correndo, pasta_da_cacada
+    from .instancia import Trava
+    from .navegador_logado import NavegadorLogado
+
+    pasta = pasta_da_cacada()
+    if cacada_correndo(pasta):
+        return Resposta("Não mandei: a caçada está usando o Chrome da caçada agora. Toque de novo quando ela terminar.")
+    segura = propostas_auto._esperar_a_trava(Trava(pasta / propostas_auto.NOME_DA_TRAVA), propostas_auto.ESPERA_DA_TRAVA_S, time.sleep)
+    if segura is None:
+        return Resposta("Não mandei: o Chrome da caçada está ocupado com a rodada da vigia. Toque de novo daqui a alguns minutos.")
+    try:
+        return vigia_do_discord.tocou_enviar(dados, abrir_sessao=lambda: NavegadorLogado().abrir(), estado=vigia_do_discord.caminho_do_estado())
+    finally:
+        segura.liberar()
 
 
 def _comando_o_que_pedem(args: argparse.Namespace) -> int:
@@ -1648,7 +1726,7 @@ def _comando_navegador(args: argparse.Namespace) -> int:
         print(f"Abrindo o Chrome da caçada ({perfil}). Entre no site e feche a janela quando terminar.")
     else:
         print(
-            f"Abrindo o Chrome da caçada ({perfil}) com Freelancer.com, 99Freelas, VintePila e freelancer.com.br. "
+            f"Abrindo o Chrome da caçada ({perfil}) com Freelancer.com, 99Freelas, VintePila, freelancer.com.br e Discord. "
             "Entre em cada um e feche a janela quando terminar: a caçada usa esse login (com a janela fechada)."
         )
     subprocess.Popen(
