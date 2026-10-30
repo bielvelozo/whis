@@ -447,13 +447,24 @@ def ler_freelancer(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[Oportun
 
 
 FORUM_DA_SHOPIFY = "https://community.shopify.com"
+QUEM_CONTRATA = re.compile(r"\bhiring\b", re.IGNORECASE)
+QUEM_OFERECE = re.compile(
+    r"\bI help\b|what I offer|\bavailable\b|hire me|my services|\bI can help\b|\bwe build\b"
+    r"|looking for an? (shopify )?store owner|building my (practical )?experience|free trial task"
+    r"|side hustle|online partner|je peux vous aider|posso (te |lhe )?ajudar",
+    re.IGNORECASE,
+)
+
+
+def _oferece_servico(titulo: str, resumo: str) -> bool:
+    return not QUEM_CONTRATA.search(titulo) and bool(QUEM_OFERECE.search(f"{titulo} {resumo}"))
 
 
 def ler_shopify_community(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[Oportunidade, ...]:
     """Uma categoria do fórum da Shopify (Discourse) pelo JSON público; o tópico fixado e o fechado ficam de fora.
 
     O Job Listings (`job-listings/334`) é onde lojistas postam vagas da loja desde jul/2026; o
-    fórum fecha cada post em 30 dias.
+    fórum fecha cada post em 30 dias. Lá também posta quem oferece serviço, e esse post fica de fora.
     """
     dados = _json(cliente, f"{FORUM_DA_SHOPIFY}/c/{(fonte.argumento or 'job-listings/334').strip('/')}.json")
     topicos = _lista((dados.get("topic_list") or {}) if isinstance(dados, dict) else {}, "topics")
@@ -463,6 +474,8 @@ def ler_shopify_community(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[
             continue
         titulo, slug, numero = _primeiro(topico, "title"), _primeiro(topico, "slug"), topico.get("id")
         if not titulo or not slug or not numero:
+            continue
+        if _oferece_servico(titulo, _primeiro(topico, "excerpt")):
             continue
         respostas = topico.get("posts_count")
         saida.append(

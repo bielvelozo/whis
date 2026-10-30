@@ -401,6 +401,44 @@ def test_o_job_listings_e_lido_pela_api_do_forum_sem_o_fixado_e_o_fechado():
     assert vaga.publicada.startswith("2026-10-17T11:55") and vaga.detalhes == "Respostas: 2"
 
 
+def test_o_job_listings_descarta_quem_oferece_servico():
+    import httpx
+
+    from whis.criterios_da_cacada import FonteDaCacada
+    from whis.fontes_da_cacada import coletar
+
+    posts = [
+        (707251, "Shopify VA | Inventory, Listings, Product Sourcing, Customer Support, Email Marketing & SEO",
+         "I help Shopify store owners save time and keep their stores running smoothly. What I offer: Inventory"),
+        (700605, "Looking for a Shopify Store Owner to Collaborate on a Free SEO Audit",
+         "Hi Shopify community! I’m currently building my practical experience in international SEO"),
+        (684547, "Shopify Development & Store Management Team Available",
+         "We’re a Shopify development team with a strong portfolio of custom Shopify apps"),
+        (654703, "Simple Online Remote Side Hustle Job for Women and Men",
+         "Hello, I am a freelance Senior Software Engineer. I am looking for a long-term online partner"),
+        (662174, "Je suis actuellement à la recherche d'une collaboration à long terme",
+         "Vous avez une boutique Shopify, mais vous manquez de temps ? Je peux vous aider à gérer"),
+        (659089, "Shopify Expert Developer — Ongoing Overflow Work",
+         "I’m a Shopify CRO specialist and project lead working with DTC brands. I’m looking for a skilled developer"),
+        (652438, "Hiring: Technical Digital Marketer",
+         "We’re a new, fast growing e-commerce brand. We’re scaling our online store and email marketing"),
+        (679387, "HIRING! Fractional Shopify E-commerce Manager | MAXLER",
+         "MAXLER is looking for a strong Shopify E-commerce Manager. I help with onboarding."),
+    ]
+
+    def responder(_pedido: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"topic_list": {"topics": [
+            {"id": numero, "slug": f"post-{numero}", "title": titulo, "excerpt": resumo, "created_at": "2026-10-30T22:45:00Z"}
+            for numero, titulo, resumo in posts
+        ]}})
+
+    coleta = coletar(
+        (FonteDaCacada("Shopify Community", "shopify_community", "job-listings/334"),), AGORA, rede=httpx.MockTransport(responder)
+    )
+
+    assert [vaga.link.rsplit("/", 1)[1] for vaga in coleta.por_fonte["Shopify Community"]] == ["659089", "652438", "679387"]
+
+
 def test_a_vigia_le_o_forum_da_shopify_so_no_nicho_shopify(monkeypatch: pytest.MonkeyPatch):
     from whis import fontes_da_cacada, vigia_de_freelas
 
