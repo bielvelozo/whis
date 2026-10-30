@@ -77,6 +77,7 @@ INICIO_DO_LINK = "https://velozo.dev/br/?r="
 INICIO_DA_MEDIDA = "https://velozo.dev/br/velocidade/?loja="
 INICIOS_DO_LINK = (INICIO_DO_LINK, INICIO_DA_MEDIDA)
 TEXTO_DO_LINK = "velozo.dev"
+TEXTO_DA_MEDIDA = "velozo.dev/velocidade"
 POSTHOG = "https://us.i.posthog.com/i/v0/e/"
 SMTP_DO_GMAIL = ("smtp.gmail.com", 465)
 IMAP_DO_GMAIL = "imap.gmail.com"
@@ -399,7 +400,7 @@ def _linha_em_html(texto: str) -> str:
         endereco = casou.group(0).rstrip(_PONTUACAO_DO_FIM)
         href = endereco if endereco.casefold().startswith("http") else f"https://{endereco}"
         if endereco.startswith(INICIO_DA_MEDIDA):
-            visivel = "velozo.dev/br/velocidade/?loja=" + endereco[len(INICIO_DA_MEDIDA):].split("&")[0]
+            visivel = TEXTO_DA_MEDIDA
         elif endereco.startswith(INICIO_DO_LINK):
             visivel = TEXTO_DO_LINK
         else:

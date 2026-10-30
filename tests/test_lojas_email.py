@@ -271,7 +271,7 @@ def test_o_primeiro_com_o_link_da_medida_passa_e_o_html_mostra_a_loja():
 
     assert lojas_email.problemas_da_loja(EmailEscrito("Bela Pele", corpo), MedidaNoCelular(9.2, 3.2, 140, do_site=True)) == []
     html = sequencia_fria.html_simples(corpo)
-    assert ">velozo.dev/br/velocidade/?loja=belapele.com.br</a>" in html and "utm_content=conversa" in html
+    assert ">velozo.dev/velocidade</a>" in html and "?loja=belapele.com.br&amp;r=bela-pele" in html
     assert "velocidade/?loja=" in lojas_email.SISTEMA_DO_EMAIL_DA_LOJA
 
 
