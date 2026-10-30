@@ -729,7 +729,8 @@ quando um cliente pedir ajuste na loja, e pergunte quem faz isso hoje para os cl
 e pergunte quem faz o código dessas lojas hoje.
 - Quando os DADOS dizem "Tipo: curso", é um curso ou mentoria que ensina a abrir loja na Shopify e não monta \
 loja: nunca diga que eles fazem lojas. Cite o curso ou a turma, diga que ele monta a loja de quem está \
-começando, e pergunte o que os alunos fazem hoje quando precisam de alguém para montar a loja. Nunca fale de \
+começando, e feche com a pergunta aos cursos da VOZ: "Hoje vocês indicam alguém pros alunos que precisam de \
+ajuda pra montar a loja?". Nunca fale de \
 comissão, indicação paga ou desconto para aluno.
 - VARIANTE "conversa": conta como chegou na agência ("Vi a loja da X no site de vocês"), em tom de conversa. \
 VARIANTE "direto": mais curto, sem contar como chegou: a apresentação, a prova e a pergunta.
