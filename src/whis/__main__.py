@@ -19,7 +19,7 @@ para as reuniões da Granola::
     python -m whis lembrete [--agendada] | candidaturas
     python -m whis vigia-freelas [--agendada] [--fakes] | celular [--teste | --pendentes]
     python -m whis o-que-pedem [--nicho NICHO] | agencias [--forcar] [--fakes]
-    python -m whis procurar [--agendada] [--forcar] [--fakes]
+    python -m whis procurar [--agendada] [--forcar] [--fakes] | instagram [--forcar] [--fakes]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -1543,6 +1543,54 @@ def _agencias_do_mes(configuracao: Configuracao, *, fakes: bool = False, forcar:
     return SAIDA_COMPLETA
 
 
+def _rodar_instagram(configuracao: Configuracao, vault: Path, *, fakes: bool, forcar: bool, pasta_de_teste: Path | None = None) -> bool:
+    """A lista do Instagram do dia; False quando a busca falhou (tenta de novo amanhã)."""
+    from . import celular, instagram
+    from .sequencia_fria import ler_a_voz
+
+    if configuracao.cacada_instagram_por_dia <= 0:
+        return True
+    if fakes:
+        porta, estado = instagram.InstagramFake(), (pasta_de_teste or Path(vault)) / instagram.NOME_DO_ESTADO
+        avisar = lambda texto: print(texto) is None  # noqa: E731
+    else:
+        porta, estado = instagram.InstagramClaude(cli=configuracao.claude_cli or None), instagram.caminho_do_estado()
+        avisar = lambda texto: celular.avisar(configuracao, texto, html=True)  # noqa: E731
+    try:
+        resultado = instagram.buscar_do_dia(
+            vault, porta, estado=estado, avisar=avisar, por_dia=configuracao.cacada_instagram_por_dia,
+            voz=ler_a_voz(vault), forcar=forcar,
+        )
+    except Exception as erro:  # noqa: BLE001 — a procura segue com agências e lojas
+        _log.exception("A lista do Instagram falhou.")
+        print(f"A lista do Instagram não saiu ({erro}); tenta de novo amanhã.")
+        return False
+    if resultado.ja_feita:
+        print(f"Instagram: sem lista hoje, {resultado.motivo}.")
+        return True
+    fora = ", ".join(f"{motivo}: {quantos}" for motivo, quantos in resultado.descartados.items()) or "nenhum"
+    print(f"Instagram: {len(resultado.novos)} perfil(is) em {resultado.caminho}; fora: {fora}.")
+    for perfil in resultado.novos:
+        print(f"  @{perfil.arroba} · {perfil.seguidores} · {perfil.nicho}")
+    return True
+
+
+def _comando_instagram(args: argparse.Namespace) -> int:
+    """A lista do Instagram do dia, fora da procura."""
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    if args.fakes:
+        import tempfile
+
+        raiz = Path(tempfile.mkdtemp(prefix="whis-instagram-"))
+        vault = raiz / "vault"
+        (vault / "cacada").mkdir(parents=True)
+        print(f"Modo de teste: um vault temporário em {vault}, sem Claude nem Telegram.")
+        return SAIDA_COMPLETA if _rodar_instagram(configuracao, vault, fakes=True, forcar=True, pasta_de_teste=raiz) else SAIDA_PARCIAL
+    vault = _vault.preparar(configuracao.vault)
+    return SAIDA_COMPLETA if _rodar_instagram(configuracao, vault, fakes=False, forcar=args.forcar) else SAIDA_PARCIAL
+
+
 def _comando_procurar(args: argparse.Namespace) -> int:
     """A procura do dia (tarefa Whis-Procura): agências e lojas Shopify lentas novas quando a fila de e-mails ficou curta."""
     from . import agencias, lojas_email, lojas_shopify
@@ -1572,6 +1620,8 @@ def _comando_procurar(args: argparse.Namespace) -> int:
         fila_das_lojas = lojas_email.na_fila(vault, lojas_email.caminho_do_estado())
         abrir, medir = None, None
     saida = SAIDA_COMPLETA
+    if not _rodar_instagram(configuracao, vault, fakes=args.fakes, forcar=args.forcar, pasta_de_teste=raiz if args.fakes else None):
+        saida = SAIDA_PARCIAL
     if configuracao.cacada_agencias_por_dia > 0:
         try:
             resultado = agencias.buscar_na_procura(vault, porta_das_agencias, estado=estado_das_agencias, forcar=args.forcar)
@@ -2511,6 +2561,15 @@ def construir_parser() -> argparse.ArgumentParser:
     procurar_cmd.add_argument("--forcar", action="store_true", help="busca agora mesmo com a fila cheia ou a busca de hoje feita")
     procurar_cmd.add_argument("--fakes", action="store_true", help="uma agência e uma loja fictícias num vault temporário, sem Claude nem Chrome")
     procurar_cmd.set_defaults(funcao=_comando_procurar)
+
+    instagram_cmd = subcomandos.add_parser(
+        "instagram",
+        help="a lista do dia de perfis do Instagram de marcas pequenas, com a primeira mensagem escrita, no celular (você manda à mão)",
+    )
+    _acrescentar_config(instagram_cmd)
+    instagram_cmd.add_argument("--forcar", action="store_true", help="faz outra lista mesmo que a de hoje já tenha saído")
+    instagram_cmd.add_argument("--fakes", action="store_true", help="dois perfis fictícios num vault temporário, sem Claude nem Telegram")
+    instagram_cmd.set_defaults(funcao=_comando_instagram)
 
     candidaturas_cmd = subcomandos.add_parser(
         "candidaturas", help="atualiza cacada/candidaturas.md: pacotes, o que o Whis enviou e as respostas no Gmail"

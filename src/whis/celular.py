@@ -48,9 +48,13 @@ class Telegram:
         self.chat = str(chat).strip()
         self._rede = rede if rede is not None else REDE_DO_TELEGRAM
 
-    def enviar(self, texto: str, *, botoes: Sequence[tuple[str, str]] = (), responder_a: int | None = None) -> bool:
-        """`botoes` são pares (rótulo, dados do toque), um por linha embaixo da mensagem."""
+    def enviar(
+        self, texto: str, *, botoes: Sequence[tuple[str, str]] = (), responder_a: int | None = None, html: bool = False
+    ) -> bool:
+        """`botoes` são pares (rótulo, dados do toque), um por linha embaixo da mensagem; `html` liga o `<pre>` que copia num toque."""
         corpo: dict = {"chat_id": self.chat, "text": texto[:LIMITE_DO_TEXTO], "link_preview_options": {"is_disabled": True}}
+        if html:
+            corpo["parse_mode"] = "HTML"
         if botoes:
             corpo["reply_markup"] = {"inline_keyboard": [[{"text": rotulo, "callback_data": dados}] for rotulo, dados in botoes]}
         if responder_a is not None:
@@ -101,12 +105,12 @@ class Telegram:
         return dados.get("result")
 
 
-def avisar(configuracao, texto: str, *, botoes: Sequence[tuple[str, str]] = ()) -> bool:
+def avisar(configuracao, texto: str, *, botoes: Sequence[tuple[str, str]] = (), html: bool = False) -> bool:
     """Manda `texto` para o chat de `[celular]`; sem token ou sem chat, não manda e devolve False."""
     token, chat = configuracao.celular_telegram_token, configuracao.celular_telegram_chat
     if not token or not chat:
         return False
-    return Telegram(token, chat).enviar(texto, botoes=botoes)
+    return Telegram(token, chat).enviar(texto, botoes=botoes, html=html)
 
 
 def esperar_o_chat(telegram: Telegram, *, segundos: float = 120.0) -> str:
