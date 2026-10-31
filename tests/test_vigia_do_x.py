@@ -297,3 +297,24 @@ def test_problemas_pegam_bandeira_encurtador_moeda_antes_calls_e_quem_diz_que_us
 def test_o_mesmo_autor_recebe_um_rascunho_so_na_rodada(tmp_path: Path) -> None:
     rodada, mandadas = _rodar(tmp_path, LeitorFake(post(status=1), post(status=2, horas=3)))
     assert [d["link"] for d in rodada.rascunhos] == ["https://x.com/maya_candles/status/1"] and len(mandadas) == 1
+
+
+def test_ofertas_da_leitura_real_de_31_10_ficam_de_fora_e_quem_contrata_fica() -> None:
+    ofertas = [
+        "Need a Shopify store that converts visitors into customers? I design modern, high-converting Shopify stores & redesign existing websites",
+        "Need a website that looks great, loads fast? I build modern websites & web apps with: Shopify | WordPress",
+        "Bad design kills conversions. I turn boring layouts into eye-catching designs. Let's work! #Shopify",
+        'Looking for a Shopify developer who can turn your $200 store into a $2k/day store? I just rebuilt store for a brand. DM "SHOP"',
+        "I've taken on Shopify cases this week, and I now have just ONE SLOT LEFT for a new merchant.",
+        "If you've been searching X for someone who can help you get your Shopify store reinstated, I work with merchants dealing with Shopify store suspensions",
+        "Hi, I'm Shemanta, a web developer from Dhaka. I build fast, SEO-ready websites on WordPress, Shopify. DM me",
+        "A landing page should do more than display a product. For ZeroBreath, I built this page. Need a page like this?",
+    ]
+    contratos = [
+        "Need a cracked Shopify funnel page builder, need someone quick, efficient and creative drop a dm with your work or dm me",
+        "I think I need someone to help me set up my Shopify store and even manage my instagram!!!",
+        "I need someone insanely good at building Shopify stores. I've got a new product and need a fully custom website built from scratch.",
+        "I build furniture and need a Shopify website for it, who can help?",
+    ]
+    assert [t for t in ofertas if not oferece_servico(post(texto=t))] == []
+    assert [t for t in contratos if oferece_servico(post(texto=t))] == []
