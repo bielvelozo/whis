@@ -20,7 +20,7 @@ para as reuniões da Granola::
     python -m whis vigia-freelas [--agendada] [--fakes] | celular [--teste | --pendentes]
     python -m whis o-que-pedem [--nicho NICHO] | agencias [--forcar] [--fakes]
     python -m whis procurar [--agendada] [--forcar] [--fakes] | instagram [--forcar] [--fakes]
-    python -m whis vigia-x [--fakes]
+    python -m whis vigia-x [--fakes] | ideia-x [--forcar] [--fakes]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -1666,6 +1666,54 @@ def _comando_instagram(args: argparse.Namespace) -> int:
     return SAIDA_COMPLETA if _rodar_instagram(configuracao, vault, fakes=False, forcar=args.forcar) else SAIDA_PARCIAL
 
 
+def _rodar_ideia_do_x(configuracao: Configuracao, vault: Path, *, fakes: bool, forcar: bool, pasta_de_teste: Path | None = None) -> bool:
+    """O post do X de seg, qua e sex; False quando o Claude falhou (tenta de novo no próximo dia de ideia)."""
+    from . import celular, ideias_do_x, propostas_auto
+    from .sequencia_fria import ler_a_voz
+
+    if not configuracao.cacada_x_ideias:
+        return True
+    if fakes:
+        porta, estado = ideias_do_x.IdeiaFake(), (pasta_de_teste or Path(vault)) / ideias_do_x.NOME_DO_ESTADO
+        avisar = lambda texto: print(texto) is None  # noqa: E731
+        contexto = ""
+    else:
+        porta, estado = ideias_do_x.IdeiaClaude(cli=configuracao.claude_cli or None), ideias_do_x.caminho_do_estado()
+        avisar = lambda texto: celular.avisar(configuracao, texto, html=True)  # noqa: E731
+        contexto = propostas_auto.contexto_do_vault(vault, configuracao.cacada_nicho_freela).sobre_mim
+    try:
+        resultado = ideias_do_x.do_dia(vault, porta, estado=estado, avisar=avisar, voz=ler_a_voz(vault), contexto=contexto, forcar=forcar)
+    except Exception as erro:  # noqa: BLE001 — a procura segue com agências e lojas
+        _log.exception("A ideia de post do X falhou.")
+        print(f"A ideia de post do X não saiu ({erro}).")
+        return False
+    if resultado.ja_feita:
+        print(f"X: sem ideia hoje, {resultado.motivo}.")
+        return True
+    if resultado.problemas:
+        print(f"X: a ideia \"{resultado.ideia.tema}\" ficou fora: {'; '.join(resultado.problemas)}.")
+        return False
+    onde = f" em {resultado.caminho}" if resultado.caminho else " (da lista de posts preparados)"
+    print(f"X: post do dia \"{resultado.ideia.tema}\"{onde}, mandado ao celular.")
+    return True
+
+
+def _comando_ideia_x(args: argparse.Namespace) -> int:
+    """O post do X do dia, fora da procura."""
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    if args.fakes:
+        import tempfile
+
+        raiz = Path(tempfile.mkdtemp(prefix="whis-ideia-x-"))
+        vault = raiz / "vault"
+        (vault / "cacada").mkdir(parents=True)
+        print(f"Modo de teste: um vault temporário em {vault}, sem Claude nem Telegram.")
+        return SAIDA_COMPLETA if _rodar_ideia_do_x(configuracao, vault, fakes=True, forcar=True, pasta_de_teste=raiz) else SAIDA_PARCIAL
+    vault = _vault.preparar(configuracao.vault)
+    return SAIDA_COMPLETA if _rodar_ideia_do_x(configuracao, vault, fakes=False, forcar=args.forcar) else SAIDA_PARCIAL
+
+
 def _comando_procurar(args: argparse.Namespace) -> int:
     """A procura do dia (tarefa Whis-Procura): agências e lojas Shopify lentas novas quando a fila de e-mails ficou curta."""
     from . import agencias, lojas_email, lojas_shopify
@@ -1696,6 +1744,8 @@ def _comando_procurar(args: argparse.Namespace) -> int:
         abrir, medir = None, None
     saida = SAIDA_COMPLETA
     if not _rodar_instagram(configuracao, vault, fakes=args.fakes, forcar=args.forcar, pasta_de_teste=raiz if args.fakes else None):
+        saida = SAIDA_PARCIAL
+    if not _rodar_ideia_do_x(configuracao, vault, fakes=args.fakes, forcar=args.forcar, pasta_de_teste=raiz if args.fakes else None):
         saida = SAIDA_PARCIAL
     if configuracao.cacada_agencias_por_dia > 0:
         try:
@@ -2654,6 +2704,16 @@ def construir_parser() -> argparse.ArgumentParser:
     _acrescentar_config(vigia_x_cmd)
     vigia_x_cmd.add_argument("--fakes", action="store_true", help="três posts falsos e um estado temporário, sem Chrome, Claude nem Telegram")
     vigia_x_cmd.set_defaults(funcao=_comando_vigia_x)
+
+    ideia_x_cmd = subcomandos.add_parser(
+        "ideia-x",
+        help="o post do X do dia (seg, qua e sex), pronto, no celular: primeiro os de cacada/x/posts-*.md, depois uma ideia nova; "
+        "você publica à mão",
+    )
+    _acrescentar_config(ideia_x_cmd)
+    ideia_x_cmd.add_argument("--forcar", action="store_true", help="manda um post agora, mesmo fora de seg, qua e sex ou com o de hoje já mandado")
+    ideia_x_cmd.add_argument("--fakes", action="store_true", help="uma thread fictícia num vault temporário, sem Claude nem Telegram")
+    ideia_x_cmd.set_defaults(funcao=_comando_ideia_x)
 
     candidaturas_cmd = subcomandos.add_parser(
         "candidaturas", help="atualiza cacada/candidaturas.md: pacotes, o que o Whis enviou e as respostas no Gmail"

@@ -275,6 +275,7 @@ def rodar(
     try:
         leitura = leitor.ler(fontes, agora.date())
     except LoginDoXVenceu:
+        memoria.ultima_leitura = agora
         if memoria.avisar_uma_vez("login", agora):
             celular("X: o login do Chrome do jornal caiu. Rode <code>python -m whis x-login</code> no note; a vigia do X parou até lá.")
         memoria.guardar(agora)

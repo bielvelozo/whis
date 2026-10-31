@@ -163,14 +163,18 @@ def test_rascunho_fora_do_jeito_nao_chega_ao_celular(tmp_path: Path) -> None:
     assert rodada.rascunhos == () and mandadas == []
 
 
-def test_login_vencido_avisa_uma_vez_por_dia_e_erro_do_chrome_nao_marca_a_leitura(tmp_path: Path) -> None:
+def test_login_vencido_avisa_uma_vez_por_dia_e_espera_3_horas_para_abrir_o_chrome_de_novo(tmp_path: Path) -> None:
     rodada, mandadas = _rodar(tmp_path, LeitorFake(erro=LoginDoXVenceu("o X pediu login")))
     assert rodada.parou == "o X pediu login" and "x-login" in mandadas[0]
-    _, mandadas = _rodar(tmp_path, LeitorFake(erro=LoginDoXVenceu("o X pediu login")))
+    assert not na_hora(tmp_path / "x.json", AGORA + timedelta(hours=1))
+    _, mandadas = _rodar(tmp_path, LeitorFake(erro=LoginDoXVenceu("o X pediu login")), agora=AGORA + timedelta(hours=3))
     assert mandadas == []
+
+
+def test_perfil_ocupado_nao_marca_a_leitura_e_tenta_na_hora_seguinte(tmp_path: Path) -> None:
     rodada, _ = _rodar(tmp_path, LeitorFake(erro=ErroDoX("o perfil do X está em uso por outro processo")))
     assert "em uso" in rodada.parou
-    assert json.loads((tmp_path / "x.json").read_text(encoding="utf-8"))["ultima_leitura"] is None
+    assert not (tmp_path / "x.json").exists()
 
 
 def test_problemas_barram_tamanho_link_preco_ia_emoji_call_e_fim_sem_pergunta() -> None:
