@@ -141,6 +141,7 @@ propostas_auto_reserva = 3   # não propõe se a proposta deixaria menos de tant
 propostas_auto_exclusivos = false  # true = você assina a 99Freelas e pode propor no projeto exclusivo de assinante
 discord = false              # true = a cada rodada da vigia, o Whis lê os canais de cacada/discord.md no Chrome da caçada (logado pelo whis navegador) e manda ao celular o rascunho de proposta ou de resposta; só posta no seu toque
 discord_por_dia = 5          # no máximo tantos rascunhos do Discord por dia
+x_por_dia = 5                # a cada 3 horas, das 9 às 22, a vigia de freelas lê as buscas de cacada/x/buscas.md no Chrome do jornal (whis x-login) e manda ao celular a resposta escrita para quem está contratando dev de Shopify no X, no máximo tantas por dia, para você mandar à mão da conta da velozo.dev; 0 = desligada
 agencias_por_dia = 1         # quantos e-mails de apresentação para agências Shopify da sua lista chegam por dia no celular, escritos, com o botão Enviar e-mail (sai do seu Gmail, de [cacada].email com a senha de app); 0 = nenhum
 lojas_por_dia = 1            # quantos e-mails para lojas Shopify lentas de cacada/lojas-shopify.md chegam por dia no celular, com o número medido e o botão Enviar e-mail; 0 = nenhum
 lojas_redesenho_por_dia = 1  # quantos e-mails oferecendo redesenho chegam por dia no celular, para as lojas da mesma lista com o tema de fábrica (comparado com a demonstração oficial do tema), com o botão Enviar e-mail; 0 = nenhum
@@ -262,6 +263,7 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "propostas_auto_exclusivos", "cacada_propostas_auto_exclusivos", Tipo.BOOLEANO),
     Chave("cacada", "discord", "cacada_discord", Tipo.BOOLEANO),
     Chave("cacada", "discord_por_dia", "cacada_discord_por_dia", Tipo.INTEIRO),
+    Chave("cacada", "x_por_dia", "cacada_x_por_dia", Tipo.INTEIRO),
     Chave("cacada", "propostas_auto_para_aprovar", "cacada_propostas_auto_para_aprovar", Tipo.INTEIRO),
     Chave("cacada", "propostas_auto_valor_hora", "cacada_propostas_auto_valor_hora", Tipo.INTEIRO),
     Chave("cacada", "agencias_por_dia", "cacada_agencias_por_dia", Tipo.INTEIRO),
@@ -395,6 +397,7 @@ class Configuracao:
     cacada_propostas_auto_exclusivos: bool = False
     cacada_discord: bool = False
     cacada_discord_por_dia: int = 5
+    cacada_x_por_dia: int = 5
     cacada_propostas_auto_para_aprovar: int = 5
     cacada_propostas_auto_valor_hora: int = 40
     cacada_agencias_por_dia: int = 1
@@ -580,6 +583,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         ),
         cacada_discord=_booleano(cacada.get("discord", False), "[cacada].discord", arquivo),
         cacada_discord_por_dia=_inteiro_entre(cacada.get("discord_por_dia", 5), "[cacada].discord_por_dia", 0, 50, arquivo),
+        cacada_x_por_dia=_inteiro_entre(cacada.get("x_por_dia", 5), "[cacada].x_por_dia", 0, 20, arquivo),
         cacada_propostas_auto_para_aprovar=_inteiro_entre(
             cacada.get("propostas_auto_para_aprovar", 5), "[cacada].propostas_auto_para_aprovar", 0, 50, arquivo
         ),

@@ -55,6 +55,7 @@ _HOSTS_DO_X = frozenset({"x.com", "twitter.com"})
 _STATUS = re.compile(r"^/(?P<autor>\w{1,15})/status/(?P<id>\d+)/?$")
 _VAZIOS = frozenset({"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"})
 _ROTULOS_DE_ANUNCIO = frozenset({"Ad", "Promoted", "Boosted", "Anúncio", "Promovido", "Impulsionado"})
+_CAMPO_DE_LOGIN = re.compile(r'<input\b[^>]*\b(?:name="username_or_email"|autocomplete="username)')
 _CURTIDAS_NO_ROTULO = re.compile(r"(\d[\d,.]*)\s+Likes?\b", re.I)
 _CURTIDAS_CURTAS = re.compile(r"^(\d+(?:[.,]\d+)?)\s*([KM]?)$", re.I)
 _MULTIPLOS = {"": 1, "K": 1_000, "M": 1_000_000}
@@ -99,10 +100,11 @@ def e_do_x(link: str) -> bool:
     return host in _HOSTS_DO_X
 
 
-def url_da_busca(consulta: str, hoje: date) -> str:
+def url_da_busca(consulta: str, hoje: date, *, recentes: bool = False) -> str:
+    """A busca das últimas 24 a 48 h, sem respostas; `recentes` abre a aba Mais recentes em vez de Principais."""
     ontem = hoje - timedelta(days=1)
     pedido = f"{consulta} -filter:replies since:{ontem.isoformat()}"
-    return f"{BUSCA}?{urlencode({'q': pedido, 'src': 'typed_query', 'f': 'top'})}"
+    return f"{BUSCA}?{urlencode({'q': pedido, 'src': 'typed_query', 'f': 'live' if recentes else 'top'})}"
 
 
 def ler_post(html: str) -> PostDoX | None:
@@ -226,8 +228,8 @@ class LeitorDoX:
     def _ler_pagina(self, pagina, fonte: FonteDoX, hoje: date) -> tuple[PostDoX, ...]:
         from playwright.sync_api import TimeoutError as TempoEsgotado
 
-        if fonte.tipo == "busca":
-            pagina.goto(url_da_busca(fonte.consulta, hoje), wait_until="domcontentloaded")
+        if fonte.tipo in ("busca", "recentes"):
+            pagina.goto(url_da_busca(fonte.consulta, hoje, recentes=fonte.tipo == "recentes"), wait_until="domcontentloaded")
         else:
             pagina.goto(HOME, wait_until="domcontentloaded")
             _conferir_login(pagina)
@@ -237,7 +239,10 @@ class LeitorDoX:
             pagina.wait_for_selector(f"{SELETOR_DO_POST}, {SELETOR_DE_VAZIO}", timeout=ESPERA_DA_PAGINA_MS)
         except TempoEsgotado as erro:
             _conferir_login(pagina)
-            self._guardar(fonte, "pagina", [pagina.content()])
+            html = pagina.content()
+            self._guardar(fonte, "pagina", [html])
+            if pede_login(html):
+                raise LoginDoXVenceu("o X pediu login") from erro
             raise ErroDoX("a página do X mudou: sem post nem aviso de vazio") from erro
         if not pagina.locator(SELETOR_DO_POST).count():
             self._guardar(fonte, "vazia", [pagina.content()])
@@ -334,6 +339,11 @@ def _abrir_contexto(playwright, perfil: Path, *, sem_janela: bool):
         if "ProcessSingleton" in texto or "already in use" in texto:
             raise ErroDoX("o perfil do X está em uso por outro processo") from erro
         raise ErroDoX(f"o Chrome não abriu: {_primeira_linha(texto)}") from erro
+
+
+def pede_login(html: str) -> bool:
+    """A busca deslogada não muda de endereço: abre por cima a caixa de entrar, com o campo de usuário."""
+    return _CAMPO_DE_LOGIN.search(html) is not None
 
 
 def _conferir_login(pagina) -> None:

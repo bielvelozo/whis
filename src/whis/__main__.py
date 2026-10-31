@@ -20,6 +20,7 @@ para as reuniões da Granola::
     python -m whis vigia-freelas [--agendada] [--fakes] | celular [--teste | --pendentes]
     python -m whis o-que-pedem [--nicho NICHO] | agencias [--forcar] [--fakes]
     python -m whis procurar [--agendada] [--forcar] [--fakes] | instagram [--forcar] [--fakes]
+    python -m whis vigia-x [--fakes]
     python -m whis perguntar "<pergunta>" [--sem-fio]
     python -m whis atender
 
@@ -1048,6 +1049,12 @@ def _comando_vigia_freelas(args: argparse.Namespace) -> int:
             _log.exception("A vigia do Discord falhou nesta rodada.")
             print(f"A vigia do Discord falhou nesta rodada: {erro}")
             saida = SAIDA_PARCIAL
+        try:
+            _vigia_do_x(configuracao)
+        except Exception as erro:  # noqa: BLE001 — o X é lido de novo na próxima hora
+            _log.exception("A vigia do X falhou nesta rodada.")
+            print(f"A vigia do X falhou nesta rodada: {erro}")
+            saida = SAIDA_PARCIAL
     return saida
 
 
@@ -1097,6 +1104,74 @@ def _vigia_do_discord(configuracao: Configuracao) -> None:
         print(f"Vigia do Discord: {dados['tipo']} para {dados['autor']} em {dados['nome_do_canal']} mandada ao celular.")
     if not rodada.rascunhos and not rodada.novos_canais:
         print("Vigia do Discord: nada novo que ele faça.")
+
+
+def _vigia_do_x(configuracao: Configuracao, *, forcar: bool = False, fakes: bool = False) -> None:
+    """As buscas de cacada/x/buscas.md no Chrome do jornal, a cada 3 horas: quem contrata vira resposta escrita no celular."""
+    from . import celular, propostas_auto, vigia_do_x
+    from .fonte_x import LeitorDoX
+    from .sequencia_fria import ler_a_voz
+    from .vigia_do_x_claude import EscritorFake, LeitorFake, XClaude
+
+    if configuracao.cacada_x_por_dia <= 0:
+        return
+    if fakes:
+        import tempfile
+
+        raiz = Path(tempfile.mkdtemp(prefix="whis-vigia-x-"))
+        buscas = (vigia_do_x.Busca("Teste", '"looking for a shopify developer"'),)
+        leitor, escritor, estado = LeitorFake(), EscritorFake(), raiz / vigia_do_x.NOME_DO_ESTADO
+        contexto, voz = propostas_auto.Contexto(procuro="", sobre_mim="", perfil="", portfolio=(), exemplos=()), ""
+        mandar = lambda texto: print(f"\n[celular]\n{texto}") is None  # noqa: E731
+        print(f"Modo de teste: três posts falsos e o estado em {estado}, sem Chrome, Claude nem Telegram.")
+    else:
+        estado = vigia_do_x.caminho_do_estado()
+        if not forcar and not vigia_do_x.na_hora(estado):
+            return
+        vault = _vault.preparar(configuracao.vault)
+        buscas = vigia_do_x.ler_buscas(vault)
+        if not buscas:
+            print(f"Vigia do X: nenhuma busca em {vigia_do_x.CAMINHO_DAS_BUSCAS}.")
+            return
+        leitor = LeitorDoX()
+        escritor = XClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None)
+        contexto = propostas_auto.contexto_do_vault(vault, configuracao.cacada_nicho_freela)
+        voz = ler_a_voz(vault)
+        mandar = lambda texto: celular.avisar(configuracao, texto, html=True)  # noqa: E731
+    rodada = vigia_do_x.rodar(
+        buscas,
+        leitor=leitor,
+        escritor=escritor,
+        contexto=contexto,
+        voz=voz,
+        estado=estado,
+        celular=mandar,
+        por_dia=configuracao.cacada_x_por_dia,
+    )
+    if rodada.parou:
+        print(f"Vigia do X parou: {rodada.parou}.")
+        return
+    for falha in rodada.falhas:
+        print(f"Vigia do X: a busca {falha}.")
+    print(f"Vigia do X: {rodada.lidos} post(s) lido(s), {rodada.candidatos} foram ao Claude, {len(rodada.rascunhos)} rascunho(s) no celular.")
+    for dados in rodada.rascunhos:
+        print(f"  @{dados['autor']} · {dados['tipo']} · {dados['link']}")
+
+
+def _comando_vigia_x(args: argparse.Namespace) -> int:
+    """A vigia do X fora da rodada de hora em hora: lê agora, mesmo fora das 9 às 22 ou antes das 3 horas."""
+    configuracao = _configuracao(args)
+    _registro.acrescentar_arquivo(configuracao, verboso=args.verboso)
+    if configuracao.cacada_x_por_dia <= 0:
+        print("A vigia do X está desligada: [cacada].x_por_dia = 0.")
+        return SAIDA_COMPLETA
+    try:
+        _vigia_do_x(configuracao, forcar=True, fakes=args.fakes)
+    except Exception as erro:  # noqa: BLE001 — o comando diz o que houve em vez de despejar o rastro
+        _log.exception("A vigia do X falhou.")
+        print(f"A vigia do X falhou: {erro}")
+        return SAIDA_PARCIAL
+    return SAIDA_COMPLETA
 
 
 def _janela_da_proposta(configuracao: Configuracao) -> timedelta | None:
@@ -2570,6 +2645,15 @@ def construir_parser() -> argparse.ArgumentParser:
     instagram_cmd.add_argument("--forcar", action="store_true", help="faz outra lista mesmo que a de hoje já tenha saído")
     instagram_cmd.add_argument("--fakes", action="store_true", help="dois perfis fictícios num vault temporário, sem Claude nem Telegram")
     instagram_cmd.set_defaults(funcao=_comando_instagram)
+
+    vigia_x_cmd = subcomandos.add_parser(
+        "vigia-x",
+        help="lê agora as buscas de cacada/x/buscas.md no Chrome do jornal e manda ao celular a resposta escrita para quem "
+        "está contratando dev de Shopify no X (você manda à mão); a vigia de freelas faz isso sozinha a cada 3 horas",
+    )
+    _acrescentar_config(vigia_x_cmd)
+    vigia_x_cmd.add_argument("--fakes", action="store_true", help="três posts falsos e um estado temporário, sem Chrome, Claude nem Telegram")
+    vigia_x_cmd.set_defaults(funcao=_comando_vigia_x)
 
     candidaturas_cmd = subcomandos.add_parser(
         "candidaturas", help="atualiza cacada/candidaturas.md: pacotes, o que o Whis enviou e as respostas no Gmail"
