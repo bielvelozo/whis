@@ -47,11 +47,21 @@ TEMAS_LEMBRADOS = 40
 TIMEOUT_DA_IDEIA_S = 900.0
 TURNOS_DA_IDEIA = 30
 
-_LINK = re.compile(r"https?://\S+|\b(?:[\w-]+\.)+(?:com|dev|io|br|net|app|co|org)(?:/\S*)?", re.I)
-_EMOJI = re.compile("[\U0001f300-\U0001faff☀-➿]")
+_LINK = re.compile(
+    r"https?://\S+"
+    r"|\b(?:[\w-]+\.)+(?:com|dev|io|br|net|app|co|org|me|ly|ee|gg|ai|shop|store|xyz|site|online|link|page|to|us)\b(?:/\S*)?",
+    re.I,
+)
+_EMOJI = re.compile("[\U0001f000-\U0001faff⌀-⏿☀-➿⬀-⯿️]")
 _HASHTAG = re.compile(r"(?<![\w&])#\w")
-_PRECO_DELE = re.compile(r"\b(?:I|we) charge\b|\bmy (?:price|rate)s?\b|R\$\s*\d|\bstarting at \$", re.I)
-_USA_IA = re.compile(r"\b(?:I|we)\b[^.?!\n]{0,40}\b(?:AI|ChatGPT|Claude|GPT|Copilot)\b", re.I)
+#: Só o preço dele: número com fonte ("$11.5 billion over BFCM") tem que passar.
+_PRECO_DELE = re.compile(
+    r"\b(?:I|we) charge\b|\bmy (?:price|rate)s?\b|R\$\s*\d|\bstarting at (?:US)?\$"
+    r"|\b(?:my|our)\b[^.?!\n]{0,30}\b(?:starts? at|from)\s*(?:US)?\$\s*\d"
+    r"|\b(?:stores?|themes?|sites?|builds?|redesigns?|packages?)\s+(?:start(?:s|ing)? at|from)\s*(?:US)?\$\s*\d",
+    re.I,
+)
+_USA_IA = re.compile(r"\b(?:I|we|my|our)\b[^.?!\n]{0,40}\b(?:AI|ChatGPT|Claude|GPT|Copilot)\b", re.I)
 _TITULO_DO_POST = re.compile(r"^##\s+(?:\d+\.\s*)?(.+)$", re.M)
 _ARQUIVO_DA_ARTE = re.compile(r"[\w.-]+\.(?:png|jpe?g|gif|webp)\b", re.I)
 

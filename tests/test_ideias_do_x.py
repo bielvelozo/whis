@@ -309,3 +309,18 @@ def test_o_toque_sem_as_chaves_de_x_nao_tenta_publicar(tmp_path: Path) -> None:
     resposta = _tocou_no_celular(Configuracao(vault=tmp_path), "xpost:abc")
 
     assert resposta.texto == "Não publiquei: faltam as chaves de [x] no config.toml."
+
+
+def test_problemas_pegam_encurtador_bandeira_preco_em_dolar_e_ia_na_primeira_pessoa() -> None:
+    def barra(texto: str) -> list[str]:
+        return problemas_da_ideia(Ideia("t", "post", (texto,)))
+
+    for link in ("Grab the checklist at bit.ly/bf-shopify", "All my links: linktr.ee/velozo", "Try it at velozo.shop today"):
+        assert "o post 1 tem link (vai na resposta)" in barra(link)
+    assert tamanho_no_x("bit.ly/abcdefghijklmnopqrstuvwxyz0123456789") == 23
+    assert "tem emoji" in barra("Black Friday is close 🇺🇸 get ready.")
+    assert "tem emoji" in barra("Five tips ⭐ for your product page.")
+    assert "fala do preço dele" in barra("Our stores start at $400 for a full theme.")
+    assert "fala do preço dele" in barra("Full store from US$ 300, theme included.")
+    assert "diz que usa IA" in barra("My AI workflow cuts build time in half.")
+    assert barra("Shopify merchants sold $11.5 billion over Black Friday weekend last year.") == []
