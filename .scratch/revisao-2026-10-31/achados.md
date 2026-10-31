@@ -81,6 +81,8 @@ Ele tem "More at velozo.dev" no corpo, e o plano diz que o fixado é a exceção
 
 **Não corrigido**: as duas pedem gerar de novo (ou outro recorte, ou outro print). Ficam com ele ou com a sessão das artes.
 
+No Instagram, a última imagem do carrossel 6 (`6-portfolio-6.png`) fecha com "Mais lojas, e o pedido, no site." O "e o pedido" fica ambíguo: o site não vende nada, e o pedido de orçamento é pelo direct, como diz a legenda. Algo como "Mais lojas no site, e o orçamento no direct." diria o caminho certo. Também pede gerar a imagem de novo.
+
 ## 8. Fontes e textos que conferem
 
 - Títulos: Fraunces em todas as artes do X e do Instagram (conferido no recorte do título e nos dois geradores). A Bodoni só aparece no logo "Velozo." e no "V." da foto de perfil, que é o logo.
