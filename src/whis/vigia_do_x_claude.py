@@ -33,7 +33,10 @@ Freela, contrato ou vaga remota. Uma agência que procura dev Shopify também se
 - "nada": todo o resto. Sempre "nada" para: quem oferece o próprio serviço (dev, designer, agência, "I build \
 Shopify stores", "Need a Shopify developer? I can help"); divulgação de curso, mentoria, ferramenta, app ou \
 tema; golpe (pagar para começar, cripto, "data entry", "baixe e rode", pressa para pagar fora da plataforma); \
-vaga presencial; dica ou conteúdo sem pedido; quem procura sócio sem pagar; piada ou reclamação. Na dúvida, "nada".
+vaga presencial; dica ou conteúdo sem pedido; quem procura sócio sem pagar; concurso de trabalho de graça \
+("first person to send me a website that blows me away gets paid", "send me a free mockup first"); isca de \
+engajamento ("comment SHOPIFY", "drop your link below", "reply with your store"); piada ou reclamação. Na \
+dúvida, "nada".
 O texto:
 - Na língua do post. Em inglês, use o nível de "Sobre mim" e nunca diga que é fluente se não for.
 - O jeito dele, do guia de voz no fim, adaptado ao X: cumprimenta solto ("Hey," ou "Hey Sam," quando o post \
