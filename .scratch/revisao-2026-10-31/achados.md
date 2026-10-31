@@ -34,7 +34,9 @@ E o contrário: "eu ia te sugerir" (o verbo, em português) barrava o rascunho c
 
 `rodar` confere "autor que já recebeu rascunho na semana" antes de chamar o Claude, e só marca o autor depois de cada rascunho. Dois posts da mesma pessoa na mesma leitura viravam dois rascunhos no Telegram. Prova: dois posts de @maya, 2 rascunhos.
 
-**Itens 2 e 3: correção pronta e testada, falta aplicar.** A sessão do botão "Enviar no X" (local_771ce56b) está mexendo em `vigia_do_x.py` e no teste agora, sem commit. Avisei e não toquei. A correção está em `aplicar_vigia.py`, no scratchpad desta sessão: substituições exatas mais 2 testes novos, conferidos sobre o HEAD (17 testes passam; a sonda pega tudo da lista acima). Ela também deixa o "diz que usa IA" barrar sempre, com o post falando de IA ou não, e ainda deixa passar "I'd hook the AI chatbot into the cart drawer".
+**Itens 2 e 3 corrigidos em `b8cb83a`**, depois que a sessão do botão "Enviar no X" commitou a mudança dela no mesmo arquivo (`1e29243`). Quem diz que usa IA ("use", "using", "built with", "uso", "usando"…) é barrado sempre, com o post falando de IA ou não. "I'd hook the AI chatbot into the cart drawer" continua passando. "AI" e "IA" só contam em maiúscula. Na rodada, o segundo post do mesmo autor fica de fora. São dois testes novos, e os 19 da vigia passam.
+
+Uma vez, numa de três rodadas, `test_login_vencido_avisa_uma_vez_por_dia…` deu OSError do Windows ao gravar o `x.json`. Não se repetiu. Com 10 sessões na máquina, parece disputa de arquivo, não defeito do código.
 
 ## 4. O post 2 do X (Inkly) atribuía à Inkly causas que ela não teve e escondia que é loja de portfólio
 
@@ -58,7 +60,9 @@ O README também diz que a versão lenta foi feita assim de propósito. O post n
 - 🇺🇸 e ⭐: mesma faixa de emoji da vigia;
 - `bit.ly/…`, `linktr.ee/…` e `velozo.shop`: `_LINK` não tem `.ly`, `.ee`, `.shop`, `.me` nem `.ai`. Além de deixar link no corpo, o link não conta como 23 no tamanho.
 
-**Não corrigido**: o arquivo está sendo mudado agora pela sessão do botão "Enviar no X". As regexes da vigia (item 2) servem aqui também. No preço, cuidado para não barrar número com fonte ("$4.4 trillion in sales"): o melhor alvo é "from/start at/for + $".
+**Corrigido em `fb0cd3e`**, depois do commit da sessão da API. Link e emoji agora usam as mesmas faixas da vigia, e a IA ganhou "my/our … AI". O preço só pega o dele: "my/our … from/start at $" e "store/theme from $". "$11.5 billion over Black Friday" continua passando, e os 4 posts preparados da semana 1 dão o mesmo resultado de antes. Um teste novo.
+
+"Stores built with AI in two days" (sem "I/we/my/our") continua passando de propósito: post de novidade da Shopify pode dizer "built with AI" sem que seja ele.
 
 ## 6. O post 1 do X (portfólio, para fixar) nunca vai ao Telegram
 
@@ -81,6 +85,7 @@ Ele tem "More at velozo.dev" no corpo, e o plano diz que o fixado é a exceção
 
 ## 9. Menores
 
-- `__main__._rodar_ideia_do_x` cria `IdeiaClaude(cli=…)` sem `modelo=configuracao.claude_modelo`, diferente da vigia (`XClaude(modelo=…, cli=…)`). Com `claude_modelo` no config, a ideia do dia ignora o modelo escolhido.
+- `__main__._rodar_ideia_do_x` criava `IdeiaClaude(cli=…)` sem `modelo=configuracao.claude_modelo`, diferente da vigia (`XClaude(modelo=…, cli=…)`). Com `claude_modelo` no config, a ideia do dia ignorava o modelo escolhido. **Corrigido em `3a0755d`**, com teste.
+- Os commits de outras sessões durante a revisão foram olhados por cima, sem achado: `7e466e7` (vigia fora de concurso e isca de engajamento) e `1e29243` (botão "Publicar no X" pela API). O `tocou_publicar` só posta no toque, marca "enviando" antes do primeiro pedido e não publica de novo o que já saiu ou ficou incerto. O botão só aparece com as chaves `[x]` no config, que ele escolheu pôr a partir de 14/11.
 - `ideias_do_x.do_dia` guarda só os últimos 40 temas. Um post preparado que ele não marcar como "Publicado:" volta à fila depois de umas 13 semanas.
 - `vigia_do_x._Estado.avisos` nunca é podado (cresce uma chave por tipo de aviso, não por dia, então fica pequeno).
