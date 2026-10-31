@@ -324,3 +324,25 @@ def test_problemas_pegam_encurtador_bandeira_preco_em_dolar_e_ia_na_primeira_pes
     assert "fala do preço dele" in barra("Full store from US$ 300, theme included.")
     assert "diz que usa IA" in barra("My AI workflow cuts build time in half.")
     assert barra("Shopify merchants sold $11.5 billion over Black Friday weekend last year.") == []
+
+
+def test_a_ideia_do_dia_usa_o_modelo_do_claude_da_configuracao(tmp_path: Path, monkeypatch) -> None:
+    from dataclasses import replace
+
+    from whis import __main__, ideias_do_x
+    from whis.configuracao import carregar_texto
+
+    (tmp_path / "vault").mkdir()
+    configuracao = carregar_texto(f'vault = "{(tmp_path / "vault").as_posix()}"\n', origem=tmp_path / "config.toml")
+    configuracao = replace(configuracao, claude_modelo="claude-opus-5")
+    recebidas: dict = {}
+
+    class Porta:
+        def __init__(self, **opcoes) -> None:
+            recebidas.update(opcoes)
+
+    monkeypatch.setattr(ideias_do_x, "IdeiaClaude", Porta)
+    monkeypatch.setattr(ideias_do_x, "caminho_do_estado", lambda: tmp_path / "x-ideias.json")
+    monkeypatch.setattr(ideias_do_x, "do_dia", lambda *a, **k: ideias_do_x.ResultadoDaIdeia(ja_feita=True, motivo="teste"))
+    assert __main__._rodar_ideia_do_x(configuracao, tmp_path / "vault", fakes=False, forcar=False)
+    assert recebidas["modelo"] == "claude-opus-5"

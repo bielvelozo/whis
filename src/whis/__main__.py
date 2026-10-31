@@ -1694,7 +1694,8 @@ def _rodar_ideia_do_x(configuracao: Configuracao, vault: Path, *, fakes: bool, f
         avisar = lambda texto, botoes=(): print(texto + "".join(f"\n[{r}] {d}" for r, d in botoes)) is None  # noqa: E731
         contexto = ""
     else:
-        porta, estado = ideias_do_x.IdeiaClaude(cli=configuracao.claude_cli or None), ideias_do_x.caminho_do_estado()
+        porta = ideias_do_x.IdeiaClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None)
+        estado = ideias_do_x.caminho_do_estado()
         avisar = lambda texto, botoes=(): celular.avisar(configuracao, texto, botoes=botoes, html=True)  # noqa: E731
         contexto = propostas_auto.contexto_do_vault(vault, configuracao.cacada_nicho_freela).sobre_mim
     try:
