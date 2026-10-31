@@ -44,6 +44,19 @@ E o contrário: "eu ia te sugerir" (o verbo, em português) barrava o rascunho c
 
 Uma vez, numa de três rodadas, `test_login_vencido_avisa_uma_vez_por_dia…` deu OSError do Windows ao gravar o `x.json`. Não se repetiu. Com 10 sessões na máquina, parece disputa de arquivo, não defeito do código.
 
+## 3b. O filtro de quem oferece, na vigia do X, deixava passar 8 ofertas reais
+
+A leitura real das 07:00 (casos mandados pela sessão da conta do X) trouxe ofertas que o `QUEM_OFERECE` não pegava:
+- adjetivo entre o verbo e o objeto: "I design modern, high-converting Shopify stores", "I build fast, SEO-ready websites";
+- "I turn boring layouts into…", "Let's work!";
+- "who can turn your $200 store…", DM "SHOP";
+- "ONE SLOT LEFT", "I work with merchants…";
+- "I built this page. Need a page like this?".
+
+**Corrigido em `763c43a`**, com os textos reais no teste. As 3 contratações reais do mesmo dia continuam passando, e "I build furniture and need a Shopify website" também.
+
+O Chrome do X do Whis foi relogado às 06:35 na @velozo_dev, não na conta principal (aviso da mesma sessão). A vigia lê normalmente, mas a seção do X do jornal passa a ler a timeline da @velozo_dev, que segue uma conta só.
+
 ## 4. O post 2 do X (Inkly) atribuía à Inkly causas que ela não teve e escondia que é loja de portfólio
 
 `cacada/x/posts-semana-1.md`, post 2. Dizia "Inkly's storefront took 11.9 s" e "What weighed the most: photos uploaded straight from the camera, apps nobody used anymore and scripts loading before the page".
