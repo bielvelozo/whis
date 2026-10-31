@@ -181,6 +181,16 @@ def test_o_botao_vai_no_teclado_embaixo_da_mensagem():
     assert corpo["reply_markup"] == {"inline_keyboard": [[{"text": BOTAO[0], "callback_data": BOTAO[1]}]]}
 
 
+def test_o_botao_com_link_abre_o_endereco_em_vez_de_chamar_o_whis():
+    pedidos: list[httpx.Request] = []
+    link = "https://x.com/intent/tweet?in_reply_to=1&text=Hey"
+
+    celular.Telegram(TOKEN, "777", rede=_rede({}, pedidos)).enviar("Rascunho", botoes=(BOTAO, ("Responder no X", link)))
+
+    teclado = json.loads(pedidos[0].content)["reply_markup"]["inline_keyboard"]
+    assert teclado == [[{"text": BOTAO[0], "callback_data": BOTAO[1]}], [{"text": "Responder no X", "url": link}]]
+
+
 def test_o_aviso_leva_o_botao_ate_o_telegram(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     pedidos: list[httpx.Request] = []
     monkeypatch.setattr(celular, "REDE_DO_TELEGRAM", _rede({}, pedidos))

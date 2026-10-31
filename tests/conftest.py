@@ -175,6 +175,22 @@ def navegador_trancado(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.fixture(autouse=True)
+def api_do_x_trancada(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Nenhum teste publica na conta da velozo.dev nem gasta o crédito da API do X.
+
+    Quem testa o cliente passa `rede=` com um `httpx.MockTransport`.
+    """
+    import httpx
+
+    from whis import api_do_x
+
+    def recusar(pedido: httpx.Request) -> httpx.Response:
+        raise AssertionError(f"teste chegou na API do X de verdade ({pedido.url.path}) — passe rede= ao ClienteDoX")
+
+    monkeypatch.setattr(api_do_x, "REDE_DO_X", httpx.MockTransport(recusar))
+
+
+@pytest.fixture(autouse=True)
 def publicacao_do_deck(monkeypatch: pytest.MonkeyPatch):
     """Nenhum teste publica o deck da daily de verdade: `whis daily` e a bandeja caem neste fake."""
     from whis import __main__ as cli

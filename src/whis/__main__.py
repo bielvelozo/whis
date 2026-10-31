@@ -1122,7 +1122,7 @@ def _vigia_do_x(configuracao: Configuracao, *, forcar: bool = False, fakes: bool
         buscas = (vigia_do_x.Busca("Teste", '"looking for a shopify developer"'),)
         leitor, escritor, estado = LeitorFake(), EscritorFake(), raiz / vigia_do_x.NOME_DO_ESTADO
         contexto, voz = propostas_auto.Contexto(procuro="", sobre_mim="", perfil="", portfolio=(), exemplos=()), ""
-        mandar = lambda texto: print(f"\n[celular]\n{texto}") is None  # noqa: E731
+        mandar = lambda texto, botoes=(): print(f"\n[celular]\n{texto}" + "".join(f"\n[{r}] {d}" for r, d in botoes)) is None  # noqa: E731
         print(f"Modo de teste: três posts falsos e o estado em {estado}, sem Chrome, Claude nem Telegram.")
     else:
         estado = vigia_do_x.caminho_do_estado()
@@ -1137,7 +1137,7 @@ def _vigia_do_x(configuracao: Configuracao, *, forcar: bool = False, fakes: bool
         escritor = XClaude(modelo=configuracao.claude_modelo or None, cli=configuracao.claude_cli or None)
         contexto = propostas_auto.contexto_do_vault(vault, configuracao.cacada_nicho_freela)
         voz = ler_a_voz(vault)
-        mandar = lambda texto: celular.avisar(configuracao, texto, html=True)  # noqa: E731
+        mandar = lambda texto, botoes=(): celular.avisar(configuracao, texto, botoes=botoes, html=True)  # noqa: E731
     rodada = vigia_do_x.rodar(
         buscas,
         leitor=leitor,
@@ -1147,6 +1147,7 @@ def _vigia_do_x(configuracao: Configuracao, *, forcar: bool = False, fakes: bool
         estado=estado,
         celular=mandar,
         por_dia=configuracao.cacada_x_por_dia,
+        botao=configuracao.cacada_x_botao_responder,
     )
     if rodada.parou:
         print(f"Vigia do X parou: {rodada.parou}.")
@@ -1487,12 +1488,25 @@ def _tocar_num_processo_novo(configuracao: Configuracao, dados: str, *, rodar=No
 
 
 def _tocou_no_celular(configuracao: Configuracao, dados: str):
-    """O toque num botão do Telegram, que a bandeja ouve: "Enviar esta proposta", "Enviar e-mail" e "Enviar reenvio"."""
-    from . import agencias_email, lojas_email, propostas_auto, sequencia_fria, vigia_do_discord
+    """O toque num botão do Telegram, que a bandeja ouve: "Enviar esta proposta", "Enviar e-mail", "Enviar reenvio",
+    "Enviar no Discord" e "Publicar no X"."""
+    from . import agencias_email, ideias_do_x, lojas_email, propostas_auto, sequencia_fria, vigia_do_discord
+    from .api_do_x import ChavesDoX, ClienteDoX
     from .celular import Resposta
     from .corrida import cacada_correndo, pasta_da_cacada
     from .navegador_logado import NavegadorLogado
 
+    if dados.startswith(ideias_do_x.PREFIXO_DO_TOQUE):
+        chaves = ChavesDoX.da_configuracao(configuracao)
+        if not chaves.completas:
+            return Resposta("Não publiquei: faltam as chaves de [x] no config.toml.")
+        return ideias_do_x.tocou_publicar(
+            dados,
+            cliente=ClienteDoX(chaves),
+            estado=ideias_do_x.caminho_do_estado(),
+            vault=_vault.preparar(configuracao.vault),
+            artes=ideias_do_x.pasta_das_artes(),
+        )
     if dados.startswith(lojas_email.PREFIXO_DO_TOQUE):
         return lojas_email.tocou_enviar_email(
             dados,
@@ -1669,20 +1683,24 @@ def _comando_instagram(args: argparse.Namespace) -> int:
 def _rodar_ideia_do_x(configuracao: Configuracao, vault: Path, *, fakes: bool, forcar: bool, pasta_de_teste: Path | None = None) -> bool:
     """O post do X de seg, qua e sex; False quando o Claude falhou (tenta de novo no próximo dia de ideia)."""
     from . import celular, ideias_do_x, propostas_auto
+    from .api_do_x import ChavesDoX
     from .sequencia_fria import ler_a_voz
 
     if not configuracao.cacada_x_ideias:
         return True
+    botao = ChavesDoX.da_configuracao(configuracao).completas
     if fakes:
         porta, estado = ideias_do_x.IdeiaFake(), (pasta_de_teste or Path(vault)) / ideias_do_x.NOME_DO_ESTADO
-        avisar = lambda texto: print(texto) is None  # noqa: E731
+        avisar = lambda texto, botoes=(): print(texto + "".join(f"\n[{r}] {d}" for r, d in botoes)) is None  # noqa: E731
         contexto = ""
     else:
         porta, estado = ideias_do_x.IdeiaClaude(cli=configuracao.claude_cli or None), ideias_do_x.caminho_do_estado()
-        avisar = lambda texto: celular.avisar(configuracao, texto, html=True)  # noqa: E731
+        avisar = lambda texto, botoes=(): celular.avisar(configuracao, texto, botoes=botoes, html=True)  # noqa: E731
         contexto = propostas_auto.contexto_do_vault(vault, configuracao.cacada_nicho_freela).sobre_mim
     try:
-        resultado = ideias_do_x.do_dia(vault, porta, estado=estado, avisar=avisar, voz=ler_a_voz(vault), contexto=contexto, forcar=forcar)
+        resultado = ideias_do_x.do_dia(
+            vault, porta, estado=estado, avisar=avisar, voz=ler_a_voz(vault), contexto=contexto, forcar=forcar, botao=botao
+        )
     except Exception as erro:  # noqa: BLE001 — a procura segue com agências e lojas
         _log.exception("A ideia de post do X falhou.")
         print(f"A ideia de post do X não saiu ({erro}).")

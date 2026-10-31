@@ -9,7 +9,12 @@ quem contrata e escreve a resposta na voz dele. Cada rascunho chega no Telegram 
 texto num bloco que copia num toque.
 
 Ele responde à mão, da conta da velozo.dev. O Whis nunca responde, menciona, manda mensagem, segue nem
-curte no X: automatizar isso derruba a conta e é contra as regras de automação do X.
+curte no X: automatizar isso derruba a conta e é contra as regras de automação do X. A API também não
+deixa: desde 23/02/2026 ela só aceita resposta quando o autor do post marcou ou citou a conta. A resposta
+chega com o botão "Responder no X", um link de intent do X (`x.com/intent/tweet` com `in_reply_to` e o
+texto), que abre o X com a resposta pronta na conta ativa do app; quem aperta Post é ele. O texto continua no
+bloco que copia num toque, para quando o app abrir sem ele. `[cacada].x_botao_responder` desliga o botão.
+A DM fica só no copiar e colar: o link de DM pede o id numérico do autor, e o leitor guarda o @.
 
 O estado fica em `%LOCALAPPDATA%\whis\cacada\x.json`.
 """
@@ -26,6 +31,7 @@ from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
 from typing import Protocol
+from urllib.parse import quote, urlencode
 
 from .criterios_da_cacada import PASTA_CACADA
 from .fonte_x import ErroDoX, LoginDoXVenceu, PortaDoX, PostDoX
@@ -55,6 +61,8 @@ POSTS_POR_RODADA = 25
 LIMITE_DA_RESPOSTA = 280
 LIMITE_DA_DM = 600
 TAMANHO_DO_POST_NO_CELULAR = 400
+ROTULO_DO_BOTAO = "Responder no X"
+INTENT_DO_X = "https://x.com/intent/tweet"
 
 _LINHA_DA_BUSCA = re.compile(r"^\s*[-*]\s*(?P<nome>[^:`]+?)\s*:\s*`?(?P<consulta>.+?)`?\s*$")
 
@@ -262,11 +270,15 @@ def rodar(
     contexto: Contexto,
     voz: str,
     estado: Path,
-    celular: Callable[[str], bool],
+    celular: Callable[..., bool],
     por_dia: int,
     agora: datetime | None = None,
+    botao: bool = True,
 ) -> Rodada:
-    """Lê as buscas, tira o que não serve e manda ao celular os rascunhos que passam, até `por_dia` no dia."""
+    """Lê as buscas, tira o que não serve e manda ao celular os rascunhos que passam, até `por_dia` no dia.
+
+    `botao` põe "Responder no X" embaixo da resposta; a DM nunca tem botão (o link de DM pede o id do autor).
+    """
     agora = (agora or datetime.now()).astimezone()
     memoria = _Estado.ler(estado)
     if memoria.do_dia(agora) >= por_dia:
@@ -301,7 +313,8 @@ def rodar(
                 _log.info("X: rascunho para %s barrado: %s", post.link, "; ".join(achados))
                 continue
             dados = _guardar_rascunho(memoria, post, rascunho, agora)
-            if not celular(mensagem_no_celular(dados, agora)):
+            botoes = ((ROTULO_DO_BOTAO, link_da_resposta(dados)),) if botao and dados["tipo"] == RESPOSTA else ()
+            if not celular(mensagem_no_celular(dados, agora), botoes=botoes):
                 _log.warning("X: o rascunho para %s não chegou ao celular.", post.link)
             feitos.append(dados)
     for post in lidos:
@@ -341,6 +354,12 @@ def _guardar_rascunho(memoria: _Estado, post: PostDoX, rascunho: Rascunho, agora
     memoria.rascunhos[id_do_post(post)] = dados
     memoria.autores[post.autor.casefold()] = agora.isoformat()
     return dados
+
+
+def link_da_resposta(dados: dict) -> str:
+    """O intent do X que abre a caixa de resposta ao post com o texto já escrito."""
+    numero = dados["link"].rstrip("/").rsplit("/", 1)[-1]
+    return f"{INTENT_DO_X}?{urlencode({'in_reply_to': numero, 'text': dados['texto']}, quote_via=quote)}"
 
 
 def mensagem_no_celular(dados: dict, agora: datetime) -> str:

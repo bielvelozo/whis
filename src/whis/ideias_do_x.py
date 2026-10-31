@@ -5,22 +5,33 @@ velozo.dev, na linha dos posts do Instagram (velocidade, redesenho, bastidor das
 viralizar: é para quem receber a resposta dele abrir o perfil e ver uma conta ativa, de gente. O Claude
 busca na web um fato atual com fonte e escreve em inglês, no jeito do voz.md; o Python confere o tamanho
 do X e as regras dele, grava `cacada/x/ideias.md` e manda ao Telegram com cada post num bloco que copia
-num toque. Ele publica à mão (o botão pela API fica para depois de 14/11, escolha dele em 31/10).
+num toque.
+
+Com as chaves de `[x]` no config (ele escolheu ligar a partir de 14/11), a mensagem leva o botão "Publicar
+no X": o toque sobe as imagens de `.scratch/x/posts/` e publica pela API a thread, cada post respondendo ao
+anterior, com a resposta do link por último. O toque publica uma vez e nunca repete; o que o X não
+confirmou vira `incerta`, e ele confere no perfil. Sem as chaves, ele publica à mão.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
 from typing import Any, Protocol
 
+from .api_do_x import NaoSaiu, Publicador, SemConfirmacao, link_do_post
 from .cacada_claude import FERRAMENTAS_DO_EXPLORADOR, REGRAS_DE_DISCRICAO, _ChamadaDoClaude
+from .celular import Resposta
 from .criterios_da_cacada import PASTA_CACADA
+
+_log = logging.getLogger("whis.ideias_do_x")
 
 NOME_DO_ESTADO = "x-ideias.json"
 CAMINHO_DAS_IDEIAS = f"{PASTA_CACADA}/x/ideias.md"
@@ -42,6 +53,17 @@ _HASHTAG = re.compile(r"(?<![\w&])#\w")
 _PRECO_DELE = re.compile(r"\b(?:I|we) charge\b|\bmy (?:price|rate)s?\b|R\$\s*\d|\bstarting at \$", re.I)
 _USA_IA = re.compile(r"\b(?:I|we)\b[^.?!\n]{0,40}\b(?:AI|ChatGPT|Claude|GPT|Copilot)\b", re.I)
 _TITULO_DO_POST = re.compile(r"^##\s+(?:\d+\.\s*)?(.+)$", re.M)
+_ARQUIVO_DA_ARTE = re.compile(r"[\w.-]+\.(?:png|jpe?g|gif|webp)\b", re.I)
+
+PREFIXO_DO_TOQUE = "xpost:"
+ROTULO_DO_BOTAO = "Publicar no X"
+NAO_ACHEI = "Não achei esse post no Whis (ele guarda 30 dias); não publiquei nada."
+ESPERANDO = "esperando"
+ENVIANDO = "enviando"
+ENVIADA = "enviada"
+INCERTA = "incerta"
+GUARDA_POR = timedelta(days=30)
+MAXIMO_DE_IMAGENS = 4
 
 
 @dataclass(frozen=True)
@@ -72,6 +94,20 @@ def caminho_do_estado() -> Path:
     from .corrida import pasta_da_cacada
 
     return pasta_da_cacada() / NOME_DO_ESTADO
+
+
+def pasta_das_artes() -> Path:
+    """`.scratch/x/posts/` do repositório: o toque roda num processo novo, de qualquer pasta."""
+    return Path(__file__).resolve().parents[2] / ".scratch" / "x" / "posts"
+
+
+def imagens_da_arte(arte: str) -> tuple[str, ...]:
+    """Os arquivos que a linha "Imagem:" do post preparado nomeia, até as 4 que o X aceita num post."""
+    return tuple(dict.fromkeys(_ARQUIVO_DA_ARTE.findall(arte)))[:MAXIMO_DE_IMAGENS]
+
+
+def chave_do_toque(quando: str, tema: str) -> str:
+    return PREFIXO_DO_TOQUE + hashlib.sha1(f"{quando}#{tema}".encode()).hexdigest()[:12]
 
 
 def tamanho_no_x(texto: str) -> int:
@@ -159,13 +195,17 @@ def do_dia(
     porta: PortaDaIdeia,
     *,
     estado: Path,
-    avisar: Callable[[str], bool],
+    avisar: Callable[..., bool],
     voz: str = "",
     contexto: str = "",
     agora: datetime | None = None,
     forcar: bool = False,
+    botao: bool = False,
 ) -> ResultadoDaIdeia:
-    """Seg, qua e sex, o post do dia: o próximo já preparado no vault ou, sem nenhum, uma ideia nova do Claude."""
+    """Seg, qua e sex, o post do dia: o próximo já preparado no vault ou, sem nenhum, uma ideia nova do Claude.
+
+    `botao` põe "Publicar no X" na mensagem; o post fica guardado no estado para o toque, com ou sem botão.
+    """
     agora = (agora or datetime.now()).astimezone()
     hoje = agora.date().isoformat()
     memoria = _ler_estado(estado)
@@ -182,9 +222,112 @@ def do_dia(
     memoria["ultimo_dia"] = hoje
     memoria["temas"] = [*memoria.get("temas", []), ideia.tema][-TEMAS_LEMBRADOS:]
     caminho = _anotar(vault, ideia, agora) if preparada is None else ""
+    chave = chave_do_toque(agora.isoformat(), ideia.tema)
+    limite = (agora - GUARDA_POR).isoformat()
+    rascunhos = {k: r for k, r in (memoria.get("rascunhos") or {}).items() if isinstance(r, dict) and str(r.get("quando", "")) >= limite}
+    rascunhos[chave] = {
+        "tema": ideia.tema,
+        "posts": list(ideia.posts),
+        "resposta": ideia.resposta,
+        "imagens": list(imagens_da_arte(ideia.arte)) if preparada is not None else [],
+        "preparada": preparada is not None,
+        "situacao": ESPERANDO,
+        "quando": agora.isoformat(),
+    }
+    memoria["rascunhos"] = rascunhos
     _gravar_estado(estado, memoria)
-    avisar(mensagem_no_celular(ideia))
+    if botao:
+        avisar(mensagem_no_celular(ideia), botoes=((ROTULO_DO_BOTAO, chave),))
+    else:
+        avisar(mensagem_no_celular(ideia))
     return ResultadoDaIdeia(ideia=ideia, caminho=caminho)
+
+
+def tocou_publicar(
+    dados: str, *, cliente: Publicador, estado: Path, vault: Path, artes: Path, agora: datetime | None = None
+) -> Resposta:
+    """O toque em "Publicar no X": a thread inteira pela API, uma vez só.
+
+    O estado vira `enviando` antes do primeiro pedido e guarda o id de cada post que o X confirma; um
+    processo que morre no meio deixa `enviando`, que o próximo toque trata como não confirmado.
+    """
+    agora = (agora or datetime.now()).astimezone()
+    memoria = _ler_estado(estado)
+    rascunho = (memoria.get("rascunhos") or {}).get(dados)
+    if not isinstance(rascunho, dict):
+        return Resposta(NAO_ACHEI, tirar_botao=True)
+    situacao = rascunho.get("situacao", ESPERANDO)
+    if situacao == ENVIADA:
+        return Resposta("Esse já está no X; não publiquei de novo.", tirar_botao=True)
+    if situacao != ESPERANDO:
+        return Resposta("Esse já teve uma publicação que o X não confirmou: confira no perfil. Não publiquei de novo.", tirar_botao=True)
+    arquivos = [Path(artes) / nome for nome in rascunho.get("imagens") or ()]
+    faltam = [arquivo.name for arquivo in arquivos if not arquivo.is_file()]
+    if faltam:
+        return Resposta(f"Não publiquei: falta {', '.join(faltam)} em {artes}.")
+    try:
+        midias = [cliente.subir_imagem(arquivo) for arquivo in arquivos]
+    except (NaoSaiu, SemConfirmacao) as erro:
+        return Resposta(f"Não publiquei: a imagem não subiu ({erro}). Toque de novo daqui a pouco.")
+    textos = [*(rascunho.get("posts") or ()), *([rascunho["resposta"]] if rascunho.get("resposta") else [])]
+    ids: list[str] = []
+    rascunho.update(situacao=ENVIANDO, ids=ids)
+    _gravar_estado(estado, memoria)
+    for posicao, texto in enumerate(textos):
+        try:
+            ids.append(cliente.postar(texto, responder_a=ids[-1] if ids else None, imagens=midias if posicao == 0 else ()))
+        except NaoSaiu as erro:
+            if not ids:
+                rascunho["situacao"] = ESPERANDO
+                _gravar_estado(estado, memoria)
+                return Resposta(f"Não publiquei: {erro}.")
+            return _parou_no_meio(rascunho, memoria, estado, vault, textos, erro, agora)
+        except SemConfirmacao as erro:
+            return _parou_no_meio(rascunho, memoria, estado, vault, textos, erro, agora)
+        _gravar_estado(estado, memoria)
+    rascunho.update(situacao=ENVIADA, enviada=agora.isoformat())
+    _gravar_estado(estado, memoria)
+    if rascunho.get("preparada"):
+        marcar_publicado(vault, rascunho["tema"], agora)
+    partes = f" ({len(ids)} posts)" if len(ids) > 1 else ""
+    return Resposta(f"Publiquei no X{partes}: {link_do_post(ids[0])}", tirar_botao=True)
+
+
+def _parou_no_meio(rascunho: dict, memoria: dict, estado: Path, vault: Path, textos: list[str], erro: Exception, agora: datetime) -> Resposta:
+    ids = rascunho["ids"]
+    rascunho.update(situacao=INCERTA, enviada=agora.isoformat())
+    _gravar_estado(estado, memoria)
+    if not ids:
+        return Resposta(f"Mandei ao X, mas ele não confirmou ({erro}): confira no perfil. Não publico de novo.", tirar_botao=True)
+    if rascunho.get("preparada"):
+        marcar_publicado(vault, rascunho["tema"], agora)
+    return Resposta(
+        f"Saíram {len(ids)} de {len(textos)} ({link_do_post(ids[0])}); o {len(ids) + 1}º não saiu ou não foi confirmado ({erro}). "
+        "Confira no perfil e termine à mão respondendo ao último. Não publico de novo.",
+        tirar_botao=True,
+    )
+
+
+def marcar_publicado(vault: Path, tema: str, agora: datetime) -> bool:
+    """Põe "- Publicado: dd/mm" logo abaixo do título do post em `cacada/x/posts-*.md`, no fim de linha do arquivo.
+
+    O post já está no X quando isto roda: uma nota que não abre fica só no log, e o toque responde o que saiu.
+    """
+    pasta = Path(vault) / PASTA_DOS_POSTS
+    try:
+        for arquivo in sorted(pasta.glob("posts-*.md")) if pasta.is_dir() else ():
+            texto = arquivo.read_bytes().decode("utf-8")
+            quebra = "\r\n" if "\r\n" in texto else "\n"
+            linhas = texto.splitlines(keepends=True)
+            for posicao, linha in enumerate(linhas):
+                titulo = _TITULO_DO_POST.match(linha.rstrip("\r\n"))
+                if titulo is not None and titulo[1].strip() == tema:
+                    linhas[posicao + 1 : posicao + 1] = [quebra, f"- Publicado: {agora:%d/%m}{quebra}"]
+                    arquivo.write_bytes("".join(linhas).encode("utf-8"))
+                    return True
+    except (OSError, UnicodeDecodeError) as erro:
+        _log.warning("X: não marquei \"%s\" como publicado em %s (%s).", tema, PASTA_DOS_POSTS, erro)
+    return False
 
 
 def mensagem_no_celular(ideia: Ideia) -> str:

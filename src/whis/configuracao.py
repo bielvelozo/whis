@@ -141,8 +141,9 @@ propostas_auto_reserva = 3   # não propõe se a proposta deixaria menos de tant
 propostas_auto_exclusivos = false  # true = você assina a 99Freelas e pode propor no projeto exclusivo de assinante
 discord = false              # true = a cada rodada da vigia, o Whis lê os canais de cacada/discord.md no Chrome da caçada (logado pelo whis navegador) e manda ao celular o rascunho de proposta ou de resposta; só posta no seu toque
 discord_por_dia = 5          # no máximo tantos rascunhos do Discord por dia
-x_por_dia = 5                # a cada 3 horas, das 9 às 22, a vigia de freelas lê as buscas de cacada/x/buscas.md no Chrome do jornal (whis x-login) e manda ao celular a resposta escrita para quem está contratando dev de Shopify no X, no máximo tantas por dia, para você mandar à mão da conta da velozo.dev; 0 = desligada
-x_ideias = true              # seg, qua e sex, na procura do dia, chega ao celular o post do X pronto, em inglês: primeiro os de cacada/x/posts-*.md sem a linha "Publicado:", depois uma ideia nova do Claude, gravada em cacada/x/ideias.md; você publica à mão; false = nenhuma
+x_por_dia = 5                # a cada 3 horas, das 9 às 22, a vigia de freelas lê as buscas de cacada/x/buscas.md no Chrome do jornal (whis x-login) e manda ao celular a resposta escrita para quem está contratando dev de Shopify no X, no máximo tantas por dia, para você mandar da conta da velozo.dev; 0 = desligada
+x_botao_responder = true     # a resposta da vigia do X chega com o botão Responder no X, que abre o X com o texto pronto na conta ativa do app (deixe na velozo.dev); você ainda aperta Post; false = só o texto para copiar
+x_ideias = true              # seg, qua e sex, na procura do dia, chega ao celular o post do X pronto, em inglês: primeiro os de cacada/x/posts-*.md sem a linha "Publicado:", depois uma ideia nova do Claude, gravada em cacada/x/ideias.md; com as chaves de [x], vem com o botão Publicar no X, senão você publica à mão; false = nenhuma
 agencias_por_dia = 1         # quantos e-mails de apresentação para agências Shopify da sua lista chegam por dia no celular, escritos, com o botão Enviar e-mail (sai do seu Gmail, de [cacada].email com a senha de app); 0 = nenhum
 lojas_por_dia = 1            # quantos e-mails para lojas Shopify lentas de cacada/lojas-shopify.md chegam por dia no celular, com o número medido e o botão Enviar e-mail; 0 = nenhum
 lojas_redesenho_por_dia = 1  # quantos e-mails oferecendo redesenho chegam por dia no celular, para as lojas da mesma lista com o tema de fábrica (comparado com a demonstração oficial do tema), com o botão Enviar e-mail; 0 = nenhum
@@ -155,6 +156,12 @@ propostas_auto_para_aprovar = 5  # por dia, até tantas propostas que não saem 
 [celular]
 telegram_token = ""          # o token do seu bot do Telegram (o @BotFather dá); grave com whis celular, que pede o token sem mostrar na tela
 telegram_chat = ""           # o chat em que o bot te avisa; whis celular descobre sozinho quando você manda uma mensagem ao bot
+
+[x]
+api_key = ""                 # API Key do app da velozo.dev no console.x.com (Keys and tokens); com as quatro preenchidas, o post do dia chega com o botão Publicar no X, pago por post (US$ 0,015, ou 0,20 com link)
+api_key_secret = ""          # API Key Secret do mesmo app
+access_token = ""            # Access Token da conta da velozo.dev, gerado depois de pôr o app em Read and Write
+access_token_secret = ""     # Access Token Secret do mesmo token
 
 [linkedin]
 client_id = ""               # Client ID do seu app no LinkedIn Developers (produtos Share on LinkedIn e Sign In with LinkedIn using OpenID Connect)
@@ -265,6 +272,7 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "discord", "cacada_discord", Tipo.BOOLEANO),
     Chave("cacada", "discord_por_dia", "cacada_discord_por_dia", Tipo.INTEIRO),
     Chave("cacada", "x_por_dia", "cacada_x_por_dia", Tipo.INTEIRO),
+    Chave("cacada", "x_botao_responder", "cacada_x_botao_responder", Tipo.BOOLEANO),
     Chave("cacada", "x_ideias", "cacada_x_ideias", Tipo.BOOLEANO),
     Chave("cacada", "propostas_auto_para_aprovar", "cacada_propostas_auto_para_aprovar", Tipo.INTEIRO),
     Chave("cacada", "propostas_auto_valor_hora", "cacada_propostas_auto_valor_hora", Tipo.INTEIRO),
@@ -276,6 +284,10 @@ CHAVES: tuple[Chave, ...] = (
     Chave("cacada", "max_propostas_freelancer", "cacada_max_propostas_freelancer", Tipo.INTEIRO),
     Chave("celular", "telegram_token", "celular_telegram_token", Tipo.SEGREDO),
     Chave("celular", "telegram_chat", "celular_telegram_chat", Tipo.TEXTO),
+    Chave("x", "api_key", "x_api_key", Tipo.SEGREDO),
+    Chave("x", "api_key_secret", "x_api_key_secret", Tipo.SEGREDO),
+    Chave("x", "access_token", "x_access_token", Tipo.SEGREDO),
+    Chave("x", "access_token_secret", "x_access_token_secret", Tipo.SEGREDO),
     Chave("linkedin", "client_id", "linkedin_client_id", Tipo.TEXTO),
     Chave("linkedin", "client_secret", "linkedin_client_secret", Tipo.SEGREDO),
     Chave("linkedin", "exportacao", "linkedin_exportacao", Tipo.CAMINHO),
@@ -400,6 +412,7 @@ class Configuracao:
     cacada_discord: bool = False
     cacada_discord_por_dia: int = 5
     cacada_x_por_dia: int = 5
+    cacada_x_botao_responder: bool = True
     cacada_x_ideias: bool = True
     cacada_propostas_auto_para_aprovar: int = 5
     cacada_propostas_auto_valor_hora: int = 40
@@ -411,6 +424,10 @@ class Configuracao:
     cacada_max_propostas_freelancer: int = 30
     celular_telegram_token: str = ""
     celular_telegram_chat: str = ""
+    x_api_key: str = ""
+    x_api_key_secret: str = ""
+    x_access_token: str = ""
+    x_access_token_secret: str = ""
     linkedin_client_id: str = ""
     linkedin_client_secret: str = ""
     linkedin_exportacao: Path | None = None
@@ -485,6 +502,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
     cacada = dados.get("cacada") or {}
     linkedin = dados.get("linkedin") or {}
     celular = dados.get("celular") or {}
+    x = dados.get("x") or {}
     exportacao = str(linkedin.get("exportacao", "")).strip()
     raiz_do_git = str(git.get("raiz", "")).strip()
     return Configuracao(
@@ -587,6 +605,7 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         cacada_discord=_booleano(cacada.get("discord", False), "[cacada].discord", arquivo),
         cacada_discord_por_dia=_inteiro_entre(cacada.get("discord_por_dia", 5), "[cacada].discord_por_dia", 0, 50, arquivo),
         cacada_x_por_dia=_inteiro_entre(cacada.get("x_por_dia", 5), "[cacada].x_por_dia", 0, 20, arquivo),
+        cacada_x_botao_responder=_booleano(cacada.get("x_botao_responder", True), "[cacada].x_botao_responder", arquivo),
         cacada_x_ideias=_booleano(cacada.get("x_ideias", True), "[cacada].x_ideias", arquivo),
         cacada_propostas_auto_para_aprovar=_inteiro_entre(
             cacada.get("propostas_auto_para_aprovar", 5), "[cacada].propostas_auto_para_aprovar", 0, 50, arquivo
@@ -606,6 +625,10 @@ def carregar_texto(texto: str, *, origem: Path) -> Configuracao:
         ),
         celular_telegram_token=str(celular.get("telegram_token", "")).strip(),
         celular_telegram_chat=str(celular.get("telegram_chat", "")).strip(),
+        x_api_key=str(x.get("api_key", "")).strip(),
+        x_api_key_secret=str(x.get("api_key_secret", "")).strip(),
+        x_access_token=str(x.get("access_token", "")).strip(),
+        x_access_token_secret=str(x.get("access_token_secret", "")).strip(),
         linkedin_client_id=str(linkedin.get("client_id", "")).strip(),
         linkedin_client_secret=str(linkedin.get("client_secret", "")).strip(),
         linkedin_exportacao=Path(exportacao) if exportacao else None,

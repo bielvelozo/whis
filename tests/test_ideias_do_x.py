@@ -6,15 +6,24 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+from whis.api_do_x import NaoSaiu, SemConfirmacao
 from whis.ideias_do_x import (
     CAMINHO_DAS_IDEIAS,
+    ENVIADA,
+    ENVIANDO,
+    ESPERANDO,
+    INCERTA,
+    NAO_ACHEI,
+    ROTULO_DO_BOTAO,
     Ideia,
     IdeiaFake,
     do_dia,
+    imagens_da_arte,
     ja_usados,
     mensagem_no_celular,
     problemas_da_ideia,
     tamanho_no_x,
+    tocou_publicar,
 )
 
 SEGUNDA = datetime(2026, 11, 2, 12, 30).astimezone()
@@ -110,3 +119,193 @@ def test_o_post_preparado_sai_antes_da_ideia_nova_e_o_publicado_fica_de_fora(tmp
     sexta = datetime(2026, 11, 6, 12, 30).astimezone()
     resultado, _ = _rodar(tmp_path, porta, sexta)
     assert resultado.ideia.tema == "App esquecido pesa na loja" and len(porta.recebidos) == 1
+
+
+# -- o toque "Publicar no X" ----------------------------------------------------------------------------
+
+POSTS_PREPARADOS = (
+    "# Posts\r\n\r\n## 1. Portfólio\r\n\r\n- Publicado: 31/10\r\n\r\n```\r\nI'm Gabriel.\r\n```\r\n\r\n"
+    "## 3. Thread: o que deixa a loja lenta\r\n\r\nImagem: `peso.png`, no primeiro post\r\n\r\n"
+    "```\r\nWhat makes a store slow.\r\n```\r\n\r\n```\r\n1. Photos.\r\n```\r\n\r\n```\r\n2. Apps.\r\n```\r\n\r\n"
+    "Primeira resposta ao próprio post, com o link:\r\n\r\n```\r\nCheck yours: velozo.dev/velocidade\r\n```\r\n"
+)
+
+
+class XFake:
+    """O X de mentira: guarda cada pedido e falha onde o teste mandar."""
+
+    def __init__(self, *, falha_no_post: int | None = None, erro: Exception | None = None, erro_da_imagem: Exception | None = None) -> None:
+        self.falha_no_post = falha_no_post
+        self.erro = erro
+        self.erro_da_imagem = erro_da_imagem
+        self.imagens: list[str] = []
+        self.posts: list[tuple[str, str | None, tuple[str, ...]]] = []
+
+    def subir_imagem(self, arquivo: Path) -> str:
+        if self.erro_da_imagem is not None:
+            raise self.erro_da_imagem
+        self.imagens.append(arquivo.name)
+        return f"m{len(self.imagens)}"
+
+    def postar(self, texto: str, *, responder_a: str | None = None, imagens=()) -> str:
+        if self.falha_no_post == len(self.posts) + 1:
+            raise self.erro
+        self.posts.append((texto, responder_a, tuple(imagens)))
+        return f"p{len(self.posts)}"
+
+
+def _com_post_preparado(tmp_path: Path) -> tuple[str, Path]:
+    pasta = tmp_path / "vault" / "cacada" / "x"
+    pasta.mkdir(parents=True)
+    (pasta / "posts-semana-1.md").write_bytes(POSTS_PREPARADOS.encode("utf-8"))
+    artes = tmp_path / "artes"
+    artes.mkdir()
+    (artes / "peso.png").write_bytes(b"png")
+    mandados: list = []
+    do_dia(
+        tmp_path / "vault", Porta(), estado=tmp_path / "x-ideias.json", agora=SEGUNDA, botao=True,
+        avisar=lambda texto, botoes=(): mandados.append(botoes) is None,
+    )
+    [((rotulo, chave),)] = mandados
+    assert rotulo == ROTULO_DO_BOTAO
+    return chave, artes
+
+
+def _tocar(tmp_path: Path, chave: str, artes: Path, x: XFake):
+    return tocou_publicar(chave, cliente=x, estado=tmp_path / "x-ideias.json", vault=tmp_path / "vault", artes=artes, agora=SEGUNDA)
+
+
+def _rascunho(tmp_path: Path, chave: str) -> dict:
+    return json.loads((tmp_path / "x-ideias.json").read_text(encoding="utf-8"))["rascunhos"][chave]
+
+
+def test_o_toque_publica_a_thread_encadeada_com_a_imagem_e_o_link_por_ultimo(tmp_path: Path) -> None:
+    chave, artes = _com_post_preparado(tmp_path)
+    x = XFake()
+
+    resposta = _tocar(tmp_path, chave, artes, x)
+
+    assert x.imagens == ["peso.png"]
+    assert x.posts == [
+        ("What makes a store slow.", None, ("m1",)),
+        ("1. Photos.", "p1", ()),
+        ("2. Apps.", "p2", ()),
+        ("Check yours: velozo.dev/velocidade", "p3", ()),
+    ]
+    assert resposta.texto == "Publiquei no X (4 posts): https://x.com/i/web/status/p1" and resposta.tirar_botao
+    salvo = _rascunho(tmp_path, chave)
+    assert salvo["situacao"] == ENVIADA and salvo["ids"] == ["p1", "p2", "p3", "p4"]
+    nota = (tmp_path / "vault" / "cacada" / "x" / "posts-semana-1.md").read_bytes().decode("utf-8")
+    assert "## 3. Thread: o que deixa a loja lenta\r\n\r\n- Publicado: 02/11\r\n\r\nImagem:" in nota
+    assert "\n" not in nota.replace("\r\n", "")
+
+
+def test_nota_que_nao_abre_nao_estraga_a_resposta_do_que_ja_saiu(tmp_path: Path, caplog) -> None:
+    chave, artes = _com_post_preparado(tmp_path)
+    (tmp_path / "vault" / "cacada" / "x" / "posts-0.md").mkdir()
+
+    resposta = _tocar(tmp_path, chave, artes, XFake())
+
+    assert resposta.texto.startswith("Publiquei no X") and _rascunho(tmp_path, chave)["situacao"] == ENVIADA
+    assert "não marquei" in caplog.text
+
+
+def test_o_segundo_toque_nao_publica_de_novo(tmp_path: Path) -> None:
+    chave, artes = _com_post_preparado(tmp_path)
+    _tocar(tmp_path, chave, artes, XFake())
+    x = XFake()
+
+    resposta = _tocar(tmp_path, chave, artes, x)
+
+    assert "já está no X" in resposta.texto and resposta.tirar_botao and x.posts == [] and x.imagens == []
+
+
+def test_recusa_no_primeiro_post_nao_publicou_nada_e_deixa_tocar_de_novo(tmp_path: Path) -> None:
+    chave, artes = _com_post_preparado(tmp_path)
+
+    resposta = _tocar(tmp_path, chave, artes, XFake(falha_no_post=1, erro=NaoSaiu("HTTP 402: Your credits are depleted")))
+
+    assert resposta.texto == "Não publiquei: HTTP 402: Your credits are depleted." and not resposta.tirar_botao
+    assert _rascunho(tmp_path, chave)["situacao"] == ESPERANDO
+    x = XFake()
+    assert _tocar(tmp_path, chave, artes, x).texto.startswith("Publiquei no X") and len(x.posts) == 4
+
+
+def test_primeiro_post_sem_confirmacao_vira_incerta_e_nunca_repete(tmp_path: Path) -> None:
+    chave, artes = _com_post_preparado(tmp_path)
+
+    resposta = _tocar(tmp_path, chave, artes, XFake(falha_no_post=1, erro=SemConfirmacao("a conexão caiu no meio (ReadTimeout)")))
+
+    assert "não confirmou" in resposta.texto and "confira no perfil" in resposta.texto and resposta.tirar_botao
+    assert _rascunho(tmp_path, chave)["situacao"] == INCERTA
+    x = XFake()
+    assert "não confirmou" in _tocar(tmp_path, chave, artes, x).texto and x.posts == []
+    assert "- Publicado: 02/11" not in (tmp_path / "vault" / "cacada" / "x" / "posts-semana-1.md").read_text(encoding="utf-8")
+
+
+def test_thread_que_para_no_meio_diz_quantos_sairam_e_marca_o_publicado(tmp_path: Path) -> None:
+    chave, artes = _com_post_preparado(tmp_path)
+
+    resposta = _tocar(tmp_path, chave, artes, XFake(falha_no_post=3, erro=NaoSaiu("HTTP 429: Too Many Requests")))
+
+    assert resposta.texto.startswith("Saíram 2 de 4 (https://x.com/i/web/status/p1); o 3º não saiu") and resposta.tirar_botao
+    assert "HTTP 429" in resposta.texto and "termine à mão" in resposta.texto
+    salvo = _rascunho(tmp_path, chave)
+    assert salvo["situacao"] == INCERTA and salvo["ids"] == ["p1", "p2"]
+    assert "- Publicado: 02/11" in (tmp_path / "vault" / "cacada" / "x" / "posts-semana-1.md").read_text(encoding="utf-8")
+
+
+def test_processo_que_morreu_no_meio_conta_como_nao_confirmado(tmp_path: Path) -> None:
+    chave, artes = _com_post_preparado(tmp_path)
+    estado = json.loads((tmp_path / "x-ideias.json").read_text(encoding="utf-8"))
+    estado["rascunhos"][chave]["situacao"] = ENVIANDO
+    (tmp_path / "x-ideias.json").write_text(json.dumps(estado), encoding="utf-8")
+    x = XFake()
+
+    assert "não confirmou" in _tocar(tmp_path, chave, artes, x).texto and x.posts == []
+
+
+def test_imagem_que_falta_ou_nao_sobe_nao_publica_nada(tmp_path: Path) -> None:
+    chave, artes = _com_post_preparado(tmp_path)
+    (artes / "peso.png").unlink()
+    x = XFake()
+
+    resposta = _tocar(tmp_path, chave, artes, x)
+
+    assert resposta.texto == f"Não publiquei: falta peso.png em {artes}." and x.posts == [] and not resposta.tirar_botao
+    (artes / "peso.png").write_bytes(b"png")
+    resposta = _tocar(tmp_path, chave, artes, XFake(erro_da_imagem=SemConfirmacao("HTTP 503")))
+    assert resposta.texto.startswith("Não publiquei: a imagem não subiu (HTTP 503)")
+    assert _rascunho(tmp_path, chave)["situacao"] == ESPERANDO
+
+
+def test_a_ideia_nova_do_claude_vai_sem_imagem_e_sem_botao_sem_as_chaves(tmp_path: Path) -> None:
+    mandadas: list = []
+    do_dia(
+        tmp_path / "vault", Porta(), estado=tmp_path / "x-ideias.json", agora=SEGUNDA,
+        avisar=lambda texto, **opcoes: mandadas.append(opcoes) is None,
+    )
+    assert mandadas == [{}]
+    [(chave, rascunho)] = json.loads((tmp_path / "x-ideias.json").read_text(encoding="utf-8"))["rascunhos"].items()
+    assert rascunho["imagens"] == [] and rascunho["preparada"] is False and rascunho["situacao"] == ESPERANDO
+    x = XFake()
+    resposta = _tocar(tmp_path, chave, tmp_path / "sem-artes", x)
+    assert resposta.texto == "Publiquei no X (4 posts): https://x.com/i/web/status/p1"
+    assert x.imagens == [] and x.posts[-1] == ("Want to see how much your store weighs on a phone? velozo.dev/velocidade", "p3", ())
+
+
+def test_toque_desconhecido_e_as_imagens_da_linha_imagem() -> None:
+    assert tocou_publicar("xpost:nada", cliente=XFake(), estado=Path("nao-existe.json"), vault=Path("."), artes=Path(".")).texto == NAO_ACHEI
+    assert imagens_da_arte("`portfolio-1.png`, `portfolio-2.png`, `portfolio-1.png`, `a.jpg`, `b.webp`") == (
+        "portfolio-1.png", "portfolio-2.png", "a.jpg", "b.webp",
+    )
+    assert imagens_da_arte("Print do theme.liquid com o snippet esquecido.") == ()
+
+
+def test_o_toque_sem_as_chaves_de_x_nao_tenta_publicar(tmp_path: Path) -> None:
+    from whis.__main__ import _tocou_no_celular
+    from whis.configuracao import Configuracao
+
+    resposta = _tocou_no_celular(Configuracao(vault=tmp_path), "xpost:abc")
+
+    assert resposta.texto == "Não publiquei: faltam as chaves de [x] no config.toml."

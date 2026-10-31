@@ -51,12 +51,19 @@ class Telegram:
     def enviar(
         self, texto: str, *, botoes: Sequence[tuple[str, str]] = (), responder_a: int | None = None, html: bool = False
     ) -> bool:
-        """`botoes` são pares (rótulo, dados do toque), um por linha embaixo da mensagem; `html` liga o `<pre>` que copia num toque."""
+        """`botoes` são pares (rótulo, dados do toque ou link https), um por linha embaixo da mensagem; `html` liga o `<pre>` que copia num toque.
+
+        O botão com link abre o endereço no celular sem passar pelo Whis.
+        """
         corpo: dict = {"chat_id": self.chat, "text": texto[:LIMITE_DO_TEXTO], "link_preview_options": {"is_disabled": True}}
         if html:
             corpo["parse_mode"] = "HTML"
         if botoes:
-            corpo["reply_markup"] = {"inline_keyboard": [[{"text": rotulo, "callback_data": dados}] for rotulo, dados in botoes]}
+            corpo["reply_markup"] = {
+                "inline_keyboard": [
+                    [{"text": rotulo, ("url" if dados.startswith("https://") else "callback_data"): dados}] for rotulo, dados in botoes
+                ]
+            }
         if responder_a is not None:
             corpo["reply_parameters"] = {"message_id": responder_a, "allow_sending_without_reply": True}
         return self._chamar("sendMessage", corpo) is not None

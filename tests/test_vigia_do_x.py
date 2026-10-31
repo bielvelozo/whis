@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
+from urllib.parse import parse_qs
 
 from whis import vigia_do_x
 from whis.configuracao import carregar_texto
@@ -55,8 +56,23 @@ class EscritorFake:
         return [Rascunho(vigia_do_x.id_do_post(p), self.tipo, self.texto, "Pede migração.") for p in posts]
 
 
-def _rodar(tmp_path: Path, leitor: LeitorFake, escritor: EscritorFake | None = None, *, por_dia: int = 5, agora: datetime = AGORA):
-    mandadas: list[str] = []
+class Celular(list):
+    """As mensagens que chegariam ao celular; `botoes` guarda os botões de cada uma."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.botoes: list[tuple] = []
+
+    def __call__(self, texto: str, botoes=()) -> bool:
+        self.append(texto)
+        self.botoes.append(tuple(botoes))
+        return True
+
+
+def _rodar(
+    tmp_path: Path, leitor: LeitorFake, escritor: EscritorFake | None = None, *, por_dia: int = 5, agora: datetime = AGORA, botao: bool = True
+):
+    mandadas = Celular()
     rodada = rodar(
         BUSCAS,
         leitor=leitor,
@@ -64,9 +80,10 @@ def _rodar(tmp_path: Path, leitor: LeitorFake, escritor: EscritorFake | None = N
         contexto=CONTEXTO,
         voz="",
         estado=tmp_path / "x.json",
-        celular=lambda texto: mandadas.append(texto) is None,
+        celular=mandadas,
         por_dia=por_dia,
         agora=agora,
+        botao=botao,
     )
     return rodada, mandadas
 
@@ -129,6 +146,27 @@ def test_post_novo_vira_rascunho_no_celular_com_link_e_texto_no_pre(tmp_path: Pa
     assert "@maya_candles · há 2 h · responder no post" in mandadas[0]
     salvo = json.loads((tmp_path / "x.json").read_text(encoding="utf-8"))
     assert salvo["ultima_leitura"] and "1" in salvo["vistos"] and "maya_candles" in salvo["autores"]
+
+
+def test_a_resposta_chega_com_o_link_que_abre_o_x_pronto_e_a_dm_sem_botao(tmp_path: Path) -> None:
+    _, mandadas = _rodar(tmp_path, LeitorFake(post()))
+    [(rotulo, link)] = mandadas.botoes[0]
+    endereco, consulta = link.split("?", 1)
+    assert rotulo == "Responder no X" and endereco == "https://x.com/intent/tweet"
+    assert parse_qs(consulta) == {"in_reply_to": ["1"], "text": [BOA]}
+    assert "+" not in consulta and "%20" in consulta
+
+    _, mandadas = _rodar(tmp_path / "dm", LeitorFake(post()), EscritorFake(texto="Hey Maya, want me to send you a plan?", tipo=DM))
+    assert len(mandadas) == 1 and mandadas.botoes == [()]
+
+
+def test_o_botao_desligado_no_config_deixa_so_o_texto_para_copiar(tmp_path: Path) -> None:
+    _, mandadas = _rodar(tmp_path, LeitorFake(post()), botao=False)
+    assert mandadas.botoes == [()] and f"<pre>{BOA}</pre>" in mandadas[0]
+    vault = f'vault = "{(tmp_path / "vault").as_posix()}"\n'
+    assert carregar_texto(vault, origem=tmp_path / "config.toml").cacada_x_botao_responder is True
+    desligado = carregar_texto(vault + "[cacada]\nx_botao_responder = false\n", origem=tmp_path / "config.toml")
+    assert desligado.cacada_x_botao_responder is False
 
 
 def test_visto_velho_curto_oferta_e_autor_da_semana_nao_vao_ao_claude(tmp_path: Path) -> None:
