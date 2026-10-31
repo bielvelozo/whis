@@ -424,6 +424,12 @@ def test_o_job_listings_descarta_quem_oferece_servico():
          "We’re a new, fast growing e-commerce brand. We’re scaling our online store and email marketing"),
         (679387, "HIRING! Fractional Shopify E-commerce Manager | MAXLER",
          "MAXLER is looking for a strong Shopify E-commerce Manager. I help with onboarding."),
+        (900001, "Shopify developer position available, remote", "We are a furniture brand and need a dev for our theme"),
+        (900002, "Looking for a Shopify developer", "Budget available for the right person. We build custom furniture."),
+        (900003, "Need help with my Shopify store", "I can help with the product photos myself, but need someone for the code"),
+        (900004, "Seeking Shopify expert for store migration", "Is anyone available this week? Paid project."),
+        (900005, "Shopify Expert Available for Your Store", "Fast delivery and unlimited revisions."),
+        (900006, "Need a hand with your theme?", "We build Shopify stores that convert and I can help you today."),
     ]
 
     def responder(_pedido: httpx.Request) -> httpx.Response:
@@ -436,7 +442,9 @@ def test_o_job_listings_descarta_quem_oferece_servico():
         (FonteDaCacada("Shopify Community", "shopify_community", "job-listings/334"),), AGORA, rede=httpx.MockTransport(responder)
     )
 
-    assert [vaga.link.rsplit("/", 1)[1] for vaga in coleta.por_fonte["Shopify Community"]] == ["659089", "652438", "679387"]
+    assert [vaga.link.rsplit("/", 1)[1] for vaga in coleta.por_fonte["Shopify Community"]] == [
+        "659089", "652438", "679387", "900001", "900002", "900003", "900004",
+    ]
 
 
 def test_a_vigia_le_o_forum_da_shopify_so_no_nicho_shopify(monkeypatch: pytest.MonkeyPatch):

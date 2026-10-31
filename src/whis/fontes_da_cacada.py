@@ -448,8 +448,13 @@ def ler_freelancer(cliente: httpx.Client, fonte: FonteDaCacada) -> tuple[Oportun
 
 FORUM_DA_SHOPIFY = "https://community.shopify.com"
 QUEM_CONTRATA = re.compile(r"\bhiring\b", re.IGNORECASE)
+#: "available", "we build" e "I can help" soltos tiravam vaga de verdade ("Budget available", "We build custom
+#: furniture"); só contam quando dizem quem se oferece.
 QUEM_OFERECE = re.compile(
-    r"\bI help\b|what I offer|\bavailable\b|hire me|my services|\bI can help\b|\bwe build\b"
+    r"\bI help (?:shopify|store|brands?|businesses|e-?commerce|you|clients|merchants)\b|what I offer|hire me|my services"
+    r"|\b(?:team|developers?|devs?|experts?|designers?|agency|services?|I['’]?m|I am|we['’]?re|we are) available\b"
+    r"|\bavailable for (?:new )?(?:work|projects|hire|freelance|clients)\b"
+    r"|\bI can help (?:you|your|with your)\b|\bwe build (?:shopify|stores|e-?commerce|websites|custom (?:shopify|apps|themes))"
     r"|looking for an? (shopify )?store owner|building my (practical )?experience|free trial task"
     r"|side hustle|online partner|je peux vous aider|posso (te |lhe )?ajudar",
     re.IGNORECASE,
