@@ -136,15 +136,29 @@ class Escritor(Protocol):
     def escrever(self, posts: Sequence[PostDoX], contexto: Contexto, voz: str) -> Sequence[Rascunho]: ...
 
 
-_IA = re.compile(r"\b(?:AI|A\.I\.|IA|GPT|LLMs?|ChatGPT|Claude|Copilot|OpenAI|Gemini)\b|artificial intelligence|intelig[êe]ncia artificial", re.I)
-_LINK = re.compile(r"https?://\S+|www\.\S+|\b[\w-]+\.(?:com|dev|io|br|net|app|co|me|store|shop)\b", re.I)
+#: "AI" e "IA" só em maiúscula: o "ia" do verbo, em português, barrava o rascunho.
+_SIGLA_DE_IA = r"(?:(?-i:\bAI\b|\bIA\b)|\bA\.I\.|\b(?:GPT|ChatGPT|Claude|Copilot|Gemini)\b)"
+_IA = re.compile(_SIGLA_DE_IA + r"|\bLLMs?\b|\bOpenAI\b|artificial intelligence|intelig[êe]ncia artificial", re.I)
+#: Vale mesmo quando o post fala de IA: lá ele pode falar da integração que o cliente pediu, nunca dizer que usa.
+_USA_IA = re.compile(
+    r"\b(?:use[sd]?|using|work with|build with|built with|made with|rely on|leverage|uso|usando|com a ajuda d[ae])\b[^.?!\n]{0,25}"
+    + _SIGLA_DE_IA,
+    re.I,
+)
+_LINK = re.compile(
+    r"https?://\S+|www\.\S+"
+    r"|\b[\w-]+\.(?:com|dev|io|br|net|app|co|me|store|shop|org|ly|ee|gg|ai|xyz|site|online|link|page|to|us)\b",
+    re.I,
+)
 _CONTATO = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+|\+\d{1,3}\s?\(?\d{2,3}\)?\s?\d{4,5}[-\s]?\d{4}")
 _PRECO = re.compile(
-    r"[$€£]\s*\d|R\$|\d\s*(?:usd|brl|reais|dollars|bucks)\b|\bper hour\b|/\s*h(?:ou)?r\b|\bpor hora\b|\bhourly rate\b", re.I
+    r"[$€£]\s*\d|R\$|\b(?:usd|brl|eur)\s*\d|\d\s*(?:usd|brl|reais|dollars|bucks)\b|\bper hour\b|/\s*h(?:ou)?r\b|\d\s*/\s*h\b"
+    r"|\d\s*(?:an|a) hour\b|\bpor hora\b|\bhourly rate\b",
+    re.I,
 )
-_EMOJI = re.compile("[\U0001f300-\U0001faff☀-➿]")
+_EMOJI = re.compile("[\U0001f000-\U0001faff\u2300-\u23ff\u2600-\u27bf\u2b00-\u2bff\ufe0f]")
 _HASHTAG = re.compile(r"(?<![\w&])#\w")
-_CALL = re.compile(r"\bcall\b|\bzoom\b|\bmeeting\b|reuni[ãa]o|\bligação\b", re.I)
+_CALL = re.compile(r"\bcalls?\b|\bzoom\b|\bmeetings?\b|reuni[ãa]o|\bliga[çc](?:ão|ões)\b", re.I)
 _NUNCA = re.compile(r"faz sentido|make sense\?|makes sense\?", re.I)
 
 
@@ -163,7 +177,9 @@ def problemas(rascunho: Rascunho, post: PostDoX) -> list[str]:
         achados.append("tem link (o velozo.dev fica no perfil)")
     if _PRECO.search(texto):
         achados.append("fala de preço")
-    if _IA.search(texto) and not _IA.search(post.texto):
+    if _USA_IA.search(texto):
+        achados.append("diz que usa IA")
+    elif _IA.search(texto) and not _IA.search(post.texto):
         achados.append("cita IA sem o post falar de IA")
     if _CONTATO.search(texto):
         achados.append("e-mail ou telefone no texto")
@@ -306,7 +322,7 @@ def rodar(
         por_id = {id_do_post(post): post for post in candidatos}
         for rascunho in escritor.escrever(candidatos, contexto, voz):
             post = por_id.pop(rascunho.post, None)
-            if post is None or memoria.do_dia(agora) >= por_dia:
+            if post is None or memoria.do_dia(agora) >= por_dia or memoria.autor_descansando(post.autor, agora):
                 continue
             achados = problemas(rascunho, post)
             if achados:

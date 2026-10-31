@@ -223,7 +223,8 @@ def test_problemas_barram_tamanho_link_preco_ia_emoji_call_e_fim_sem_pergunta() 
     assert "tem link (o velozo.dev fica no perfil)" in problemas(Rascunho("1", RESPOSTA, "See velozo.dev?"), p)
     assert "fala de preço" in problemas(Rascunho("1", RESPOSTA, "I can do it for $300?"), p)
     assert "fala de preço" in problemas(Rascunho("1", RESPOSTA, "Faço por R$ 400?"), p)
-    assert "cita IA sem o post falar de IA" in problemas(Rascunho("1", RESPOSTA, "I use AI to go fast. Want an idea?"), p)
+    assert problemas(Rascunho("1", RESPOSTA, "I use AI to go fast. Want an idea?"), p) == ["diz que usa IA"]
+    assert "cita IA sem o post falar de IA" in problemas(Rascunho("1", RESPOSTA, "Hey, AI could write the copy. Want an idea?"), p)
     assert "tem emoji" in problemas(Rascunho("1", RESPOSTA, "Hey 🙂 want an idea?"), p)
     assert "pede call" in problemas(Rascunho("1", RESPOSTA, "Hey, quick call tomorrow?"), p)
     assert "não termina em pergunta" in problemas(Rascunho("1", RESPOSTA, "Hey, I can help."), p)
@@ -274,3 +275,25 @@ def test_a_busca_da_vigia_abre_mais_recentes_e_a_tela_de_entrar_e_login_vencido(
     assert parse_qs(urlsplit(url_da_busca('"shopify developer"', date(2026, 10, 31))).query)["f"] == ["top"]
     assert pede_login('<div role="dialog"><input autocomplete="username webauthn" name="username_or_email"></div>')
     assert not pede_login('<article data-testid="tweet"><input type="text" name="q"></article>')
+
+
+def test_problemas_pegam_bandeira_encurtador_moeda_antes_calls_e_quem_diz_que_usa_ia() -> None:
+    p = post()
+    sobre_ia = post(texto="Looking for a Shopify dev to add an AI chatbot to our store, paid gig.")
+    base = "Hey, I'm Gabriel, I build Shopify stores. "
+    assert "tem emoji" in problemas(Rascunho("1", RESPOSTA, base + "\U0001F1E7\U0001F1F7 Want an idea?"), p)
+    assert "tem emoji" in problemas(Rascunho("1", RESPOSTA, base + "\u2b50 Want an idea?"), p)
+    for link in ("bit.ly/abc", "linktr.ee/velozo", "velozo.org", "discord.gg/abc"):
+        assert "tem link (o velozo.dev fica no perfil)" in problemas(Rascunho("1", RESPOSTA, f"{base}See {link}. Want an idea?"), p)
+    for preco in ("USD 300 flat", "30/h", "30 an hour"):
+        assert "fala de preço" in problemas(Rascunho("1", RESPOSTA, f"{base}{preco} works. Want an idea?"), p)
+    assert "pede call" in problemas(Rascunho("1", RESPOSTA, base + "Happy to jump on calls. Want an idea?"), p)
+    assert "diz que usa IA" in problemas(Rascunho("1", RESPOSTA, base + "I use AI to build faster. Want an idea?"), sobre_ia)
+    assert problemas(Rascunho("1", RESPOSTA, base + "I'd hook the AI chatbot into the cart drawer. Want an idea?"), sobre_ia) == []
+    em_portugues = "Oi, tudo certo? Aqui é o Gabriel, faço lojas Shopify. Eu ia sugerir trazer os produtos antes. Posso te mandar uma ideia?"
+    assert problemas(Rascunho("1", RESPOSTA, em_portugues), p) == []
+
+
+def test_o_mesmo_autor_recebe_um_rascunho_so_na_rodada(tmp_path: Path) -> None:
+    rodada, mandadas = _rodar(tmp_path, LeitorFake(post(status=1), post(status=2, horas=3)))
+    assert [d["link"] for d in rodada.rascunhos] == ["https://x.com/maya_candles/status/1"] and len(mandadas) == 1
