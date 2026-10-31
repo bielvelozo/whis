@@ -2,7 +2,13 @@
 
 Do mais grave para o menos grave. Cada item diz se foi corrigido aqui ou se ficou para outra pessoa.
 
-A suíte inteira, rodada sobre o HEAD `8c6e0e2` (cópia limpa, por `git archive`), passou (saída 0). Na working tree, a coleta para em `painel.py` com "O modelo tem a chave x.api_key, que CHAVES não conhece". É a sessão do botão "Enviar no X" no meio da mudança dela, não um defeito commitado.
+A suíte inteira passou duas vezes:
+- antes das correções, sobre o HEAD `8c6e0e2` (cópia limpa, por `git archive`), com saída 0;
+- depois, na working tree com `fb0cd3e`: 2050 testes, 1 pulado, nenhuma falha.
+
+O `3a0755d` veio depois dessa rodada e foi conferido pelos 19 testes de `test_ideias_do_x.py`.
+
+No começo da revisão, a coleta parava em `painel.py` com "O modelo tem a chave x.api_key, que CHAVES não conhece". Era a sessão do botão "Enviar no X" no meio da mudança dela, que entrou inteira em `1e29243`.
 
 ## 1. O filtro do fórum da Shopify tirava vaga de verdade
 
@@ -87,5 +93,6 @@ Ele tem "More at velozo.dev" no corpo, e o plano diz que o fixado é a exceção
 
 - `__main__._rodar_ideia_do_x` criava `IdeiaClaude(cli=…)` sem `modelo=configuracao.claude_modelo`, diferente da vigia (`XClaude(modelo=…, cli=…)`). Com `claude_modelo` no config, a ideia do dia ignorava o modelo escolhido. **Corrigido em `3a0755d`**, com teste.
 - Os commits de outras sessões durante a revisão foram olhados por cima, sem achado: `7e466e7` (vigia fora de concurso e isca de engajamento) e `1e29243` (botão "Publicar no X" pela API). O `tocou_publicar` só posta no toque, marca "enviando" antes do primeiro pedido e não publica de novo o que já saiu ou ficou incerto. O botão só aparece com as chaves `[x]` no config, que ele escolheu pôr a partir de 14/11.
+- Dois bloqueios a mais que as correções aceitaram, sem corrigir: na vigia, "I'd use Shopify's AI search" cai como "diz que usa IA" ("use" e "AI" a até 25 caracteres), e o rascunho só some no log. No fórum, "I help" agora pede um substantivo da lista logo depois, então "I help DTC brands grow" passa. No post real (707251), o "What I offer" segura.
 - `ideias_do_x.do_dia` guarda só os últimos 40 temas. Um post preparado que ele não marcar como "Publicado:" volta à fila depois de umas 13 semanas.
 - `vigia_do_x._Estado.avisos` nunca é podado (cresce uma chave por tipo de aviso, não por dia, então fica pequeno).
