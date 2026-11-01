@@ -55,6 +55,7 @@ _NUNCA = {
     "inteligência artificial": re.compile(r"intelig[êe]ncia artificial|chatgpt|\bclaude\b", re.I),
     "call": re.compile(r"\bcall\b|reuni[ãa]o|\bligação\b", re.I),
     "meu WhatsApp": re.compile(r"\b(meu|me chama no) whats", re.I),
+    "Shopify ou e-commerce": re.compile(r"shopify|e-?commerce", re.I),
 }
 
 
@@ -71,6 +72,10 @@ class Perfil:
     @property
     def link(self) -> str:
         return f"https://www.instagram.com/{self.arroba}/"
+
+    @property
+    def partes(self) -> list[str]:
+        return partes_da_mensagem(self.mensagem)
 
 
 @dataclass
@@ -134,6 +139,15 @@ def problemas_da_mensagem(mensagem: str) -> list[str]:
         problemas.append("não termina em pergunta")
     problemas += [f'usa "{nome}"' for nome, padrao in _NUNCA.items() if padrao.search(texto)]
     return problemas
+
+
+def partes_da_mensagem(mensagem: str) -> list[str]:
+    """Como ele manda no direct (pedido de 31/10): a saudação com quem é, a observação, e o resto com a pergunta."""
+    frases = re.split(r"(?<=[.?!])\s+", mensagem.strip())
+    quem = next((i for i, frase in enumerate(frases) if "Gabriel" in frase), None)
+    if quem is None or len(frases) - quem < 3:
+        return [mensagem.strip()]
+    return [" ".join(frases[: quem + 1]), frases[quem + 1], " ".join(frases[quem + 2 :])]
 
 
 def conferir(bruto: dict[str, Any], conhecidos: set[str]) -> tuple[Perfil | None, str]:
@@ -211,8 +225,7 @@ def mensagem_no_celular(perfil: Perfil) -> str:
         f"<b>{escape(perfil.nome)}</b> · @{escape(perfil.arroba)} · {milhar} · {escape(perfil.nicho)}",
         f"{escape(perfil.problema)}: “{escape(perfil.prova)}”",
         escape(perfil.link),
-        "",
-        f"<pre>{escape(perfil.mensagem)}</pre>",
+        *(f"\n<pre>{escape(parte)}</pre>" for parte in perfil.partes),
     ]
     return "\n".join(linhas)
 
@@ -221,7 +234,7 @@ def _mandar(avisar: Avisar, perfis: Sequence[Perfil]) -> None:
     if not perfis:
         return
     avisar(
-        f"Instagram de hoje: {len(perfis)} {'perfil' if len(perfis) == 1 else 'perfis'}. Toque no texto para copiar e mande do seu perfil, sem link. "
+        f"Instagram de hoje: {len(perfis)} {'perfil' if len(perfis) == 1 else 'perfis'}. Toque em cada parte para copiar e mande uma mensagem por parte, do seu perfil, sem link. "
         "Nos primeiros dias, uns 10 por dia, para o Instagram não travar o envio."
     )
     for perfil in perfis:
@@ -237,7 +250,7 @@ def _escrever_nota(vault: Path, perfis: Sequence[Perfil], agora: datetime) -> st
         partes.append(
             f"\n## {perfil.nome} (@{perfil.arroba})\n\n"
             f"- {perfil.link}\n- {perfil.seguidores} seguidores · {perfil.nicho}\n"
-            f"- {perfil.problema}: “{perfil.prova}”\n\n{perfil.mensagem}\n"
+            f"- {perfil.problema}: “{perfil.prova}”\n\n" + "\n\n".join(perfil.partes) + "\n"
         )
     if not perfis:
         partes.append("\nNenhum perfil novo passou na conferência hoje.\n")
@@ -288,8 +301,8 @@ confirmar que não há loja.
 A MENSAGEM (campo "mensagem")
 O guia de voz dele vem no fim; copie o jeito, nunca as frases.
 - "Oi, pessoal da <marca>, tudo certo?" (ou "Oi, <nome>, tudo certo?" quando o perfil é de uma pessoa).
-- "Aqui é o Gabriel, faço lojas Shopify." e o que ele reparou no perfil, específico e verdadeiro ("Dei uma olhada \
-no perfil e reparei que os pedidos vão todos pelo direct."). Nunca abrir com elogio.
+- "Aqui é o Gabriel, trabalho com lojas virtuais." (nunca "Shopify" nem "e-commerce": a marca pequena muitas \
+vezes não conhece esses nomes) e o que ele reparou no perfil, específico e verdadeiro ("Dei uma olhada no perfil e reparei que os pedidos vão todos pelo direct."). Nunca abrir com elogio.
 - Uma frase do que muda para a marca: a pessoa compra sozinha, a qualquer hora, sem esperar resposta.
 - No fim, uma pergunta curta que oferece algo: "Posso te mandar um exemplo de como ficaria?".
 - Sem link (ele escolheu em 29/10: o portfólio fica na bio dele), sem o preço dele, sem pedir call, sem dar \
@@ -350,7 +363,7 @@ class InstagramFake:
             {
                 "arroba": "ateliecasca", "nome": "Ateliê Casca", "nicho": "semijoias", "seguidores": "2,4 mil",
                 "problema": "Vende pelo direct", "prova": "Pedidos pelo direct · envio para todo Brasil",
-                "mensagem": "Oi, pessoal do Ateliê Casca, tudo certo? Aqui é o Gabriel, faço lojas Shopify. Dei uma olhada "
+                "mensagem": "Oi, pessoal do Ateliê Casca, tudo certo? Aqui é o Gabriel, trabalho com lojas virtuais. Dei uma olhada "
                 "no perfil e reparei que os pedidos vão todos pelo direct. Com uma loja simples, a cliente escolhe a peça, "
                 "paga e calcula o frete sozinha, a qualquer hora. Posso te mandar um exemplo de como ficaria?",
             },

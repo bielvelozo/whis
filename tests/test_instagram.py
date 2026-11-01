@@ -5,12 +5,12 @@ from pathlib import Path
 import pytest
 
 from whis import instagram
-from whis.instagram import InstagramFake, arroba_limpa, buscar_do_dia, conferir, mensagem_no_celular, problemas_da_mensagem, seguidores
+from whis.instagram import InstagramFake, arroba_limpa, buscar_do_dia, conferir, mensagem_no_celular, partes_da_mensagem, problemas_da_mensagem, seguidores
 
 AGORA = datetime(2026, 10, 30, 12, 30, tzinfo=timezone(timedelta(hours=-3)))
 
 BOA = (
-    "Oi, pessoal da Casa Lume, tudo certo? Aqui é o Gabriel, faço lojas Shopify. Dei uma olhada no perfil e reparei "
+    "Oi, pessoal da Casa Lume, tudo certo? Aqui é o Gabriel, trabalho com lojas virtuais. Dei uma olhada no perfil e reparei "
     "que os pedidos vão todos pelo direct. Com uma loja simples, a cliente escolhe, paga e calcula o frete sozinha, "
     "a qualquer hora. Posso te mandar um exemplo de como ficaria?"
 )
@@ -67,6 +67,8 @@ def test_o_whatsapp_e_o_preco_da_marca_podem_ser_a_observacao():
         (BOA.replace("Posso", "Me chama no WhatsApp. Posso"), 'usa "meu WhatsApp"'),
         (BOA.replace("Posso", "Uso IA no trabalho. Posso"), 'usa "IA"'),
         (BOA.replace("Oi, pessoal da Casa Lume, tudo certo?", "Oi! Amei os produtos de vocês."), "abre com elogio"),
+        (BOA.replace("lojas virtuais", "lojas Shopify"), 'usa "Shopify ou e-commerce"'),
+        (BOA.replace("lojas virtuais", "e-commerce"), 'usa "Shopify ou e-commerce"'),
         (BOA + " 😊", "tem emoji"),
         (BOA.removesuffix("?") + ".", "não termina em pergunta"),
         (BOA.replace("Faz", "faz") + " Faz sentido pra vocês?", 'usa "faz sentido"'),
@@ -97,7 +99,7 @@ def test_a_lista_do_dia_grava_o_estado_a_nota_e_manda_um_perfil_por_mensagem(tmp
     memoria = json.loads(estado.read_text(encoding="utf-8"))
     assert set(memoria["perfis"]) == {"ja.foi", "casalume", "ateliecasca"} and memoria["ultimo_dia"] == "2026-10-30"
     nota = (tmp_path / "cacada/instagram/2026-10-30.md").read_text(encoding="utf-8")
-    assert "@casalume" in nota and BOA in nota
+    assert "@casalume" in nota and "\n\n".join(partes_da_mensagem(BOA)) in nota
     assert len(mandadas) == 3 and mandadas[0].startswith("Instagram de hoje: 2 perfis")
     assert "<pre>Oi, pessoal da Casa Lume" in mandadas[1]
 
@@ -133,6 +135,26 @@ def test_no_celular_o_texto_vem_escapado_e_num_bloco_que_copia():
     texto = mensagem_no_celular(perfil)
 
     assert "Casa &lt;Lume&gt; &amp; Cia" in texto and "2,1 mil" in texto and texto.endswith("</pre>")
+
+
+def test_a_mensagem_sai_em_tres_partes_saudacao_observacao_e_pergunta():
+    partes = partes_da_mensagem(BOA)
+
+    assert partes[0] == "Oi, pessoal da Casa Lume, tudo certo? Aqui é o Gabriel, trabalho com lojas virtuais."
+    assert partes[1].startswith("Dei uma olhada") and partes[2].endswith("?")
+    assert " ".join(partes) == BOA
+
+
+def test_mensagem_curta_demais_para_separar_fica_inteira():
+    assert partes_da_mensagem("Oi, Lu, tudo certo? Aqui é o Gabriel. Posso te mandar uma ideia?") == [
+        "Oi, Lu, tudo certo? Aqui é o Gabriel. Posso te mandar uma ideia?"
+    ]
+
+
+def test_no_celular_cada_parte_vem_num_bloco_que_copia():
+    perfil, _ = conferir(_bruto("casalume"), set())
+
+    assert mensagem_no_celular(perfil).count("<pre>") == 3
 
 
 def test_o_fake_tem_um_que_passa_e_um_que_nao():
