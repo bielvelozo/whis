@@ -17,19 +17,21 @@ from whis.posts_do_instagram import (
     ENVIANDO,
     FALHOU,
     INCERTO,
-    PERDIDO,
     PUBLICADO,
     REEL,
+    SEM_REDE,
     ConteudoIncompleto,
     Envio,
     ErroDoInstagram,
     Postagem,
+    SemRede,
     conteudo_da_postagem,
     escolher,
     ler_calendario,
     ler_estado,
     ler_legenda,
     publicar_do_dia,
+    rede_pronta,
 )
 
 DOMINGO_19H = datetime(2026, 11, 1, 19, 0)
@@ -146,17 +148,21 @@ def test_no_domingo_as_19h_sai_o_reel_01_com_link_no_celular(raiz: Path) -> None
 def test_antes_das_19h_e_em_dia_sem_item_nada_abre(raiz: Path) -> None:
     porta = Porta()
     assert _rodar(raiz, porta, datetime(2026, 11, 1, 18, 59))[0].motivo == "01-plinko é às 19:00"
+    saidos = {p: {"situacao": PUBLICADO, "quando": "2026-11-06T19:00:00"} for p in ("01-plinko", "09-analise-marca", "08-pichau", "01-pagina-responde")}
+    (raiz / "estado.json").write_text(json.dumps({"posts": saidos}), encoding="utf-8")
     assert _rodar(raiz, porta, datetime(2026, 11, 7, 19, 0))[0].motivo == "nada no calendário hoje"
     assert porta.chamadas == []
 
 
-def test_o_que_ja_saiu_nunca_sai_de_novo_e_so_um_por_dia(raiz: Path) -> None:
+def test_o_que_ja_saiu_nunca_sai_de_novo_e_dois_posts_tem_intervalo(raiz: Path) -> None:
     porta = Porta()
     _rodar(raiz, porta, agendada=True)
-    resultado, mandadas, _ = _rodar(raiz, porta, datetime(2026, 11, 1, 21, 0), agendada=True)
-    assert resultado.postagem is None and resultado.motivo == "hoje já saiu 01-plinko"
-    resultado, _, _ = _rodar(raiz, porta, datetime(2026, 11, 1, 21, 0), pasta="09-analise-marca")
-    assert resultado.motivo == "hoje já saiu 01-plinko"
+    resultado, mandadas, _ = _rodar(raiz, porta, datetime(2026, 11, 1, 20, 0), agendada=True)
+    assert resultado.postagem is None and resultado.motivo == "o último saiu às 19:00; o próximo espera até 21:00"
+    resultado, _, _ = _rodar(raiz, porta, datetime(2026, 11, 1, 20, 0), pasta="09-analise-marca")
+    assert resultado.motivo == "o último saiu às 19:00; o próximo espera até 21:00"
+    resultado, _, _ = _rodar(raiz, porta, datetime(2026, 11, 1, 21, 0), agendada=True)
+    assert resultado.postagem is None and resultado.motivo == "01-plinko já está como publicado"
     assert len(porta.chamadas) == 1 and mandadas == []
 
 
@@ -211,14 +217,64 @@ def test_o_estado_vira_enviando_antes_do_clique(raiz: Path) -> None:
     assert vistos == [ENVIANDO]
 
 
-def test_dia_perdido_avisa_uma_vez_e_nao_sai_atrasado(raiz: Path) -> None:
+def test_o_que_nao_saiu_no_domingo_sai_quando_o_pc_volta_e_o_do_dia_continua_no_horario(raiz: Path) -> None:
     porta = Porta()
-    resultado, mandadas, estado = _rodar(raiz, porta, datetime(2026, 11, 2, 8, 0), agendada=True)
-    assert [p.pasta for p in resultado.perdidas] == ["01-plinko"] and estado["01-plinko"]["situacao"] == PERDIDO
-    assert len(mandadas) == 1 and "não posta atrasado" in mandadas[0] and porta.chamadas == []
-    resultado, mandadas, _ = _rodar(raiz, porta, datetime(2026, 11, 2, 19, 5), agendada=True)
+    resultado, mandadas, estado = _rodar(raiz, porta, datetime(2026, 11, 2, 10, 0), agendada=True)
+    assert resultado.situacao == PUBLICADO and resultado.postagem.pasta == "01-plinko"
+    assert mandadas[0].startswith("Instagram: saiu o Reel 01-plinko (era de 01/11 às 19:00).")
+    assert _rodar(raiz, porta, datetime(2026, 11, 2, 13, 0), agendada=True)[0].motivo == "09-analise-marca é às 19:00"
+    resultado, mandadas, _ = _rodar(raiz, porta, datetime(2026, 11, 2, 19, 0), agendada=True)
     assert resultado.situacao == PUBLICADO and resultado.postagem.pasta == "09-analise-marca"
-    assert len(mandadas) == 1 and "09-analise-marca" in mandadas[0]
+    assert mandadas[0].startswith("Instagram: saiu o Reel 09-analise-marca.")
+    assert [chamada[0] for chamada in porta.chamadas] == ["01-plinko", "09-analise-marca"]
+
+
+def test_atrasado_e_o_do_dia_saem_um_de_cada_vez_e_o_mais_antigo_primeiro(raiz: Path) -> None:
+    porta = Porta()
+    _rodar(raiz, porta, datetime(2026, 11, 2, 19, 0), agendada=True)
+    resultado, _, _ = _rodar(raiz, porta, datetime(2026, 11, 2, 20, 0), agendada=True)
+    assert resultado.postagem is None and "espera até 21:00" in resultado.motivo
+    resultado, _, _ = _rodar(raiz, porta, datetime(2026, 11, 2, 21, 0), agendada=True)
+    assert resultado.situacao == PUBLICADO
+    assert [chamada[0] for chamada in porta.chamadas] == ["01-plinko", "09-analise-marca"]
+
+
+def test_sem_internet_nada_e_gravado_nem_avisado_e_a_proxima_rodada_posta(raiz: Path) -> None:
+    porta = Porta()
+    resultado, mandadas, estado = _rodar(raiz, porta, agendada=True, esperar_rede=lambda: False)
+    assert resultado.situacao == SEM_REDE and estado == {} and mandadas == [] and porta.chamadas == []
+    resultado, mandadas, estado = _rodar(raiz, Porta(erro=SemRede("net::ERR_NAME_NOT_RESOLVED")), agendada=True)
+    assert resultado.situacao == SEM_REDE and estado == {} and mandadas == []
+    resultado, mandadas, estado = _rodar(raiz, porta, datetime(2026, 11, 1, 21, 0), agendada=True)
+    assert resultado.situacao == PUBLICADO and estado["01-plinko"]["situacao"] == PUBLICADO and len(mandadas) == 1
+
+
+def test_a_rede_e_esperada_ate_o_limite() -> None:
+    agora = [0.0]
+    tentativas: list[tuple] = []
+
+    class Conexao:
+        def close(self) -> None:
+            pass
+
+    def conectar(endereco, timeout):
+        tentativas.append(endereco)
+        if len(tentativas) < 3:
+            raise OSError("getaddrinfo failed")
+        return Conexao()
+
+    def dormir(segundos: float) -> None:
+        agora[0] += segundos
+
+    assert rede_pronta(600, conectar=conectar, dormir=dormir, relogio=lambda: agora[0])
+    assert tentativas == [("www.instagram.com", 443)] * 3 and agora[0] == 30
+
+    def sem_rede(endereco, timeout):
+        raise OSError("getaddrinfo failed")
+
+    agora[0] = 0.0
+    assert not rede_pronta(60, conectar=sem_rede, dormir=dormir, relogio=lambda: agora[0])
+    assert agora[0] == 60
 
 
 def test_arquivo_que_falta_nao_abre_o_chrome_e_avisa(raiz: Path) -> None:
@@ -235,7 +291,7 @@ def test_o_ensaio_nao_clica_nem_grava_nem_avisa(raiz: Path) -> None:
     assert porta.chamadas[0][3] is False and mandadas == [] and estado == {}
 
 
-def test_a_tarefa_roda_todo_dia_as_19h_o_postar_agendado(tmp_path: Path) -> None:
+def test_a_tarefa_roda_as_19h_e_nas_horas_do_atrasado_o_postar_agendado(tmp_path: Path) -> None:
     comandos: list[list[str]] = []
 
     def espiao(comando: list[str]) -> subprocess.CompletedProcess:
@@ -245,7 +301,7 @@ def test_a_tarefa_roda_todo_dia_as_19h_o_postar_agendado(tmp_path: Path) -> None
     nome = automacao.agendar_posts_do_instagram(Configuracao(vault=Path("V"), origem=tmp_path / "config.toml"), executar=espiao)
     [comando] = comandos
     assert nome == "Whis-Instagram"
-    assert comando[comando.index("-Gatilhos") + 1] == "Daily=19:00"
+    assert comando[comando.index("-Gatilhos") + 1] == "Daily=10:00,Daily=13:00,Daily=16:00,Daily=19:00,Daily=21:00,Logon"
     assert comando[comando.index("-Argumentos") + 1] == f'-m whis instagram-postar --agendada --config "{tmp_path / "config.toml"}"'
 
 

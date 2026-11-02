@@ -1,15 +1,17 @@
 r"""Os posts da @velozo.dev no Instagram, publicados sozinhos no dia e na hora do calendário (pedido dele em 31/10).
 
 Os Reels e os carrosséis são feitos no `velozo-reels`, e o `pagina/calendario.json` de lá diz o dia de
-cada um (19h, de domingo a quinta o Reel e na sexta o carrossel). A tarefa `Whis-Instagram` roda todo dia
-às 19:00 e publica o item do dia, um por dia no máximo, pelo instagram.com num Chrome com perfil só do
-Whis (`%LOCALAPPDATA%\whis\navegador-instagram`), logado uma vez à mão com `whis instagram-login`, como o
-X da ADR 0003. A API oficial da Meta substitui o navegador quando ele criar o app (ADR 0007): quem
-publica é uma `PortaDePublicacao`, e o resto não muda.
+cada um (19h, de domingo a quinta o Reel e na sexta o carrossel). A tarefa `Whis-Instagram` roda às 19:00
+(e em outras horas do dia, para o que ficou para trás) e publica o item que já passou da hora e não saiu,
+o mais antigo primeiro, pelo instagram.com num Chrome com perfil só do Whis
+(`%LOCALAPPDATA%\whis\navegador-instagram`), logado uma vez à mão com `whis instagram-login`, como o X da
+ADR 0003. A API oficial da Meta substitui o navegador quando ele criar o app (ADR 0007): quem publica é
+uma `PortaDePublicacao`, e o resto não muda.
 
 O estado (`cacada\instagram-posts.json`) vira `enviando` antes do clique em Compartilhar. O que o
 Instagram não confirmou vira `incerto` e nunca se repete. Falha antes do clique (login vencido, arquivo
-que não subiu) manda um aviso só, sem nova tentativa. Item de um dia que passou não sai atrasado. Nunca
+que não subiu) manda um aviso só, sem nova tentativa. Sem internet nada é gravado: o PC desligado ou sem
+rede na hora posta quando volta (pedido dele em 02/11), com `INTERVALO_MINIMO` entre dois posts. Nunca
 abre direct, curtida nem perfil de outra pessoa.
 """
 
@@ -19,11 +21,13 @@ import json
 import logging
 import os
 import re
+import socket
 import subprocess
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
-from datetime import date, datetime, time
+from dataclasses import dataclass
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
+from time import monotonic, sleep
 from typing import Protocol
 
 _log = logging.getLogger("whis.posts_do_instagram")
@@ -42,9 +46,11 @@ ENVIANDO = "enviando"
 PUBLICADO = "publicado"
 INCERTO = "incerto"
 FALHOU = "falhou"
-PERDIDO = "perdido"
-#: O que conta como "já saiu hoje" e nunca é repetido sozinho.
+SEM_REDE = "sem rede"
+#: O que já saiu (ou talvez tenha saído) e nunca é repetido sozinho.
 SAIU_OU_TALVEZ = (ENVIANDO, PUBLICADO, INCERTO)
+#: Dois Reels colados disputam o mesmo público: o atrasado e o do dia saem com pelo menos isso entre eles.
+INTERVALO_MINIMO = timedelta(hours=2)
 
 #: Publicados à mão antes do Whis: nunca saem de novo, mesmo sem o arquivo de estado.
 JA_PUBLICADOS = {"03-aqui-e-o-gabriel": "https://www.instagram.com/p/DfLH_oYnDIj/"}
@@ -56,6 +62,9 @@ LIMITE_DA_LEGENDA = 2200
 HOME = "https://www.instagram.com/"
 LOGIN = "https://www.instagram.com/accounts/login/"
 ESPERA_DO_LOGIN_S = 900
+#: O PC acordado pela tarefa leva um tempo para pegar o Wi-Fi (01/11 às 19:00 o perfil não abriu por DNS).
+ESPERA_DA_REDE_S = 600
+ENDERECO_DA_REDE = ("www.instagram.com", 443)
 ESPERA_DA_PAGINA_MS = 30_000
 ESPERA_DO_PASSO_MS = 20_000
 #: Vídeo de 16 MB sobe e é processado antes do "foi compartilhado".
@@ -77,6 +86,10 @@ class ErroDoInstagram(RuntimeError):
 
 class LoginVencido(ErroDoInstagram):
     pass
+
+
+class SemRede(ErroDoInstagram):
+    """A internet caiu antes do clique: nada é gravado nem avisado, e a próxima rodada tenta de novo."""
 
 
 class ConteudoIncompleto(ErroDoInstagram):
@@ -229,13 +242,16 @@ def situacao(posts: dict[str, dict], pasta: str) -> str:
     return str(posts.get(pasta, {}).get("situacao", ""))
 
 
-def saiu_no_dia(posts: dict[str, dict], dia: date) -> str:
-    """A pasta que já saiu (ou talvez tenha saído) nesse dia, ou vazio."""
-    for pasta, registro in posts.items():
-        quando = str(registro.get("quando", ""))
-        if registro.get("situacao") in SAIU_OU_TALVEZ and quando[:10] == dia.isoformat():
-            return pasta
-    return ""
+def ultimo_envio(posts: dict[str, dict]) -> datetime | None:
+    """Quando saiu (ou talvez tenha saído) o post mais recente."""
+    momentos = []
+    for registro in posts.values():
+        if registro.get("situacao") in SAIU_OU_TALVEZ:
+            try:
+                momentos.append(datetime.fromisoformat(str(registro.get("quando", ""))))
+            except ValueError:
+                continue
+    return max(momentos, default=None)
 
 
 def escolher(
@@ -243,13 +259,13 @@ def escolher(
 ) -> tuple[Postagem | None, str]:
     """O item a publicar agora e, sem item, o porquê.
 
-    Sem `pasta`: o do dia de hoje, depois da hora dele, nunca de um dia que passou. Com `pasta` (à mão):
-    aquele, se ainda não saiu. Nos dois, um por dia. A tarefa agendada não tenta de novo o que falhou.
+    Sem `pasta`: o mais antigo que já passou da hora e não saiu, então o PC desligado ou sem internet às
+    19h posta quando volta. Com `pasta` (à mão): aquele, se ainda não saiu. Nos dois, `INTERVALO_MINIMO`
+    desde o último post. A tarefa agendada não tenta de novo o que falhou.
     """
-    hoje = agora.date()
-    ja = saiu_no_dia(posts, hoje)
-    if ja:
-        return None, f"hoje já saiu {ja}"
+    ultimo = ultimo_envio(posts)
+    if ultimo and agora - ultimo < INTERVALO_MINIMO:
+        return None, f"o último saiu às {ultimo:%H:%M}; o próximo espera até {ultimo + INTERVALO_MINIMO:%H:%M}"
     if pasta:
         postagem = next((p for p in postagens if p.pasta == pasta), None)
         if postagem is None:
@@ -258,25 +274,41 @@ def escolher(
         if estado in SAIU_OU_TALVEZ:
             return None, f"{pasta} já está como {estado}"
         return postagem, ""
-    do_dia = [p for p in postagens if p.dia == hoje]
-    if not do_dia:
+    for postagem in postagens:
+        if postagem.momento > agora:
+            break
+        estado = situacao(posts, postagem.pasta)
+        if not estado or (estado == FALHOU and not agendada):
+            return postagem, ""
+    do_dia = next((p for p in postagens if p.dia == agora.date()), None)
+    if do_dia is None:
         return None, "nada no calendário hoje"
-    postagem = do_dia[0]
-    if agora.time() < postagem.hora:
-        return None, f"{postagem.pasta} é às {postagem.hora:%H:%M}"
-    estado = situacao(posts, postagem.pasta)
-    if estado and (agendada or estado != FALHOU):
-        return None, f"{postagem.pasta} já está como {estado}"
-    return postagem, ""
-
-
-def perdidas(postagens: Sequence[Postagem], posts: dict[str, dict], agora: datetime) -> list[Postagem]:
-    """Itens de dias que passaram sem sair e sem aviso ainda (o PC estava desligado às 19h)."""
-    return [p for p in postagens if p.dia < agora.date() and not situacao(posts, p.pasta)]
+    if do_dia.momento > agora:
+        return None, f"{do_dia.pasta} é às {do_dia.hora:%H:%M}"
+    return None, f"{do_dia.pasta} já está como {situacao(posts, do_dia.pasta)}"
 
 
 def proxima(postagens: Sequence[Postagem], posts: dict[str, dict], agora: datetime) -> Postagem | None:
     return next((p for p in postagens if p.dia >= agora.date() and not situacao(posts, p.pasta)), None)
+
+
+def rede_pronta(
+    esperar_s: float = ESPERA_DA_REDE_S,
+    *,
+    conectar: Callable[..., socket.socket] = socket.create_connection,
+    dormir: Callable[[float], None] = sleep,
+    relogio: Callable[[], float] = monotonic,
+) -> bool:
+    """O instagram.com responde? Espera até `esperar_s`, tentando a cada 15 s."""
+    fim = relogio() + esperar_s
+    while True:
+        try:
+            conectar(ENDERECO_DA_REDE, timeout=10).close()
+            return True
+        except OSError:
+            if relogio() >= fim:
+                return False
+            dormir(15)
 
 
 # -- quem publica -------------------------------------------------------------------------------------
@@ -306,7 +338,6 @@ class Resultado:
     link: str = ""
     fotos: tuple[str, ...] = ()
     avisos: tuple[str, ...] = ()
-    perdidas: list[Postagem] = field(default_factory=list)
 
 
 ENSAIO = "ensaio"
@@ -324,8 +355,9 @@ def publicar_do_dia(
     ensaio: bool = False,
     midias: Path | None = None,
     textos: Path = TEXTOS,
+    esperar_rede: Callable[[], bool] = lambda: True,
 ) -> Resultado:
-    """O item de hoje (ou `pasta`) no ar, com o estado e o aviso no celular; `ensaio` para antes de Compartilhar."""
+    """O item da vez (ou `pasta`) no ar, com o estado e o aviso no celular; `ensaio` para antes de Compartilhar."""
     postagens = list(postagens) if postagens is not None else ler_calendario()
     posts = ler_estado(estado)
     resultado = Resultado()
@@ -334,16 +366,6 @@ def publicar_do_dia(
         if postagem is None:
             return Resultado(motivo=f"{pasta or 'nenhum item'} para ensaiar")
     else:
-        resultado.perdidas = perdidas(postagens, posts, agora) if not pasta else []
-        for perdida in resultado.perdidas:
-            posts[perdida.pasta] = {"situacao": PERDIDO, "quando": agora.isoformat(timespec="seconds")}
-            avisar(
-                f"Instagram: o {perdida.nome} era de {perdida.dia:%d/%m} às {perdida.hora:%H:%M} e não saiu "
-                f"(o PC estava desligado?). O Whis não posta atrasado. Para postar agora: "
-                f"whis instagram-postar --pasta {perdida.pasta}"
-            )
-        if resultado.perdidas:
-            gravar_estado(estado, posts)
         postagem, motivo = escolher(postagens, posts, agora, pasta=pasta, agendada=agendada)
         if postagem is None:
             resultado.motivo = motivo
@@ -354,6 +376,9 @@ def publicar_do_dia(
         conteudo = conteudo_da_postagem(postagem, midias=midias, textos=textos)
     except ConteudoIncompleto as erro:
         return _falhou(resultado, posts, estado, avisar, agora, str(erro), registrar=not ensaio)
+    if not esperar_rede():
+        resultado.situacao, resultado.motivo = SEM_REDE, f"o {ENDERECO_DA_REDE[0]} não respondeu; a próxima rodada tenta de novo"
+        return resultado
 
     if ensaio:
         try:
@@ -376,6 +401,9 @@ def publicar_do_dia(
         envio = porta.publicar(postagem, conteudo, compartilhar=True, antes_do_clique=antes_do_clique)
     except Exception as erro:  # noqa: BLE001 — depois do clique, qualquer erro é "talvez tenha saído"
         if not clicou:
+            if isinstance(erro, SemRede):
+                resultado.situacao, resultado.motivo = SEM_REDE, str(erro)
+                return resultado
             if not isinstance(erro, ErroDoInstagram):
                 _log.exception("O post do Instagram falhou antes do clique.")
             return _falhou(resultado, posts, estado, avisar, agora, str(erro) or type(erro).__name__)
@@ -386,7 +414,10 @@ def publicar_do_dia(
     if envio.confirmado:
         registro.update(situacao=PUBLICADO, link=envio.link)
         resultado.situacao, resultado.link = PUBLICADO, envio.link
-        linhas = [f"Instagram: saiu o {postagem.nome}.", postagem.titulo, envio.link or "O link não apareceu: confira no perfil."]
+        atrasado = f" (era de {postagem.dia:%d/%m} às {postagem.hora:%H:%M})" if postagem.dia < agora.date() else ""
+        linhas = [
+            f"Instagram: saiu o {postagem.nome}{atrasado}.", postagem.titulo, envio.link or "O link não apareceu: confira no perfil."
+        ]
         linhas += [f"Atenção: {aviso}" for aviso in envio.avisos]
         avisar("\n".join(linha for linha in linhas if linha))
     else:
@@ -574,6 +605,8 @@ class SessaoDoInstagram:
             )
         except Exception as erro:  # noqa: BLE001 — página que não carrega não posta
             self.amostra("perfil")
+            if "net::ERR_" in str(erro):
+                raise SemRede(f"o perfil não abriu sem internet: {_motivo(erro)}") from erro
             raise ErroDoInstagram(f"o perfil não abriu: {_motivo(erro)}") from erro
         if "/accounts/login" in pagina.url or pagina.locator(SELETOR_DO_LOGIN).count():
             raise LoginVencido("o login do Instagram venceu no Chrome do Whis")

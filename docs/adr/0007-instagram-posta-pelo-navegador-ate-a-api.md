@@ -5,7 +5,7 @@
 Em 31/10 ele pediu que o Whis postasse os Reels e os carrosséis da @velozo.dev sempre no horário: 19h,
 Reel de domingo a quinta e carrossel na sexta, um por dia. O calendário é o
 `velozo-reels/pagina/calendario.json`. A tarefa `Whis-Instagram` roda `whis instagram-postar --agendada`
-todo dia às 19:00 e publica o item do dia pelo instagram.com. O Chrome usa um perfil só do Whis
+às 19:00 e publica o item do dia pelo instagram.com. O Chrome usa um perfil só do Whis
 (`%LOCALAPPDATA%\whis\navegador-instagram`), em que ele entra uma vez com `whis instagram-login`, como no
 X da ADR 0003. O primeiro precisava sair no domingo, 01/11, às 19h.
 
@@ -33,9 +33,13 @@ Gabriel" foi publicado à mão por esse fluxo em 31/10.
 - **Risco aceito por ele, na conta dele**: os termos do Instagram não liberam automação de conta pelo
   site. Um post por dia, sem curtir, seguir nem abrir direct, foi a medida que ele escolheu ("como a gente
   vai postar em um momento muito espaçado ... não vai aparecer que é um bot").
-- **O notebook precisa estar ligado às 19h.** Com `-StartWhenAvailable`, ligar mais tarde no mesmo dia
-  ainda posta o item. Item de um dia que passou não sai atrasado: vira um aviso no Telegram com o
-  comando para postar à mão.
+- **O que não saiu na hora sai quando o notebook volta** (mudado em 02/11, a pedido dele). Em 01/11 às
+  19:00 a tarefa acordou o notebook, mas o Wi-Fi ainda não tinha voltado, e o perfil não abriu
+  (`ERR_NAME_NOT_RESOLVED`). Agora o Whis espera até 10 min pelo instagram.com, e falta de internet não
+  grava nada nem avisa. A tarefa também roda às 10:00, 13:00, 16:00 e 21:00 e no logon, e o
+  `-StartWhenAvailable` roda o gatilho perdido quando o PC liga. Cada rodada publica o item mais antigo
+  que já passou da hora e não saiu, com pelo menos 2 h desde o último post. Num dia assim saem dois: o
+  atrasado e o do dia.
 - **Uma vez só**: o estado (`cacada\instagram-posts.json`) vira `enviando` antes do clique em
   Compartilhar. Sem o "foi compartilhado" na tela, vira `incerto`, e o Whis nunca repete. Falha antes do
   clique (login vencido, arquivo que falta, tela que mudou) vira `falhou`, com um aviso só. A tarefa não
